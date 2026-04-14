@@ -1,4 +1,4 @@
-# CDNgine
+![CDNgine](https://github.com/user-attachments/assets/8feb6790-796e-4de7-ab57-40bd2942df7f)
 
 CDNgine is a **generic asset processing and delivery platform** for teams that need one durable system for ingest, versioning, derivation, and global delivery of binary assets.
 

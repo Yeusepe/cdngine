@@ -5,6 +5,7 @@ This suite explains how to build CDNgine, not just what the platform is supposed
 It fills in the operating rules around:
 
 - delivery and review discipline
+- resilient coding, diagnosability, and performance
 - language, module, and documentation style
 - security and threat modeling
 - secure software development lifecycle
@@ -17,14 +18,15 @@ It fills in the operating rules around:
 ## Reading order
 
 1. [Delivery And Review](./delivery-and-review.md)
-2. [Language Style And Documentation](./language-style-and-documentation.md)
-3. [Security And Threat Modeling](./security-and-threat-modeling.md)
-4. [Secure Development Lifecycle](./secure-development-lifecycle.md)
-5. [Security Verification Baseline](./security-verification-baseline.md)
-6. [Storage And State](./storage-and-state.md)
-7. [Interfaces And Data Flow](./interfaces-and-data-flow.md)
-8. [Testing And Scale](./testing-and-scale.md)
-9. [Implementation Strategy](./implementation-strategy.md)
+2. [Resilient Coding, Debugging, And Performance](./resilient-coding-debugging-and-performance.md)
+3. [Language Style And Documentation](./language-style-and-documentation.md)
+4. [Security And Threat Modeling](./security-and-threat-modeling.md)
+5. [Secure Development Lifecycle](./secure-development-lifecycle.md)
+6. [Security Verification Baseline](./security-verification-baseline.md)
+7. [Storage And State](./storage-and-state.md)
+8. [Interfaces And Data Flow](./interfaces-and-data-flow.md)
+9. [Testing And Scale](./testing-and-scale.md)
+10. [Implementation Strategy](./implementation-strategy.md)
 
 ## External foundations
 
@@ -37,4 +39,6 @@ This suite is deliberately grounded in:
 - [OpenSSF Concise Guide](https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software.html)
 
 These are adapted here for an asset-processing platform with durable workflows and standardized API contracts.
+
+The resilient-coding guide in this suite is additionally grounded in a 119-source research sweep across standards, style guides, review practices, testing guidance, observability references, reliability engineering material, API contracts, storage correctness references, performance diagnostics, secure coding baselines, and documentation frameworks.
 

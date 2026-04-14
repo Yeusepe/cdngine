@@ -52,16 +52,24 @@ The ingest path is:
 
 1. the client calls CDNgine to create an upload session
 2. CDNgine creates the asset and version records in the registry
-3. CDNgine returns upload instructions for the **canonical raw asset**
-4. the client uploads the original binary to **Oxen**
+3. CDNgine returns upload instructions for an **ingest-managed upload target**
+4. the client uploads the original binary to that ingest target
 5. the client calls upload completion
-6. CDNgine starts a durable workflow in **Temporal**
-7. workers read the canonical source version from **Oxen**
-8. workers validate and transform that source into delivery variants
-9. workers publish those variants into the **derived store**
-10. the registry records the derivative keys and manifest
+6. CDNgine validates the upload and commits the canonical raw version into **Oxen**
+7. CDNgine starts a durable workflow in **Temporal**
+8. workers read the canonical source version from **Oxen**
+9. workers validate and transform that source into delivery variants
+10. workers publish those variants into the **derived store**
+11. the registry records the derivative keys and manifest
 
-The important point is: **ingest goes into Oxen first because Oxen owns the canonical original and replay source.**
+The important point is: **Oxen should own the canonical committed raw version and replay source.**
+
+That does **not** necessarily mean Oxen must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of Oxen is often the cleaner operational choice.
+
+The current best default for that public upload endpoint is:
+
+- **tus/tusd** for resumable, reusable, protocol-level uploads
+- backed by multipart-capable object storage where that improves throughput and recovery
 
 ## How delivery actually works
 
@@ -99,6 +107,12 @@ This split is intentional:
 
 If every published derivative had to be delivered from Oxen, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
 
+Likewise, if every public upload had to speak Oxen semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized versioned data store. The cleaner pattern is usually:
+
+- simple upload target for ingress
+- canonical commit into Oxen after ingest finalization
+- replay and derivation from Oxen
+
 ## Service stack direction
 
 The current service-level direction is:
@@ -112,6 +126,7 @@ The current service-level direction is:
 | primary SQL engine | PostgreSQL + JSONB |
 | cache and short-lived coordination | Redis |
 | durable workflows | Temporal |
+| resumable upload endpoint | tus / tusd |
 | image delivery and transform | imgproxy + libvips |
 | video processing | FFmpeg |
 | document normalization | Gotenberg |
@@ -151,7 +166,7 @@ The architecture is generic on purpose. It is meant to support workloads such as
 
 If you only remember one thing, remember this:
 
-**clients upload originals to Oxen, workers derive outputs from Oxen, and clients download published outputs from the CDN-backed derived store.**
+**clients upload originals through the ingest service, CDNgine commits canonical raw versions into Oxen, workers derive outputs from Oxen, and clients download published outputs from the CDN-backed derived store.**
 
 ## What is in this repository
 

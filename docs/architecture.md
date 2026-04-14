@@ -185,6 +185,7 @@ flowchart TB
 sequenceDiagram
     participant C as Client
     participant G as Gateway
+    participant I as Ingest Target
     participant O as Oxen
     participant R as Registry
     participant T as Temporal
@@ -194,9 +195,10 @@ sequenceDiagram
 
     C->>G: CreateUploadSession
     G->>R: Create Asset + Version
-    G-->>C: Upload instructions for canonical raw asset
-    C->>O: Upload raw asset
+    G-->>C: Upload instructions for ingest-managed target
+    C->>I: Upload raw asset
     C->>G: Complete upload
+    G->>O: Commit canonical raw version
     G->>T: Start workflow
     T->>W: Run validators and processors
     W->>O: Read canonical source version
@@ -210,14 +212,16 @@ sequenceDiagram
 
 Read the sequence above as:
 
-1. the original upload goes to **Oxen**
-2. workflows and workers use **Oxen** as the canonical source for validation and derivation
-3. generated outputs are published to the **derived store**
-4. clients receive those published outputs from the **CDN** in front of the derived store
+1. the original upload first lands in an ingest-managed upload target
+2. CDNgine commits the canonical raw version into **Oxen**
+3. workflows and workers use **Oxen** as the canonical source for validation and derivation
+4. generated outputs are published to the **derived store**
+5. clients receive those published outputs from the **CDN** in front of the derived store
 
 That means:
 
-- **Oxen owns ingest provenance and replay**
+- **Oxen owns canonical provenance and replay**
+- **the ingest target owns client-facing upload ergonomics**
 - **the derived store owns published delivery artifacts**
 - **the CDN is the ordinary client delivery path**
 

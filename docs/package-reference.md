@@ -12,6 +12,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | host environment | Encore or Nest | lets teams use a preferred application shell without changing core platform semantics |
 | validation and schema authoring | Zod | strongly typed runtime validation with JSON Schema conversion support |
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
+| resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
 | raw versioned source | Oxen | immutable raw asset lineage and version semantics |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
@@ -30,6 +31,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | --- | --- | --- |
 | Hono | `honojs/hono` | portable HTTP layer, multi-runtime deployment, small API surface |
 | Prisma | `prisma/prisma` | data modeling, client generation, migrations, and schema discipline |
+| tusd | `tus/tusd` | resumable upload server and protocol reference implementation |
 | Encore | `encoredev/encore` | one supported host shell with strong local infrastructure ergonomics |
 | NestJS | `nestjs/nest` | one supported host shell with module-oriented application composition |
 | Temporal TypeScript SDK | `temporalio/sdk-typescript` | workflow programming model |
@@ -101,6 +103,22 @@ Use for:
 - metrics
 - logs and correlation
 - vendor-neutral observability posture
+
+### 3.6 tus / tusd
+
+Use for:
+
+- resumable browser and SDK uploads
+- pause and resume semantics
+- interrupted-upload recovery
+- reusable provider-agnostic upload behavior
+
+Why it fits:
+
+- protocol designed specifically for resumable uploads
+- official server implementation exists
+- mature ecosystem and production usage
+- better generic ingest endpoint than custom session-plus-chunk APIs
 
 ## 4. Image stack
 

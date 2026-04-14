@@ -24,6 +24,7 @@ Default choices should optimize for:
 | host environment | Encore or Nest | lets teams choose their service shell without changing platform semantics |
 | validation and schema authoring | Zod and JSON Schema alignment | typed validation and better ergonomics without inventing a schema DSL |
 | database access and migrations | Prisma | type-safe relational access, schema ownership, generated client, and migrations in one toolchain |
+| resumable ingest endpoint | tus / tusd | production-grade resumable upload protocol and server are better than inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral observability without one-off instrumentation conventions |
 | durable workflows | Temporal | durable retries, replay, testing, timers, execution history already exist |
 | SQL registry | PostgreSQL + JSONB | rich relational semantics and flexible metadata without a custom registry store |
@@ -70,15 +71,21 @@ Raw SQL remains acceptable for performance-sensitive or Prisma-unfriendly query 
 
 Temporal should own long-running orchestration, retries, timers, and replay. The platform should not reimplement durable workflow bookkeeping inside Redis tables or queue glue.
 
-### 4.5 Zod plus JSON Schema alignment
+### 4.5 tus / tusd
+
+tus is the strongest general-purpose resumable upload protocol in the current ecosystem, and tusd is the clearest reusable server choice when CDNgine needs a public upload endpoint that supports resume, retries, and operational maturity.
+
+It should sit in front of ingest finalization and canonical Oxen commits rather than being replaced with custom upload-session chunk semantics.
+
+### 4.6 Zod plus JSON Schema alignment
 
 Zod is a strong fit for code-near validation and schema reuse, while published contracts should still center on OpenAPI and JSON Schema.
 
-### 4.6 OpenTelemetry
+### 4.7 OpenTelemetry
 
 OpenTelemetry is the default telemetry posture for traces, metrics, and logs because it keeps the service vendor-neutral and observable by design.
 
-### 4.7 PostgreSQL + JSONB
+### 4.8 PostgreSQL + JSONB
 
 JSONB lets the registry keep a strong relational core while storing:
 
@@ -89,19 +96,19 @@ JSONB lets the registry keep a strong relational core while storing:
 
 without inventing a separate metadata subsystem too early.
 
-### 4.8 Redis
+### 4.9 Redis
 
 Redis should accelerate hot paths and coordination, but never become the hidden control-plane database.
 
-### 4.9 imgproxy + libvips
+### 4.10 imgproxy + libvips
 
 This pair is the clearest answer for fast image delivery and transformation without writing a custom server. It fits the architecture's bias toward deterministic delivery paths and signed URLs.
 
-### 4.10 Gotenberg
+### 4.11 Gotenberg
 
 For document conversion, Gotenberg gives an API-first container that already combines Chromium, LibreOffice, and PDF tooling. That is much cheaper to operate and reason about than building a bespoke service mesh of document converters.
 
-### 4.11 FFmpeg
+### 4.12 FFmpeg
 
 FFmpeg remains the core for:
 
@@ -112,7 +119,7 @@ FFmpeg remains the core for:
 
 with hardware acceleration where available.
 
-### 4.12 Oxen and the storage split
+### 4.13 Oxen and the storage split
 
 Oxen is the canonical raw/versioned source of truth. It should own:
 
@@ -121,6 +128,8 @@ Oxen is the canonical raw/versioned source of truth. It should own:
 - replay provenance
 - auditability of what the platform derived from
 
+Its best fit is **canonical versioned storage after ingest finalization**, not necessarily acting as the first direct public upload endpoint for every browser or SDK client.
+
 The derived store exists for a different reason: serve deterministic generated artifacts cheaply and fast through the CDN. The platform therefore defaults to:
 
 - **Oxen for originals and replay**
@@ -128,10 +137,20 @@ The derived store exists for a different reason: serve deterministic generated a
 
 That split is deliberate, not accidental. It avoids forcing hot derivative traffic through the same system that exists to preserve provenance.
 
+The practical ingest pattern is usually:
+
+1. client uploads to an ingest-managed target or proxy, ideally **tus/tusd**
+2. CDNgine validates and commits the canonical version into Oxen
+3. workflows derive from Oxen
+
+This uses Oxen where it is strongest: versioned provenance, replay, and large-scale binary history.
+
 ## 5. References
 
 - [Hono](https://hono.dev/)
 - [Prisma ORM](https://www.prisma.io/docs/orm)
+- [tus](https://tus.io/)
+- [tusd](https://github.com/tus/tusd)
 - [OpenTelemetry docs](https://opentelemetry.io/docs/)
 - [Temporal documentation](https://docs.temporal.io/)
 - [PostgreSQL JSON types](https://www.postgresql.org/docs/current/datatype-json.html)

@@ -34,6 +34,7 @@ The current leading service-level stack is:
 | API description | OpenAPI 3.1 derived from the published external surface |
 | event description | AsyncAPI where helpful |
 | database access | Prisma over PostgreSQL |
+| resumable ingest endpoint | tus / tusd |
 | telemetry | OpenTelemetry |
 | logging | structured application logging with request and workflow correlation |
 | durable workflows | Temporal TypeScript SDK |
@@ -88,11 +89,24 @@ Prisma is the preferred database layer because it gives the platform:
 
 Prisma should be used for the registry's main relational model, while raw SQL remains acceptable where the platform needs query shapes Prisma does not express cleanly.
 
-### 3.5 OpenTelemetry
+### 3.5 tus / tusd
+
+tus is the strongest reusable resumable upload protocol in the current ecosystem, and tusd is the most credible default server implementation for it.
+
+For CDNgine, tus/tusd is a better fit for the public ingest endpoint than making Oxen itself the first upload surface because it gives:
+
+- resume-after-interruption semantics
+- reusable HTTP upload behavior across clients
+- protocol-level support for large uploads
+- cleaner browser and SDK ergonomics
+
+It can sit in front of object storage and ingest finalization, after which CDNgine commits the canonical version into Oxen.
+
+### 3.6 OpenTelemetry
 
 The platform needs vendor-neutral traces, metrics, and logs. OpenTelemetry remains the default for keeping the service observable without binding the architecture to one vendor.
 
-### 3.6 Temporal
+### 3.7 Temporal
 
 Hono and the chosen host environment improve service structure and portability, but they are not the systems we are using for long-running asset derivation orchestration. Temporal still owns:
 
@@ -148,14 +162,16 @@ To avoid ambiguity:
 So the service contract is:
 
 1. Hono API creates upload session and asset/version state
-2. client uploads original to Oxen
-3. Hono API marks upload complete and starts Temporal workflow
+2. client uploads original to an ingest-managed upload target or proxy
+3. Hono API marks upload complete, validates the upload, and commits the canonical raw version into Oxen
 4. workers read the canonical source from Oxen
 5. workers write deterministic outputs to the derived store
 6. clients receive manifests and delivery URLs from the API
 7. clients fetch published artifacts from the CDN-backed derived store
 
-Oxen is therefore on the **canonical ingest and replay path**, not on the ordinary **published derivative delivery path**.
+Oxen is therefore on the **canonical commit and replay path**, not necessarily the first public upload endpoint and not the ordinary **published derivative delivery path**.
+
+The recommended default public upload endpoint is **tus/tusd**.
 
 ## 6. Idempotency posture
 
@@ -213,7 +229,7 @@ flowchart LR
     Hono --> |public API exposure| Clients["External clients"]
     Hono --> |private internal routes or service calls| Internal["Internal services"]
     Hono --> |records state| Prisma["Prisma / SQL registry"]
-    Hono --> |issues upload targets| Oxen["Oxen"]
+    Hono --> |issues ingest upload targets and commits canonical versions| Oxen["Oxen"]
     Hono --> |starts orchestration| Temporal["Temporal"]
     Temporal --> Workers["Worker services"]
     Workers --> |read canonical source| Oxen

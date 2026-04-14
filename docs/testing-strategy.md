@@ -1,0 +1,101 @@
+# Testing Strategy
+
+This repository should be built and evolved in a TDD-first way.
+
+For this platform, tests are not only about correctness. They are the executable proof that idempotency, replay, deterministic keys, and publication behavior are real.
+
+## 1. Order of work
+
+The preferred order is:
+
+1. architecture or contract update
+2. failing specification, route, or workflow test
+3. narrower unit and integration tests
+4. implementation
+5. observability and runbook alignment where the change affects operations
+
+## 2. Test layers
+
+| Layer | Primary purpose |
+| --- | --- |
+| docs checks | architecture, links, and contract alignment |
+| schema and contract tests | OpenAPI, manifest, capability, and recipe compatibility |
+| unit tests | deterministic key generation, validation rules, mappers, helpers |
+| repository and storage integration tests | registry behavior, object publication, signing, idempotency storage |
+| workflow tests | retries, replay, timers, compensation, and failure branching |
+| API integration tests | auth, validation, route contracts, idempotent mutation behavior |
+| end-to-end tests | visible user outcomes across upload, processing, and delivery |
+| load and soak tests | throughput, saturation, and degradation behavior |
+
+## 3. High-risk behaviors that must be tested
+
+The platform should explicitly test:
+
+- upload completion idempotency
+- replay from the canonical Oxen source version
+- deterministic derivative key generation
+- manifest publication integrity
+- signed delivery URL behavior
+- workflow registration and recipe expansion
+- validation rejection versus retryable infrastructure failure
+- partial publication cleanup or recovery
+
+## 4. Workflow testing posture
+
+Temporal workflows should not be treated like opaque background magic.
+
+Expected workflow-test coverage:
+
+- success path
+- transient failure with retry
+- non-retryable validation failure
+- timeout handling
+- compensation or cleanup where required
+- replay compatibility across workflow evolution
+
+## 5. Integration testing posture
+
+The platform needs real integration tests for:
+
+- PostgreSQL registry behavior
+- Redis-backed idempotency and ephemeral coordination
+- Oxen read and write behavior for canonical assets
+- derived-store publication semantics
+- signature and URL generation
+
+Mock-heavy tests are not enough for storage and workflow boundaries.
+
+## 6. End-to-end scenario families
+
+At minimum, keep scenario coverage for:
+
+1. image upload to published derivatives
+2. video upload to poster and stream publication
+3. presentation upload to normalized PDF and slide images
+4. archive upload to inspection and policy decision
+5. replay of an already-processed asset version
+
+## 7. Failure-injection expectations
+
+The platform should eventually exercise:
+
+- temporary storage unavailability
+- worker crash or restart
+- malformed file input
+- dependency timeout
+- duplicate completion requests
+- partial derived publication
+
+## 8. Test evidence expected per major change
+
+A mature change should usually leave behind:
+
+- updated docs or contracts
+- focused unit coverage
+- integration or workflow coverage for changed boundaries
+- regression coverage for the bug or failure mode that motivated the change
+
+## 9. References
+
+- [Temporal testing docs](https://docs.temporal.io/develop/typescript/testing-suite)
+- [Google Engineering Practices: Testing](https://google.github.io/eng-practices/)

@@ -137,6 +137,26 @@ The request path should not:
 - run long remote dependency chains
 - quietly become a second workflow engine
 
+## 5.1 Plain-language ingest and delivery contract
+
+To avoid ambiguity:
+
+- **ingest** means the client uploads the original binary to **Oxen**
+- **processing** means workers read that canonical source from **Oxen** and publish generated outputs to the **derived store**
+- **delivery** means clients fetch published outputs from the **CDN** in front of the **derived store**
+
+So the service contract is:
+
+1. Hono API creates upload session and asset/version state
+2. client uploads original to Oxen
+3. Hono API marks upload complete and starts Temporal workflow
+4. workers read the canonical source from Oxen
+5. workers write deterministic outputs to the derived store
+6. clients receive manifests and delivery URLs from the API
+7. clients fetch published artifacts from the CDN-backed derived store
+
+Oxen is therefore on the **canonical ingest and replay path**, not on the ordinary **published derivative delivery path**.
+
 ## 6. Idempotency posture
 
 Every mutating boundary should define:

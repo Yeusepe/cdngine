@@ -206,6 +206,21 @@ sequenceDiagram
     CDN->>D: Fetch deterministic derivative from delivery origin
 ```
 
+### 7.2.1 Plain-language interpretation
+
+Read the sequence above as:
+
+1. the original upload goes to **Oxen**
+2. workflows and workers use **Oxen** as the canonical source for validation and derivation
+3. generated outputs are published to the **derived store**
+4. clients receive those published outputs from the **CDN** in front of the derived store
+
+That means:
+
+- **Oxen owns ingest provenance and replay**
+- **the derived store owns published delivery artifacts**
+- **the CDN is the ordinary client delivery path**
+
 ## 7.3 Provenance versus delivery responsibility
 
 ```mermaid

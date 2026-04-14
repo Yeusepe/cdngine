@@ -46,6 +46,59 @@ That means the platform treats:
 - the **derived store** as the source of truth for published delivery artifacts
 - the **registry** as the system of record for control-plane state
 
+## How ingest actually works
+
+The ingest path is:
+
+1. the client calls CDNgine to create an upload session
+2. CDNgine creates the asset and version records in the registry
+3. CDNgine returns upload instructions for the **canonical raw asset**
+4. the client uploads the original binary to **Oxen**
+5. the client calls upload completion
+6. CDNgine starts a durable workflow in **Temporal**
+7. workers read the canonical source version from **Oxen**
+8. workers validate and transform that source into delivery variants
+9. workers publish those variants into the **derived store**
+10. the registry records the derivative keys and manifest
+
+The important point is: **ingest goes into Oxen first because Oxen owns the canonical original and replay source.**
+
+## How delivery actually works
+
+The delivery path is different from the ingest path:
+
+1. the client asks CDNgine for asset metadata, derivatives, or a manifest
+2. CDNgine returns manifest data and, where needed, a signed delivery URL or path
+3. the client fetches the published derivative through the **CDN**
+4. the CDN serves from cache or fetches from the **derived store**
+
+The important point is: **clients do not normally download published derivatives from Oxen.**
+
+Oxen is for:
+
+- canonical originals
+- version history
+- replay
+- provenance
+
+The derived store plus CDN are for:
+
+- thumbnails
+- WebP masters
+- posters
+- HLS segments
+- slide images
+- other published delivery outputs
+
+## Why the split exists
+
+This split is intentional:
+
+- **Oxen** answers: "what exactly was uploaded, versioned, and replayed from?"
+- the **derived store** answers: "what exact published artifact should the client receive right now?"
+
+If every published derivative had to be delivered from Oxen, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
+
 ## Service stack direction
 
 The current service-level direction is:
@@ -93,6 +146,12 @@ The architecture is generic on purpose. It is meant to support workloads such as
 - video transcoding, poster extraction, and streaming publication
 - PowerPoint or PDF normalization into slide-oriented delivery outputs
 - archive and package preservation, inspection, and future domain-specific transforms
+
+## One-sentence mental model
+
+If you only remember one thing, remember this:
+
+**clients upload originals to Oxen, workers derive outputs from Oxen, and clients download published outputs from the CDN-backed derived store.**
 
 ## What is in this repository
 

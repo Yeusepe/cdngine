@@ -22,6 +22,7 @@ The repository should not treat `local` and `production` as the only meaningful 
 The opinionated first production profile is:
 
 - stateless API tier
+- dedicated tusd ingest tier backed by object storage
 - PostgreSQL control-plane database
 - Redis for cache and short-lived coordination
 - Temporal for durable orchestration
@@ -51,6 +52,7 @@ Owns:
 
 - authentication and authorization
 - upload-session creation
+- upload completion acceptance and canonicalization command handling
 - metadata and manifest APIs
 - signed delivery URL generation
 - operator command surfaces
@@ -60,6 +62,21 @@ Expected properties:
 - stateless horizontal scaling
 - strict request timeouts
 - structured logging and trace propagation
+
+### 4.1.1 Ingest tier
+
+Owns:
+
+- resumable upload protocol handling
+- ingest-object persistence before canonicalization
+- hook-driven metadata validation
+- ingest metrics and operational visibility
+
+Expected properties:
+
+- object-storage-backed persistence in production
+- no dependence on local shared-disk locking for clustered deployments
+- Cloudflare R2-specific multipart tuning when R2 is used
 
 ### 4.2 Temporal tier
 
@@ -131,6 +148,8 @@ The platform should support:
 - worker-pool rollout by capability or queue
 - workflow-version migration discipline
 - replay rehearsal in staging before production migration
+
+Workflow-code deployments should use Temporal safe-deployment practices, with replay verification before traffic is shifted.
 
 Changes that should not be rolled out casually:
 

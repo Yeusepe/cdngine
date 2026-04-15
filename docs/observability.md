@@ -29,10 +29,13 @@ The default telemetry posture is:
 | traces | OpenTelemetry |
 | logs | structured application logs with service, asset, and workflow correlation |
 | metrics | OpenTelemetry metrics exported to the chosen backend |
+| ingest metrics | tusd Prometheus metrics plus API-side ingest metrics |
 | workflow visibility | Temporal execution history and workflow metrics |
 | audit events | relational registry plus operator-visible event records |
 
 The platform should not invent its own tracing format or correlation scheme.
+
+Collector-side sampling policy should prefer keeping failures, high-latency traces, and operator actions rather than sampling all traffic uniformly.
 
 ## 3. Core signal families
 
@@ -100,6 +103,8 @@ Every signal should carry the strongest safe set of correlation dimensions avail
 - `outcome`
 
 These fields are more important than verbose free-text logs. Operators need machine-filterable dimensions first.
+
+Route-level request IDs must be propagated from the API surface into workflow start, storage operations, and audit events so a single upload or replay request can be reconstructed later.
 
 ## 5. Trace boundaries
 
@@ -212,5 +217,7 @@ A finished slice should show:
 ## 11. References
 
 - [OpenTelemetry docs](https://opentelemetry.io/docs/)
+- [OpenTelemetry sampling](https://opentelemetry.io/docs/concepts/sampling/)
 - [Temporal documentation](https://docs.temporal.io/)
+- [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)

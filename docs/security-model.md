@@ -32,11 +32,23 @@ Authorization should be explicit at every boundary.
 
 Minimum authorization dimensions:
 
-- tenant or namespace identity
+- service namespace identity
+- tenant scope where applicable
 - caller role
 - asset ownership or delegated access
 - operation type
 - asset visibility class
+
+The preferred model is attribute-based access control:
+
+- **subject** attributes such as role, team, namespace affiliation, and operator status
+- **resource** attributes such as service namespace, tenant scope, asset class, visibility, and owner
+- **action** such as upload, complete, read, replay, quarantine, or purge
+- **environment** such as request surface, network zone, and time-bound delivery claims
+
+This is the preferred posture because standard guidance for modern authorization favors evaluating permissions against resource and request context, not only coarse static roles.
+
+RBAC may still be used for coarse operator roles, but RBAC alone is not expressive enough for the shared-platform scoping model.
 
 Typical privileged operations that require tighter policy:
 
@@ -53,15 +65,18 @@ Upload flow requirements:
 
 1. clients request an upload session from the API
 2. the API validates asset class, declared content constraints, and tenant policy
-3. the API issues a short-lived upload target for the canonical raw asset
+3. the API issues a short-lived upload target for the ingest-managed upload object
 4. upload completion is confirmed through a signed or authenticated callback
-5. the workflow re-validates the uploaded content using signature sniffing and metadata extraction
+5. the ingest service verifies the uploaded object before canonical commit into Oxen
+6. the workflow re-validates the uploaded content using signature sniffing and metadata extraction
 
 Do not trust:
 
 - declared MIME type alone
 - filename extension alone
 - upload completion as proof of valid content
+
+Upload-session issuance should bind the allowed scope explicitly so a completion request cannot silently shift an upload from one namespace or tenant scope into another.
 
 ## 5. Raw and derived storage boundaries
 
@@ -90,6 +105,17 @@ Signed delivery controls should include:
 - replay-resistant signature validation
 
 The platform should never expose arbitrary free-form transforms for untrusted callers.
+
+## 6.1 Surface separation
+
+Authorization policy must distinguish:
+
+- public client access
+- platform-admin access
+- operator access
+- internal service-to-service access
+
+Replay, quarantine, purge, namespace registration, and capability governance require elevated internal roles and should not be exposed as broad public-SDK operations.
 
 ## 7. High-risk file classes
 
@@ -122,6 +148,16 @@ Workers should run with:
 - explicit logging and audit correlation
 
 Do not let processors become privileged shell environments with broad network reach.
+
+## 8.1 Registry isolation posture
+
+Application-layer auth is mandatory. Deployments that need stronger database-level isolation may additionally use PostgreSQL row-level security for tenant-scoped records, but RLS is not a substitute for application authorization.
+
+Data access anti-patterns to avoid:
+
+- looking up tenant-aware assets by bare `assetId` alone
+- using unscoped cache keys
+- allowing namespace policy to be inferred from route names instead of explicit resource attributes
 
 ## 9. Secrets and key management
 
@@ -171,5 +207,8 @@ Every production deployment should show:
 ## 12. References
 
 - [OWASP ASVS](https://owasp.org/www-project-application-security-verification-standard/)
+- [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
 - [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html)
+- [NIST SP 800-162: Guide to Attribute Based Access Control (ABAC)](https://csrc.nist.gov/pubs/sp/800/162/upd2/final)
+- [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)

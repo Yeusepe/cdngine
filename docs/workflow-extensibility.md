@@ -1,6 +1,6 @@
 # Workflow Extensibility
 
-This document defines how new workflows are added.
+This document defines how new workflows are added and how existing workflows evolve safely.
 
 ## 1. Model
 
@@ -68,15 +68,39 @@ Temporal should own:
 - long-running, crash-resistant execution
 - activity retries and terminal failure visibility
 
-## 6. Async execution rules
+## 6. Workflow identity and interaction model
+
+Workflow starts should use stable Workflow IDs derived from business identity, not random fire-and-forget starts.
+
+Operator interactions with running workflows should prefer:
+
+- **Queries** for read-only state inspection
+- **Signals** for asynchronous control changes
+- **Updates** for tracked, state-changing requests that need a returned result
+
+This keeps operator control inside Temporal's durable model instead of inventing a parallel control channel.
+
+## 7. Safe deployment policy
+
+Workflow-code changes must follow Temporal's safe-deployment posture:
+
+- replay tests run before shipping workflow changes
+- Worker Versioning is the preferred production posture
+- patching APIs are the fallback when Worker Versioning is not yet in use
+- rollout plans must distinguish workflow-code changes from activity-only changes
+
+Long-lived workflows should use Continue-As-New when histories approach scaling limits.
+
+## 8. Async execution rules
 
 1. Inline request paths should only do lightweight validation and session setup.
-2. Upload completion triggers durable workflows.
+2. Upload completion triggers durable workflows through a workflow-dispatch intent.
 3. Every activity should be idempotent or safely repeatable.
 4. Every workflow should define terminal states clearly.
 5. Operator replay should start from a known workflow and version boundary.
+6. Message handlers should not hide non-deterministic behavior.
 
-## 7. Testing expectations
+## 9. Testing expectations
 
 Every new workflow should land with:
 
@@ -84,6 +108,7 @@ Every new workflow should land with:
 - registration coverage
 - workflow-level tests
 - retry and idempotency evidence
+- replay compatibility evidence
 
 Recommended workflow tests:
 
@@ -92,9 +117,11 @@ Recommended workflow tests:
 - activity retry behavior
 - replay from prior workflow state
 - terminal failure handling
+- Continue-As-New behavior where long-lived flows use it
 
-## 8. References
+## 10. References
 
-- [Temporal documentation](https://docs.temporal.io/)
-- [Temporal TypeScript samples](https://github.com/temporalio/samples-typescript)
-
+- [Temporal safe deployments](https://docs.temporal.io/develop/safe-deployments)
+- [Temporal Workflow IDs](https://docs.temporal.io/workflow-execution/workflowid-runid)
+- [Temporal TypeScript message passing](https://docs.temporal.io/develop/typescript/workflows/message-passing)
+- [Temporal TypeScript Continue-As-New](https://docs.temporal.io/develop/typescript/workflows/continue-as-new)

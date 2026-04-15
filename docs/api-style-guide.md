@@ -8,19 +8,29 @@ The platform should adopt:
 
 - OpenAPI 3.1 and JSON Schema as the primary HTTP schema source
 - AsyncAPI for event contracts where helpful
+- Arazzo for multi-step workflow descriptions where the API flow spans several calls
 - RFC 9457 problem details for typed API errors
+
+The published contract posture should be:
+
+- separate public, platform-admin, and operator API descriptions
+- Zod or Standard Schema-compatible definitions near code
+- generated OpenAPI and JSON Schema artifacts as release outputs
+- generated Arazzo workflow artifacts for common multi-step flows
 
 ## 2. Rules
 
 1. Prefer boring, resource-oriented paths.
 2. Keep request and response shapes versionable.
 3. Use idempotency keys for mutating operations.
-4. Provide examples, descriptions, deprecation metadata, and field-level docs in schemas.
-5. Keep public API naming stable even when infrastructure changes.
-6. Return typed, documented errors instead of vague message blobs.
-7. Make async behavior explicit in both the resource model and examples.
-8. Keep namespace and asset ownership visible in request and response shapes.
-9. Treat manifests as first-class outputs, not undocumented side channels.
+4. Keep public, platform-admin, and operator surfaces distinct.
+5. Provide examples, descriptions, deprecation metadata, and field-level docs in schemas.
+6. Keep public API naming stable even when infrastructure changes.
+7. Return typed, documented errors instead of vague message blobs.
+8. Make async behavior explicit in both the resource model and examples.
+9. Keep service namespace, tenant scope, and asset ownership visible in request and response shapes.
+10. Treat manifests as first-class outputs, not undocumented side channels.
+11. Design method names and schemas so generated SDKs have one obvious shape for common workflows.
 
 ## 2.1 Naming guidance
 
@@ -29,6 +39,8 @@ Prefer:
 - noun-based resources
 - stable version prefixes
 - explicit nested resources where ownership matters
+- stable `operationId` values that generate predictable method names
+- resource-oriented operations that fit standard client generation well
 
 Avoid:
 
@@ -57,6 +69,8 @@ The platform should expose:
 - tested examples
 - generated SDK entry points
 
+Only the public surface should be treated as the broad external SDK contract unless a narrower admin SDK is deliberately supported.
+
 ## 3.1 Async API posture
 
 The API should make asynchronous work obvious instead of pretending long-running transforms are immediate.
@@ -66,6 +80,7 @@ Preferred behavior:
 - mutating endpoints return accepted work and status handles where processing is deferred
 - asset and version resources expose state transitions explicitly
 - derivatives and manifests appear only when published, not as magical side effects
+- common multi-step sequences such as upload and completion should be documented as executable workflows, not only scattered examples
 
 Illustrative response posture:
 
@@ -97,7 +112,9 @@ Schemas should carry enough metadata to make editors pleasant:
 
 Public resources should make ownership and policy visible when it matters:
 
-- namespace or tenant identity
+- service namespace identity
+- tenant identity where applicable
+- asset owner or policy subject where applicable
 - source version identity
 - recipe and manifest identity
 - processing state
@@ -126,7 +143,10 @@ Illustrative validation error:
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
 - [JSON Schema](https://json-schema.org/)
 - [AsyncAPI](https://www.asyncapi.com/docs)
+- [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [Google AIP-121: Resource-oriented design](https://google.aip.dev/121)
+- [Google AIP-130: Standard methods](https://google.aip.dev/130)
 - [Redocly docs](https://redocly.com/docs/)
 - [Stoplight Elements](https://docs.stoplight.io/docs/elements/b074dc47b2826-elements-quick-start)
 

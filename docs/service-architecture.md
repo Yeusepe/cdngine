@@ -1,8 +1,8 @@
 # Service Architecture
 
-This document focuses on the actual backend service shape of CDNgine rather than the asset-processing tools alone.
+This document defines the backend service shape for CDNgine.
 
-The goal is to make the service itself fast, maintainable, durable, and easy to evolve while keeping the HTTP layer portable across runtime environments.
+The goal is not only to name technologies, but to make the request boundaries, durability model, and control-plane ownership explicit enough that implementation can start without rediscovering core semantics.
 
 The default direction is:
 
@@ -10,16 +10,18 @@ The default direction is:
 - **Prisma** for database access and migrations
 - **Encore or Nest** as supported host environments around the same service core
 
-## 1. Service boundaries
+## 1. Service surfaces
 
-The default service shape should separate:
+CDNgine should expose distinct surfaces with different auth, stability, and SDK expectations:
 
-- **public API surfaces** for upload sessions, completion, metadata, and signed delivery orchestration
-- **private internal service surfaces** for workflow triggers, capability resolution, and platform-owned commands
-- **worker-facing orchestration surfaces** for durable processing and replay
-- **operator service surfaces** for replay, diagnostics, quarantine, and administrative actions
+| Surface | Audience | Stability | Typical concerns |
+| --- | --- | --- | --- |
+| `public` | product clients and SDK consumers | highest | upload sessions, asset metadata, derivatives, manifests |
+| `platform-admin` | internal platform owners | high but not public-SDK stable | service namespace registration, capability validation, recipe governance |
+| `operator` | trusted operators and SREs | internal-only | replay, quarantine, purge, diagnostics, recovery |
+| `internal` | service-to-service calls inside CDNgine | implementation detail | workflow dispatch, capability resolution, publication coordination |
 
-These can begin as one repository and one deployable composition, but they should not blur their responsibilities.
+These may begin in one deployable application, but they must not blur their responsibilities or auth boundaries.
 
 ## 2. Default TypeScript service profile
 
@@ -39,97 +41,38 @@ The current leading service-level stack is:
 | logging | structured application logging with request and workflow correlation |
 | durable workflows | Temporal TypeScript SDK |
 
-## 3. Why this shape
+## 3. Public upload contract
 
-### 3.1 Hono
+The upload contract is intentionally split into two stages:
 
-Hono is the preferred HTTP layer because it is:
+1. the client asks the `public` API for an upload session
+2. the API creates asset, version, and idempotency records in the registry
+3. the API returns a short-lived **ingest-managed upload target**
+4. the client uploads the raw binary to that ingest target, normally **tusd** backed by object storage
+5. the client calls upload completion, or an authenticated completion callback is received
+6. the ingest service verifies the uploaded object, validates metadata and checksums, and commits the canonical raw version into a scoped **Oxen** repository revision
+7. the service records canonicalization success and emits a durable workflow-dispatch intent
+8. a workflow starter launches the Temporal workflow for that asset version
 
-- fast and lightweight
-- based on Web Standard APIs
-- multi-runtime
-- TypeScript-friendly
-- small enough to embed inside different host environments without dragging in an opinionated full-stack model
+The important distinction is:
 
-For CDNgine, that makes Hono a better foundation than tying the architecture to a single full-service framework.
+- the **ingest target** owns resumable upload ergonomics
+- **Oxen** owns repository-backed canonical provenance after successful finalization
 
-### 3.2 Portable host posture: Encore or Nest
+Clients do **not** upload directly to Oxen by default.
 
-The platform should not assume that the HTTP layer and the deployment/runtime shell are the same thing.
-
-The intended split is:
-
-- **Hono** owns routing, request/response handling, middleware, and public/private API boundaries
-- **Encore or Nest** may host, compose, or integrate those surfaces depending on deployment and organizational preference
-
-This keeps the service core flexible:
-
-- Encore can provide strong local infrastructure and service discovery ergonomics
-- Nest can provide module-oriented application composition for teams already standardized on Nest
-- neither host should force changes to the public API contract, Oxen provenance model, or Temporal workflow model
-
-### 3.3 Zod plus JSON Schema alignment
-
-Zod remains useful for:
-
-- runtime validation
-- reusable schema fragments
-- schema reuse across manifests, capability definitions, and registry-owned config
-
-Published contracts should still center on OpenAPI and JSON Schema.
-
-### 3.4 Prisma
-
-Prisma is the preferred database layer because it gives the platform:
-
-- type-safe database access
-- one schema language for relational modeling and migrations
-- generated client ergonomics
-- a clearer migration story than ad hoc SQL scripts plus hand-rolled conventions
-
-Prisma should be used for the registry's main relational model, while raw SQL remains acceptable where the platform needs query shapes Prisma does not express cleanly.
-
-### 3.5 tus / tusd
-
-tus is the strongest reusable resumable upload protocol in the current ecosystem, and tusd is the most credible default server implementation for it.
-
-For CDNgine, tus/tusd is a better fit for the public ingest endpoint than making Oxen itself the first upload surface because it gives:
-
-- resume-after-interruption semantics
-- reusable HTTP upload behavior across clients
-- protocol-level support for large uploads
-- cleaner browser and SDK ergonomics
-
-It can sit in front of object storage and ingest finalization, after which CDNgine commits the canonical version into Oxen.
-
-### 3.6 OpenTelemetry
-
-The platform needs vendor-neutral traces, metrics, and logs. OpenTelemetry remains the default for keeping the service observable without binding the architecture to one vendor.
-
-### 3.7 Temporal
-
-Hono and the chosen host environment improve service structure and portability, but they are not the systems we are using for long-running asset derivation orchestration. Temporal still owns:
-
-- durable retries
-- timers
-- execution history
-- replay
-- operator-visible workflow semantics
-
-## 4. Portable service model for CDNgine
-
-The application should be organized around narrow service ownership that survives host-environment changes.
+## 4. Recommended service ownership
 
 Recommended service areas:
 
 | Service | Responsibility |
 | --- | --- |
-| `ingest` | upload sessions, upload completion, lightweight policy checks |
-| `registry` | asset, version, derivative, and manifest state |
+| `ingest` | upload sessions, upload completion, ingest-target verification, canonical commit into Oxen |
+| `registry` | asset, version, derivative, manifest, idempotency, and audit state |
 | `delivery` | signed URLs, manifest retrieval, derivative lookup |
-| `capabilities` | capability registration, recipe binding resolution |
+| `capability-admin` | capability registration, recipe validation, namespace policy resolution |
 | `operations` | replay, quarantine, purge, diagnostics |
-| `workflow-gateway` | starts and coordinates Temporal workflows from service boundaries |
+| `workflow-gateway` | durable workflow dispatch and operator-facing Temporal coordination |
 
 The Hono route tree should stay thin. Host-specific composition should wrap these services, not replace their ownership model.
 
@@ -142,7 +85,9 @@ The synchronous request path should do only the work that belongs in a direct re
 - idempotency check
 - lightweight policy binding
 - asset or version record mutation
-- workflow start or command dispatch
+- ingest-target issuance
+- canonicalization command acceptance
+- workflow dispatch intent creation
 
 The request path should not:
 
@@ -151,94 +96,198 @@ The request path should not:
 - run long remote dependency chains
 - quietly become a second workflow engine
 
-## 5.1 Plain-language ingest and delivery contract
+## 6. Consistency and state-transition model
 
-To avoid ambiguity:
+The most important control-plane boundary in the system is:
 
-- **ingest** means the client uploads the original binary to **Oxen**
-- **processing** means workers read that canonical source from **Oxen** and publish generated outputs to the **derived store**
-- **delivery** means clients fetch published outputs from the **CDN** in front of the **derived store**
+`upload complete` -> `canonical raw version committed to Oxen` -> `workflow dispatched`
 
-So the service contract is:
+That boundary must be designed explicitly.
 
-1. Hono API creates upload session and asset/version state
-2. client uploads original to an ingest-managed upload target or proxy
-3. Hono API marks upload complete, validates the upload, and commits the canonical raw version into Oxen
-4. workers read the canonical source from Oxen
-5. workers write deterministic outputs to the derived store
-6. clients receive manifests and delivery URLs from the API
-7. clients fetch published artifacts from the CDN-backed derived store
-
-Oxen is therefore on the **canonical commit and replay path**, not necessarily the first public upload endpoint and not the ordinary **published derivative delivery path**.
-
-The recommended default public upload endpoint is **tus/tusd**.
-
-## 6. Idempotency posture
+### 6.1 Durable idempotency
 
 Every mutating boundary should define:
 
 - idempotency key scope
-- storage location for idempotency evidence
+- storage location for durable idempotency evidence
 - retry-safe response behavior
 - operator-visible failure mode
 
-Redis can help with short-lived dedupe windows, but durable idempotency state belongs in the registry or workflow system where appropriate.
+Redis can help with short-lived dedupe windows, but durable idempotency evidence belongs in the registry.
 
-## 7. Service-level diagrams
+### 6.2 Canonicalization transaction
 
-### 7.1 Portable service decomposition
+Upload completion should be modeled as a state machine, not a boolean:
 
-```mermaid
-flowchart LR
-    Client["Client / SDK"] --> Hono["Hono API surface"]
-    Host["Encore or Nest host"] --> Hono
-    Hono --> Registry["Registry service"]
-    Hono --> Delivery["Delivery service"]
-    Hono --> Ingest["Ingest service"]
-    Ingest --> Oxen["Oxen\nraw canonical uploads"]
-    Ingest --> Temporal["Temporal"]
-    Temporal --> Workers["Worker services"]
-    Workers --> Oxen
-    Workers --> Derived["Derived store\npublished artifacts"]
-    Client --> CDN["CDN"]
-    CDN --> Derived
-    Ops["Operator surfaces"] --> Operations["Operations service"]
-    Operations --> Temporal
-    Operations --> Registry
+- `session_created`
+- `uploading`
+- `uploaded`
+- `canonicalizing`
+- `canonical`
+- `processing`
+- `published`
+- `failed_validation`
+- `failed_retryable`
+- `quarantined`
+
+The registry transaction for completion should:
+
+1. verify the upload session and idempotency record
+2. transition the version from `uploaded` to `canonicalizing`
+3. record verified ingest metadata
+4. persist the Oxen canonical reference when commit succeeds
+5. insert a workflow-dispatch outbox record
+
+Only after the outbox record exists should workflow dispatch be attempted.
+
+### 6.3 Workflow dispatch
+
+Workflow start must be business-keyed and repeatable.
+
+The default workflow identity should be derived from stable inputs such as:
+
+- service namespace
+- asset ID
+- version ID
+- workflow template or replay reason
+
+That lets duplicate completion requests converge on one durable workflow intent instead of starting parallel work.
+
+### 6.3.1 Oxen commit identity
+
+The canonical source pointer should not be an opaque blob reference alone.
+
+Persist at minimum:
+
+- Oxen repository identity
+- branch or logical lineage where relevant
+- commit ID
+- canonical file path inside the repository
+
+That gives replay, operator diagnostics, and provenance review a stable source identity that matches Oxen's repository model.
+
+### 6.4 Optimistic concurrency
+
+Mutable control-plane rows should carry a version or equivalent concurrency token.
+
+Use optimistic concurrency control for records such as:
+
+- asset publication pointers
+- manifest publication state
+- operator mutations
+- workflow-dispatch rows
+
+Avoid hidden lock-heavy behavior in request handlers when a versioned update is sufficient.
+
+## 6.5 Programmatic scoping rules
+
+Scoping must be enforced as code and data, not just naming.
+
+Minimum rule set:
+
+1. route handlers receive explicit scope context
+2. service-layer methods accept scope parameters, not naked asset IDs
+3. registry queries use scoped filters such as `serviceNamespaceId`, `tenantScopeId`, and `assetId`
+4. cache keys and storage prefixes include scope context
+5. authorization is evaluated before and during data access, not only at the edge route
+
+Illustrative scoped lookup posture:
+
+```ts
+await assetRepository.getVersion({
+  serviceNamespaceId,
+  tenantScopeId,
+  assetId,
+  versionId,
+})
 ```
 
-### 7.2 Internal service flow
+Unscoped repository methods such as `getAssetById(assetId)` should be treated as an anti-pattern for tenant-aware resources.
 
-```mermaid
-flowchart TB
-    PublicAPI["Hono route"] --> Auth["Auth + policy"]
-    Auth --> Service["Owning service module"]
-    Service --> Prisma["Prisma client / registry access"]
-    Service --> Temporal["Temporal client"]
-    Service --> Redis["Redis helpers"]
-    Service --> Oxen["Oxen client for canonical upload flows"]
-    Service --> PrivateAPI["Private internal API or service call"]
-    Service --> Response["Typed response / problem detail"]
-```
+## 7. Package-specific service posture
 
-### 7.3 Responsibility split
+### 7.1 Hono
 
-```mermaid
-flowchart LR
-    Host["Encore or Nest host"] --> Hono["Hono application"]
-    Hono --> |public API exposure| Clients["External clients"]
-    Hono --> |private internal routes or service calls| Internal["Internal services"]
-    Hono --> |records state| Prisma["Prisma / SQL registry"]
-    Hono --> |issues ingest upload targets and commits canonical versions| Oxen["Oxen"]
-    Hono --> |starts orchestration| Temporal["Temporal"]
-    Temporal --> Workers["Worker services"]
-    Workers --> |read canonical source| Oxen
-    Workers --> |publish derivatives| Derived["Derived store"]
-    Clients --> CDN["CDN"]
-    CDN --> Derived
-```
+Use Hono for a narrow, strongly typed service core:
 
-## 8. TDD and maintainability posture
+- use `@hono/zod-validator` or `@hono/standard-validator` for request validation
+- use Hono RPC typing for internal clients that share route types across packages
+- use `testClient` for typed route tests
+- apply `requestId`, `secureHeaders`, and `timeout` middleware consistently
+- keep route handlers chained or exported in a way that preserves Hono's type inference
+
+### 7.2 Prisma and PostgreSQL
+
+Use Prisma for the main relational contract and PostgreSQL for the registry:
+
+- relational truth and uniqueness constraints live in PostgreSQL
+- JSONB stores governed structured metadata, manifest fragments, and processor outputs
+- GIN indexes are used deliberately for JSONB query paths
+- optimistic concurrency is expressed through explicit version fields
+- raw SQL is acceptable for query shapes Prisma does not express cleanly
+- deployments that require stronger tenant isolation may layer PostgreSQL RLS on top of scoped application queries
+
+### 7.3 Temporal
+
+Temporal owns durable orchestration. The service architecture should use it fully:
+
+- Workflow IDs are derived from business identity, not random starts
+- Worker Versioning is the preferred deployment posture for workflow-code changes
+- replay testing is required before shipping workflow changes
+- Queries, Signals, and Updates are the preferred operator interaction model for running workflows
+- Continue-As-New should be used when long-lived workflow histories approach scaling limits
+
+### 7.4 tus / tusd
+
+tus and tusd should be treated as a first-class ingest subsystem, not a generic file bucket:
+
+- required extensions should include `creation`, `creation-defer-length`, `checksum`, `expiration`, and `termination`
+- `concatenation` is optional and only enabled when the SDK strategy needs parallel upload composition
+- hook-driven validation should control upload metadata, storage-path derivation, and completion behavior
+- the `/metrics` endpoint should be scraped in every non-local environment
+- production should use a cloud/object-storage backend, not local disk or NFS-style shared folders
+- when targeting Cloudflare R2, `-s3-min-part-size` and `-s3-part-size` should be set to the same value
+
+### 7.5 Oxen
+
+Oxen should be used as a repository and provenance system, not merely as a raw-file sink.
+
+Use it well by:
+
+- making repository topology explicit, typically per service namespace, with stricter per-tenant repositories where policy requires them
+- persisting commit IDs and canonical repository paths in the registry
+- using workspaces for trusted server-side imports, bulk ingest, review flows, and replay preparation where direct Oxen staging is beneficial
+- committing immutable source-side evidence when it should remain tied to source history
+- using remote repository and partial-access features where workers or operators do not need a full local clone
+
+Keep these responsibilities out of Oxen:
+
+- hot-path derivative delivery
+- mutable workflow state
+- authorization truth
+- public resumable browser upload ergonomics
+
+## 8. Public, admin, and operator auth posture
+
+The surface split is also an auth split:
+
+- `public` routes use tenant- and asset-scoped auth
+- `platform-admin` routes use internal service or platform-owner auth
+- `operator` routes use elevated, auditable operator roles
+- `internal` routes are not broad public endpoints and should prefer service-to-service auth or in-process calls
+
+Namespace registration, recipe governance, replay, quarantine, and purge do not belong on the broad public SDK surface.
+
+The preferred authorization style is ABAC-like policy evaluation over:
+
+- subject attributes
+- resource attributes
+- action
+- environment context
+
+That is a better fit than RBAC alone for shared-platform, multi-domain asset systems.
+
+## 9. TDD and maintainability posture
 
 The service should be built in this order:
 
@@ -254,16 +303,30 @@ The service design should prefer:
 - small service modules behind Hono routes
 - typed boundaries
 - clear Prisma schema ownership and migration discipline
+- explicit state machines for control-plane records
 - reusable workflow templates
 - host portability between Encore and Nest where feasible
 
-## 9. References
+## 10. References
 
-- [Hono](https://hono.dev/)
-- [Prisma ORM](https://www.prisma.io/docs/orm)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
-- [AsyncAPI docs](https://www.asyncapi.com/docs)
-- [Temporal TypeScript SDK](https://github.com/temporalio/sdk-typescript)
-- [Encore.ts documentation](https://encore.dev/docs/ts)
-- [NestJS documentation](https://docs.nestjs.com/)
+- [Hono validation guide](https://hono.dev/docs/guides/validation)
+- [Hono RPC guide](https://hono.dev/docs/guides/rpc)
+- [Hono testing helper](https://hono.dev/docs/helpers/testing)
+- [Hono Request ID middleware](https://hono.dev/docs/middleware/builtin/request-id)
+- [Hono Secure Headers middleware](https://hono.dev/docs/middleware/builtin/secure-headers)
+- [Hono Timeout middleware](https://hono.dev/docs/middleware/builtin/timeout)
+- [Prisma transactions, idempotent APIs, and OCC](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
+- [Prisma index configuration](https://docs.prisma.io/docs/orm/prisma-schema/data-model/indexes)
+- [Temporal safe deployments](https://docs.temporal.io/develop/safe-deployments)
+- [Temporal Workflow IDs](https://docs.temporal.io/workflow-execution/workflowid-runid)
+- [Temporal TypeScript message passing](https://docs.temporal.io/develop/typescript/workflows/message-passing)
+- [Temporal TypeScript Continue-As-New](https://docs.temporal.io/develop/typescript/workflows/continue-as-new)
+- [tus protocol](https://tus.io/protocols/resumable-upload)
+- [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
+- [tusd S3 storage backend](https://tus.github.io/tusd/storage-backends/aws-s3/)
+- [Oxen Repository API](https://docs.oxen.ai/http-api)
+- [Oxen Workspaces](https://docs.oxen.ai/concepts/workspaces)
+- [Oxen Remote Repositories](https://docs.oxen.ai/concepts/remote-repos)
+- [NIST SP 800-162: Guide to Attribute Based Access Control (ABAC)](https://csrc.nist.gov/pubs/sp/800/162/upd2/final)
+- [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+- [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)

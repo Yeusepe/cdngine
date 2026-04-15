@@ -39,6 +39,9 @@ The platform should explicitly test:
 - workflow registration and recipe expansion
 - validation rejection versus retryable infrastructure failure
 - partial publication cleanup or recovery
+- workflow dispatch idempotency between registry and Temporal
+- replay compatibility for workflow-code deployments
+- cross-scope denial behavior between service namespaces and tenant scopes
 
 ## 4. Workflow testing posture
 
@@ -52,6 +55,7 @@ Expected workflow-test coverage:
 - timeout handling
 - compensation or cleanup where required
 - replay compatibility across workflow evolution
+- safe-deployment replay tests against captured workflow histories
 
 ## 5. Integration testing posture
 
@@ -62,8 +66,18 @@ The platform needs real integration tests for:
 - Oxen read and write behavior for canonical assets
 - derived-store publication semantics
 - signature and URL generation
+- ingest-target verification and completion semantics
+- scoped repository lookups and authorization enforcement
 
 Mock-heavy tests are not enough for storage and workflow boundaries.
+
+## 5.1 Contract-build expectations
+
+Because the repository is contract-first, the test plan should also validate:
+
+- generated OpenAPI artifacts for each documented API surface
+- example payload compatibility with published schemas
+- docs consistency around state models and surface ownership
 
 ## 6. End-to-end scenario families
 

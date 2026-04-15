@@ -15,6 +15,11 @@ It should be possible to point from a major architectural promise to the docs, t
 | API is easy to consume | OpenAPI artifacts, generated SDK docs, examples, and error-shape examples |
 | delivery does not depend on Oxen on the hot path | architecture diagrams, delivery tests, and CDN/origin telemetry |
 | operator actions are auditable | audit-event schema, operator APIs, and observability coverage |
+| upload completion is exactly-once at the control-plane boundary | idempotency tests, workflow-dispatch evidence, and registry transaction design docs |
+| service namespace, tenant scope, and asset owner remain distinct | domain-model docs, auth tests, and policy examples |
+| scoping is enforced programmatically rather than by naming convention | service-architecture docs, scoped repository tests, and security-model rules |
+| Oxen is used as a provenance repository plane rather than a flat blob store | Oxen topology docs, commit-identity persistence, replay tests, and operator diagnostics |
+| SDKs feel code-first rather than like thin REST wrappers | OpenAPI and Arazzo artifacts, generated SDK outputs, and end-to-end upload examples |
 
 ## 2. Evidence categories
 

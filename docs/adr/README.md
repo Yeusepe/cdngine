@@ -9,6 +9,10 @@ ADRs should capture the decision, the alternatives that mattered, and the conseq
 - [0001 Separate Raw And Derived Stores](./0001-separate-raw-and-derived-stores.md)
 - [0002 Temporal For Durable Orchestration](./0002-temporal-for-durable-orchestration.md)
 - [0003 Deterministic Derivative Keys](./0003-deterministic-derivative-keys.md)
+- [0004 Ingest Boundary And API Surfaces](./0004-ingest-boundary-and-api-surfaces.md)
+- [0005 Programmatic Scope And Authorization Model](./0005-programmatic-scope-and-authorization-model.md)
+- [0006 Oxen As Provenance Repository Plane](./0006-oxen-as-provenance-repository-plane.md)
+- [0007 CDN As Code SDK And FFI Model](./0007-cdn-as-code-sdk-and-ffi-model.md)
 
 ## ADR writing expectations
 

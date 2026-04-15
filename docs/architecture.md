@@ -59,7 +59,8 @@ Metadata, policy, workflow state, and audit state belong in the control plane. R
 
 Every derivative should be addressable by a stable key derived from:
 
-- namespace or tenant
+- service namespace
+- tenant scope where delivery policy requires it
 - asset ID
 - source version
 - recipe ID
@@ -80,6 +81,12 @@ New file types and workflows should be added through:
 4. workflow registration
 
 Core services should not need scattered conditionals every time a new asset class appears.
+
+### 4.5.1 Programmatic scope
+
+Shared-platform adoption must remain programmatic.
+
+Creative services and operations may both upload files, but the system should scope them through code-defined registrations, scoped resource identity, and policy bindings rather than through separate ad hoc services or route sprawl.
 
 ### 4.6 Opinionated defaults with explicit substitution points
 
@@ -336,11 +343,14 @@ Owns:
 - asset metadata
 - version lineage
 - namespace registration
+- tenant-scope registration where applicable
 - capability registration
 - recipe bindings
 - workflow and job state
 - validation results
 - manifests and derivative records
+- idempotency records
+- workflow-dispatch intents
 - audit events
 
 ### 8.2 Data plane
@@ -353,6 +363,16 @@ Owns:
 - CDN cache state
 
 This separation keeps provenance, delivery performance, and retention behavior independently manageable.
+
+### 8.3 Identity and ownership model
+
+The control plane must distinguish:
+
+- **service namespace**: the internal adopting domain
+- **tenant scope**: the external customer or isolation boundary inside that namespace
+- **asset owner**: the caller-facing subject used in policy checks
+
+These are not interchangeable concepts. The platform should not collapse them into one ambiguous `namespace` field because that would couple internal ownership, customer isolation, and caller-visible policy too tightly.
 
 ## 9. Core components
 
@@ -379,7 +399,10 @@ Owns:
 - workflow and job state
 - validation results
 - service and namespace registration
+- tenant-scope registration where applicable
 - standardized domain-owned metadata written by multiple internal services
+- durable idempotency evidence
+- workflow-dispatch intents between request handling and Temporal start
 
 The default metadata database is PostgreSQL with JSONB for extensible fields, manifest fragments, processor outputs, and domain-specific structured metadata.
 
@@ -397,10 +420,12 @@ Oxen's responsibility is **not** "be the hot delivery origin for every generated
 
 - preserve the canonical uploaded binary
 - preserve version lineage and provenance
+- preserve repository and commit identity for the canonical source
+- optionally preserve immutable source-side evidence that should replay with that source history
 - provide the immutable replay source for every later derivation run
 - anchor auditability when recipes, workers, or schemas change over time
 
-By default, CDNgine treats Oxen as the **source-of-truth asset ledger for originals**, not as the storage system that must serve every delivery-path read.
+By default, CDNgine treats Oxen as the **source-of-truth provenance repository plane for canonical sources**, not as the storage system that must serve every delivery-path read.
 
 ### 9.4 Durable orchestration
 
@@ -492,11 +517,30 @@ Reasonable cases include:
 
 Even in that stricter profile, the recommended delivery origin for hot traffic is still the derived store in front of the CDN.
 
+### 10.3 How to use Oxen deeply without overloading it
+
+Oxen should be used more deeply than "store the original file once," but not so broadly that it absorbs responsibilities better handled elsewhere.
+
+The reference posture is:
+
+- use Oxen repositories as provenance boundaries, normally aligned to service namespaces
+- persist Oxen repository, commit, and canonical path references in the registry
+- use workspaces for trusted imports, large server-side adds, and operator review flows
+- keep source-side immutable evidence in Oxen when that evidence should travel with source history
+- use Oxen diffs and remote-repository features for replay analysis and diagnostics
+
+The platform should still avoid:
+
+- putting mutable control-plane state into Oxen
+- routing hot derivative delivery through Oxen
+- forcing every public browser upload to speak Oxen semantics directly
+
 ## 11. Multi-service registration model
 
 The platform supports multiple internal domains by requiring code-defined registration for:
 
 - service namespace
+- tenant-isolation posture
 - asset classes
 - allowed recipes
 - retention and visibility policy
@@ -505,11 +549,14 @@ The platform supports multiple internal domains by requiring code-defined regist
 
 This lets `creative-services`, `operations`, and future domains use one standardized asset model without collapsing their ownership boundaries.
 
+A service namespace is an internal domain boundary. It is not the same thing as a tenant or customer identifier.
+
 The architecture should treat this as a first-class platform feature, not a later convenience layer:
 
 - each domain registers in code
 - each domain binds allowed asset classes and recipes
 - each domain can attach structured metadata in a standardized registry model
+- each domain binds authorization scope rules in code
 - the shared registry remains queryable across domains without forcing every team into a separate schema philosophy
 
 ## 12. Workflow and file-type extensibility
@@ -623,8 +670,10 @@ The platform favors:
 Illustrative derived layout:
 
 ```text
-/{namespace}/{assetId}/{versionId}/{recipeId}/{schemaVersion}/{filename}
+/{namespace}/{scopeKey}/{assetId}/{versionId}/{recipeId}/{schemaVersion}/{filename}
 ```
+
+`scopeKey` should be stable and policy-driven. For public assets it may be a public delivery scope. For tenant-scoped assets it should encode the delivery isolation boundary explicitly.
 
 ## 15. Reliability model
 
@@ -637,6 +686,21 @@ The platform is designed for durability:
 - auditability from upload to published derivative
 
 Redis can accelerate locks, dedupe windows, and hot-path coordination, but it must never replace the registry or workflow engine as the source of truth.
+
+### 15.1 Upload completion boundary
+
+The highest-risk synchronous-to-async handoff in the system is:
+
+`upload complete` -> `canonical raw version committed to Oxen` -> `workflow started`
+
+This boundary should be modeled explicitly with:
+
+1. durable idempotency records in the registry
+2. a version-state transition from uploaded to canonicalizing to canonical
+3. a durable workflow-dispatch intent written by the request path
+4. a business-keyed Temporal Workflow ID derived from the asset version and workflow purpose
+
+That keeps duplicate completion requests, partial failures, and retry behavior understandable without inventing hidden state in Redis or ad hoc queue glue.
 
 ## 16. Security model
 
@@ -676,8 +740,11 @@ The developer contract is part of the architecture:
 
 - stable, versioned HTTP APIs
 - schema-driven SDK generation
+- executable workflow descriptions for multi-step API flows
 - rich metadata for editor autocomplete and inline docs
 - typed errors and typed manifests
+- a generated, code-first TypeScript developer surface
+- polyglot SDKs backed by standard contracts and a narrow FFI core where that reduces reimplementation
 - code-registered service and workflow definitions
 - tested examples instead of only prose descriptions
 
@@ -702,6 +769,9 @@ Custom code should focus on:
 
 ## 20. References
 
+- [Oxen Repository API](https://docs.oxen.ai/http-api)
+- [Oxen Workspaces](https://docs.oxen.ai/concepts/workspaces)
+- [Oxen Remote Repositories](https://docs.oxen.ai/concepts/remote-repos)
 - [Temporal documentation](https://docs.temporal.io/)
 - [Temporal TypeScript SDK](https://github.com/temporalio/sdk-typescript)
 - [Temporal TypeScript samples](https://github.com/temporalio/samples-typescript)

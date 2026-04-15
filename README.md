@@ -34,7 +34,7 @@ CDNgine is meant to fix that by standardizing a few core rules:
 
 At a high level, CDNgine separates **provenance**, **control**, and **delivery**:
 
-- **Oxen** stores immutable raw versions and acts as the replay source
+- **Oxen** stores immutable raw versions, repository lineage, and source-side provenance evidence
 - the **registry** stores asset, version, derivative, manifest, workflow, and audit state
 - **Temporal** owns long-running orchestration and replay-safe execution
 - workers generate deterministic outputs into a **derived object store**
@@ -55,14 +55,14 @@ The ingest path is:
 3. CDNgine returns upload instructions for an **ingest-managed upload target**
 4. the client uploads the original binary to that ingest target
 5. the client calls upload completion
-6. CDNgine validates the upload and commits the canonical raw version into **Oxen**
+6. CDNgine validates the upload and commits the canonical raw version into a scoped **Oxen** repository commit
 7. CDNgine starts a durable workflow in **Temporal**
 8. workers read the canonical source version from **Oxen**
 9. workers validate and transform that source into delivery variants
 10. workers publish those variants into the **derived store**
 11. the registry records the derivative keys and manifest
 
-The important point is: **Oxen should own the canonical committed raw version and replay source.**
+The important point is: **Oxen should own the canonical committed source version, repository history, and replay source.**
 
 That does **not** necessarily mean Oxen must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of Oxen is often the cleaner operational choice.
 
@@ -70,6 +70,12 @@ The current best default for that public upload endpoint is:
 
 - **tus/tusd** for resumable, reusable, protocol-level uploads
 - backed by multipart-capable object storage where that improves throughput and recovery
+
+Trusted internal flows can use Oxen more directly:
+
+- bulk imports can stage and commit through Oxen workspaces
+- operator recovery and replay can anchor to Oxen commit IDs and paths
+- source-side immutable evidence can live alongside the committed source history
 
 ## How delivery actually works
 
@@ -102,7 +108,7 @@ The derived store plus CDN are for:
 
 This split is intentional:
 
-- **Oxen** answers: "what exactly was uploaded, versioned, and replayed from?"
+- **Oxen** answers: "what exactly was uploaded, versioned, committed, and replayed from?"
 - the **derived store** answers: "what exact published artifact should the client receive right now?"
 
 If every published derivative had to be delivered from Oxen, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
@@ -112,6 +118,13 @@ Likewise, if every public upload had to speak Oxen semantics directly, the platf
 - simple upload target for ingress
 - canonical commit into Oxen after ingest finalization
 - replay and derivation from Oxen
+
+The stronger Oxen posture is not "use Oxen less." It is "use Oxen for the things Oxen is actually good at":
+
+- repository and commit identity for canonical source history
+- workspace-based trusted imports and review flows
+- immutable source-side evidence that should travel with version history
+- replay and diff operations tied to exact source commits
 
 ## Service stack direction
 
@@ -174,10 +187,12 @@ This repository currently contains the **design and implementation guidance** fo
 
 - reference architecture
 - service architecture
+- public, platform-admin, and operator API surface guidance
 - technology profile and upstream package guidance
 - API and SDK guidance
 - pipeline, workflow, and service registration models
 - observability, security, deployment, and resilience expectations
+- SDK, code-generation, and polyglot FFI strategy
 - ADRs, contributor guidance, and implementation traceability docs
 
 ## Where to start

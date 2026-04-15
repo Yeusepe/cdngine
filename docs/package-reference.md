@@ -11,10 +11,11 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | HTTP and API layer | Hono | fast, lightweight, Web-standards-based routing that can run across multiple runtimes |
 | host environment | Encore or Nest | lets teams use a preferred application shell without changing core platform semantics |
 | validation and schema authoring | Zod | strongly typed runtime validation with JSON Schema conversion support |
+| public contract artifacts | OpenAPI 3.1 + JSON Schema + Arazzo | durable wire contracts plus executable workflow descriptions |
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
-| raw versioned source | Oxen | immutable raw asset lineage and version semantics |
+| raw versioned source | Oxen | immutable raw asset lineage, repository semantics, and replay provenance |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
 | metadata/query indexing | PostgreSQL GIN over JSONB | indexable structured metadata without inventing a custom metadata engine |
 | cache and coordination | Redis | mature cache, lock, and ephemeral coordination primitives |
@@ -22,8 +23,8 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | image processing and delivery | imgproxy + libvips | high-performance image processing without building a transform server |
 | video and image-to-video | FFmpeg | broad codec support, hardware acceleration, deep ecosystem |
 | document conversion | Gotenberg | Chromium + LibreOffice + PDF tooling behind an API |
-| PDF / slide rasterization watchlist | PDFium, MuPDF | strong rendering options for deeper PDF-specific workloads |
 | derived storage | S3-compatible object store | portable binary delivery origin |
+| native SDK core | Rust + UniFFI + cbindgen | shared cross-language SDK logic without repeated reimplementation |
 
 ## 2. Repositories to study
 
@@ -39,7 +40,8 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | imgproxy | `imgproxy/imgproxy` | image server and delivery model |
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
-| Gotenberg lok | `gotenberg/lok` | newer document-to-PDF conversion surface via LibreOfficeKit |
+| UniFFI | `mozilla/uniffi-rs` | multi-language bindings for a Rust SDK core |
+| cbindgen | `mozilla/cbindgen` | generated C headers for native bindings |
 
 ## 3. Service-foundation stack
 
@@ -47,17 +49,17 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 
 Use for:
 
-- public and private API definition
+- public, platform-admin, and operator route definition
 - middleware composition
 - runtime-portable HTTP handling
 - keeping the API layer small and explicit
 
-Why it fits:
+Use it fully:
 
-- strong multi-runtime support
-- very small surface area
-- excellent TypeScript ergonomics
-- easier to embed in different hosting models than a monolithic framework
+- validator middleware for headers, params, and JSON bodies
+- RPC typing for internal clients
+- `testClient` for typed route tests
+- request IDs, secure headers, and timeout middleware as defaults
 
 ### 3.2 Encore or Nest
 
@@ -82,6 +84,15 @@ Use for:
 - inferred types
 - portable schema derivation inputs
 
+### 3.3.1 OpenAPI, JSON Schema, and Arazzo
+
+Use for:
+
+- public HTTP contract publication
+- schema portability across SDK generators
+- workflow descriptions for multi-step operations such as upload and polling
+- keeping generated SDKs aligned to the real lifecycle of the API
+
 ### 3.4 Prisma
 
 Use for:
@@ -91,9 +102,12 @@ Use for:
 - migrations
 - a clearer shared schema contract for the registry
 
-Constraint:
+Use it deliberately:
 
-- allow raw SQL escapes for query paths Prisma does not model efficiently
+- enforce idempotency with unique constraints
+- use optimistic concurrency control on mutable control-plane rows
+- use transactions around canonicalization and dispatch state
+- prefer scoped repository methods and composite filters over bare resource-ID lookups
 
 ### 3.5 OpenTelemetry
 
@@ -104,6 +118,12 @@ Use for:
 - logs and correlation
 - vendor-neutral observability posture
 
+Preferred posture:
+
+- W3C Trace Context propagation end to end
+- collector-managed export and sampling policy
+- shared correlation fields across API, Temporal, and storage spans
+
 ### 3.6 tus / tusd
 
 Use for:
@@ -113,12 +133,13 @@ Use for:
 - interrupted-upload recovery
 - reusable provider-agnostic upload behavior
 
-Why it fits:
+Use it fully:
 
-- protocol designed specifically for resumable uploads
-- official server implementation exists
-- mature ecosystem and production usage
-- better generic ingest endpoint than custom session-plus-chunk APIs
+- enable the required protocol extensions for real ingest
+- use hooks for metadata validation and completion control
+- scrape tusd metrics
+- use object storage backends in production
+- configure equal R2 multipart part sizes when Cloudflare R2 is the backing store
 
 ## 4. Image stack
 
@@ -131,13 +152,6 @@ Use for:
 - signed URLs
 - removing image-processing logic from application code
 
-Why it fits:
-
-- production-proven
-- explicitly optimized for speed and simplicity
-- built around libvips
-- good fit for CDN-backed delivery
-
 ### 4.2 libvips
 
 Use for:
@@ -145,13 +159,6 @@ Use for:
 - high-performance backend image operations
 - texture slicing and splicing helpers
 - precompute jobs when on-demand paths are not enough
-
-Why it fits:
-
-- horizontally threaded
-- low memory profile
-- wide format support
-- already used under imgproxy and other serious image systems
 
 ## 5. Video stack
 
@@ -165,14 +172,7 @@ Use for:
 - image-to-video conversion
 - clip and preview generation
 
-Why it fits:
-
-- unmatched breadth
-- hardware acceleration support
-- stable ecosystem
-- lets the platform consume a mature media engine instead of building one
-
-## 6. Document and presentation stack
+## 6. Document stack
 
 ### 6.1 Gotenberg
 
@@ -182,18 +182,7 @@ Use for:
 - HTML or Chromium-backed rendering paths
 - document API orchestration
 
-Why it fits:
-
-- API-first container
-- combines Chromium, LibreOffice, and PDF tools
-- can work with presigned object-store URLs
-
-### 6.2 PDFium and MuPDF
-
-These are strong rendering candidates when the platform needs finer-grained PDF and slide rasterization control than a broad conversion service can provide.
-
-- **PDFium**: strong Chromium-aligned renderer with heavier build/tooling
-- **MuPDF**: strong rendering library with command-line tools and broad document support
+Treat it as a worker dependency, not as a public request-path dependency.
 
 ## 7. Registry and state stack
 
@@ -208,28 +197,19 @@ Use for:
 - namespace registrations
 - workflow and job state
 - structured metadata extensions
-
-Why it fits:
-
-- relational joins for core control-plane entities
-- JSONB for flexible metadata
-- GIN indexing for structured lookups
+- idempotency records
+- workflow-dispatch outbox rows
+- scope policy bindings
 
 ### 7.2 Redis
 
 Use for:
 
-- upload sessions
+- upload-session cache helpers
 - short-lived locks
 - replay windows
 - hot metadata caching
-- workflow coordination helpers
-
-Why it fits:
-
-- fast
-- operationally familiar
-- mature ecosystem
+- workflow coordination helpers that are explicitly non-durable
 
 Constraint:
 
@@ -246,67 +226,78 @@ Use for:
 - timers
 - compensation flows
 - replay and operator-visible history
+- workflow message handling through Queries, Signals, and Updates
+- safe evolution through Worker Versioning and replay testing
 
-Why it fits:
+## 9. SDK and FFI stack
 
-- strong durability model
-- code-native workflow programming
-- excellent match for TDD and workflow tests
-
-## 9. Storage and CDN stack
-
-### 9.1 S3-compatible object storage
+### 9.1 Rust SDK core
 
 Use for:
 
+- shared upload orchestration logic
+- manifest decoding helpers
+- retry and polling state machines
+- hard cross-language logic that should not be rewritten repeatedly
+
+### 9.2 UniFFI
+
+Use for:
+
+- Swift bindings
+- Kotlin bindings
+- Python bindings
+
+when the shared native core is preferable to language-local reimplementation.
+
+### 9.3 cbindgen
+
+Use for:
+
+- generated C headers
+- stable C and C++ integration points
+- keeping the lowest-level native ABI explicit and reviewable
+
+## 10. Storage and CDN stack
+
+### 10.1 S3-compatible object storage
+
+Use for:
+
+- ingest-target backing storage
 - derived artifacts
 - manifest-addressable delivery files
 - adoption flexibility
 
-### 9.2 Cloudflare-friendly deployment profile
+### 10.2 Cloudflare-friendly deployment profile
 
 Use for:
 
 - low-latency CDN edge delivery
-- S3-compatible default profile with R2 or equivalent
+- R2-backed default profile when that provider fits
 - strong edge routing and cache behavior
-
-This is the leading default profile, but not the only supported deployment shape.
-
-## 10. Session-local cloned references
-
-The following upstream repositories were cloned into the session artifacts folder for direct study:
-
-- `C:\\Users\\svalp\\.copilot\\session-state\\c9249919-f070-4df4-8888-59c750713f66\\files\\references\\samples-typescript`
-- `C:\\Users\\svalp\\.copilot\\session-state\\c9249919-f070-4df4-8888-59c750713f66\\files\\references\\imgproxy`
-- `C:\\Users\\svalp\\.copilot\\session-state\\c9249919-f070-4df4-8888-59c750713f66\\files\\references\\gotenberg`
-- `C:\\Users\\svalp\\.copilot\\session-state\\c9249919-f070-4df4-8888-59c750713f66\\files\\references\\libvips`
-- `C:\\Users\\svalp\\.copilot\\session-state\\c9249919-f070-4df4-8888-59c750713f66\\files\\references\\lok`
 
 ## 11. References
 
-- [Hono](https://hono.dev/)
-- [Prisma ORM](https://www.prisma.io/docs/orm)
-- [Prisma repository](https://github.com/prisma/prisma)
-- [Encore.ts documentation](https://encore.dev/docs/ts)
-- [Encore repository](https://github.com/encoredev/encore)
-- [NestJS documentation](https://docs.nestjs.com/)
-- [NestJS repository](https://github.com/nestjs/nest)
-- [Zod](https://zod.dev/)
-- [OpenTelemetry docs](https://opentelemetry.io/docs/)
-- [Temporal documentation](https://docs.temporal.io/)
-- [Temporal TypeScript SDK](https://github.com/temporalio/sdk-typescript)
-- [Temporal TypeScript samples](https://github.com/temporalio/samples-typescript)
-- [imgproxy documentation](https://docs.imgproxy.net/)
-- [imgproxy repository](https://github.com/imgproxy/imgproxy)
-- [libvips project site](https://www.libvips.org/)
-- [libvips repository](https://github.com/libvips/libvips)
-- [Gotenberg documentation](https://gotenberg.dev/)
-- [Gotenberg repository](https://github.com/gotenberg/gotenberg)
-- [Gotenberg lok repository](https://github.com/gotenberg/lok)
-- [FFmpeg documentation](https://ffmpeg.org/documentation.html)
-- [PostgreSQL JSON types](https://www.postgresql.org/docs/current/datatype-json.html)
-- [PostgreSQL GIN indexes](https://www.postgresql.org/docs/current/gin.html)
-- [Redis documentation](https://redis.io/docs/latest/)
+- [Hono validation guide](https://hono.dev/docs/guides/validation)
+- [Hono RPC guide](https://hono.dev/docs/guides/rpc)
+- [Hono testing helper](https://hono.dev/docs/helpers/testing)
+- [Hono Request ID middleware](https://hono.dev/docs/middleware/builtin/request-id)
+- [Hono Secure Headers middleware](https://hono.dev/docs/middleware/builtin/secure-headers)
+- [Hono Timeout middleware](https://hono.dev/docs/middleware/builtin/timeout)
+- [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
+- [JSON Schema](https://json-schema.org/)
+- [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
+- [Prisma transactions, idempotent APIs, and OCC](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
+- [Prisma index configuration](https://docs.prisma.io/docs/orm/prisma-schema/data-model/indexes)
+- [tus protocol](https://tus.io/protocols/resumable-upload)
+- [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
+- [tusd S3 storage backend](https://tus.github.io/tusd/storage-backends/aws-s3/)
+- [Temporal safe deployments](https://docs.temporal.io/develop/safe-deployments)
+- [Temporal Workflow IDs](https://docs.temporal.io/workflow-execution/workflowid-runid)
+- [Temporal TypeScript message passing](https://docs.temporal.io/develop/typescript/workflows/message-passing)
+- [Temporal TypeScript Continue-As-New](https://docs.temporal.io/develop/typescript/workflows/continue-as-new)
+- [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
-- [MuPDF docs](https://mupdf.readthedocs.io/en/latest/)
+- [UniFFI user guide](https://mozilla.github.io/uniffi-rs/latest/)
+- [cbindgen](https://github.com/mozilla/cbindgen)

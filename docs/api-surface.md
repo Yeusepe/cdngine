@@ -1,87 +1,156 @@
 # API Surface
 
-This document defines the intended external API groups for CDNgine.
+This document defines the intended HTTP surface for CDNgine.
 
-It focuses on the product-facing contract, not the full set of private internal service calls that may exist behind the chosen host shell.
+The goal is to keep the public SDK contract small and durable while still documenting the platform-admin and operator surfaces that the platform needs internally.
 
-## 1. Public API groups
+## 1. API surfaces
+
+CDNgine should publish separate API descriptions for separate audiences:
+
+| Surface | Audience | SDK posture |
+| --- | --- | --- |
+| `public` | product clients and external SDK consumers | versioned and broadly supported |
+| `platform-admin` | internal platform owners and service integrators | documented but not broad public-SDK stable |
+| `operator` | operators, SREs, and recovery tooling | documented, audited, internal-only |
+
+The `public` surface is the compatibility contract. The other surfaces are still deliberate APIs, but they are not the broad adoption contract.
+
+The public surface should be shaped for direct SDK generation, not only for human documentation.
+
+## 2. Public API groups
 
 The initial public API should expose these groups:
 
 | Group | Purpose |
 | --- | --- |
+| upload-sessions | ingest-target issuance and completion |
 | assets | logical asset identity and lookup |
-| versions | canonical uploaded versions |
-| derivatives | processed delivery artifacts |
+| versions | canonical uploaded versions and processing state |
+| derivatives | processed delivery artifacts for a specific version |
 | manifests | manifest-first retrieval for complex assets |
-| namespaces | service and domain registration |
-| capabilities | file-type and processor registration validation |
-| operations | replay, quarantine, and operator workflows |
 
-## 2. Core endpoints
+The public surface should **not** expose namespace registration, capability governance, replay, purge, or quarantine as ordinary SDK operations.
 
-- `POST /v1/assets/upload-sessions`
-- `POST /v1/assets/{assetId}/complete`
+## 3. Platform-admin API groups
+
+The platform-admin surface should expose:
+
+| Group | Purpose |
+| --- | --- |
+| service-namespaces | namespace registration and policy inspection |
+| capabilities | capability validation and registration governance |
+| recipes | recipe and workflow binding governance |
+
+## 4. Operator API groups
+
+The operator surface should expose:
+
+| Group | Purpose |
+| --- | --- |
+| operations | replay, quarantine, purge, manual recovery |
+| diagnostics | workflow and publication diagnostics |
+| audit | operator-visible event and intervention history |
+
+## 5. Core endpoints
+
+### 5.1 Public
+
+- `POST /v1/upload-sessions`
+- `POST /v1/upload-sessions/{uploadSessionId}/complete`
 - `GET /v1/assets/{assetId}`
 - `GET /v1/assets/{assetId}/versions/{versionId}`
-- `GET /v1/assets/{assetId}/derivatives`
-- `GET /v1/assets/{assetId}/manifests/{manifestType}`
-- `POST /v1/assets/{assetId}/reprocess`
-- `POST /v1/service-namespaces/register`
-- `POST /v1/capabilities/validate`
+- `GET /v1/assets/{assetId}/versions/{versionId}/derivatives`
+- `GET /v1/assets/{assetId}/versions/{versionId}/manifests/{manifestType}`
 
-## 3. Public versus private service posture
+### 5.2 Platform-admin
 
-The platform should distinguish clearly between:
+- `POST /v1/platform/service-namespaces`
+- `GET /v1/platform/service-namespaces/{namespaceId}`
+- `POST /v1/platform/capabilities/validate`
+- `POST /v1/platform/recipes/validate`
 
-- **public APIs** exposed to external SDKs and product teams
-- **private APIs** used only for internal service coordination inside the CDNgine application
+### 5.3 Operator
 
-Private APIs should own:
+- `POST /v1/operator/assets/{assetId}/versions/{versionId}/reprocess`
+- `POST /v1/operator/assets/{assetId}/versions/{versionId}/quarantine`
+- `POST /v1/operator/assets/{assetId}/versions/{versionId}/release`
+- `POST /v1/operator/assets/{assetId}/versions/{versionId}/purge`
+- `GET /v1/operator/assets/{assetId}/versions/{versionId}/diagnostics`
 
-- workflow trigger helpers
-- internal capability resolution
-- publication coordination
-- operator-only commands that do not belong on the broad public surface
-
-The public contract should stay small, stable, and adoption-friendly whether the service is hosted in Encore or Nest.
-
-## 4. API qualities
+## 6. Public contract guarantees
 
 The public API should guarantee:
 
 - idempotency on mutating endpoints
-- explicit async status model
-- stable pagination and filtering
+- explicit async status modeling
 - typed errors
-- portable examples and language bindings
-- predictable auth requirements per operation
+- predictable auth requirements
+- stable ownership fields
+- version-aware derivative and manifest lookup
+- stable operation names and tags for generated SDK method grouping
 
-## 5. Output shapes the docs should include
+The public API should expose enough fields that clients do not need to reverse-engineer ownership or processing state from opaque identifiers.
 
-Public API artifacts should include:
+## 7. Ownership fields
 
-- request and response examples for every mutating endpoint
-- manifest examples for image, video, and presentation outputs
-- problem-detail examples for validation and processing failures
-- namespace registration examples for multi-service adoption
-- visibility examples for public versus private asset delivery
+Public resources should distinguish:
 
-## 6. External contract artifacts
+- `serviceNamespaceId`: the internal namespace registered with CDNgine
+- `tenantId`: the external customer or isolation boundary within a namespace, when applicable
+- `assetOwner`: the caller-facing owner or subject used for policy checks
+
+These are not interchangeable concepts and should not collapse into one generic `namespace` field.
+
+For `POST /v1/upload-sessions`, the request contract should include explicit scope information:
+
+- `serviceNamespaceId` is required
+- `tenantId` is required when the namespace uses tenant scoping, and should normally be derived from the authenticated principal rather than trusted from arbitrary client input
+- callers must not be allowed to create an upload session for a namespace or tenant scope they are not authorized to use
+
+The API should treat that scope tuple as a contract input, but authoritative allowed values come from service registration and authenticated caller policy rather than from arbitrary client choice.
+
+## 8. Async behavior posture
+
+Mutating endpoints should make deferred work obvious.
+
+Preferred behavior:
+
+- completion returns accepted work and a status handle when processing is deferred
+- asset and version resources expose lifecycle state explicitly
+- derivatives and manifests appear only after publication
+- operator actions expose workflow or operation identifiers that can be audited later
+
+## 9. Contract artifacts
 
 The repository should eventually publish:
 
 1. OpenAPI for the public HTTP surface
-2. AsyncAPI where event subscriptions are part of the external contract
-3. machine-readable examples for major manifest types
-4. generated SDK documentation aligned with the published surface
+2. separate OpenAPI artifacts for platform-admin and operator surfaces
+3. Arazzo workflows for public multi-step flows such as upload, completion, polling, and manifest retrieval
+4. AsyncAPI where external event subscriptions are part of the contract
+5. machine-readable examples for major manifest types
+6. generated SDK documentation aligned only with the public surface unless a narrower admin SDK is explicitly supported
 
-## 7. References
+## 10. SDK-facing posture
+
+The public API should be easy to wrap into a high-level SDK shape such as:
+
+- `assets.upload`
+- `assets.get`
+- `assets.waitForVersion`
+- `derivatives.list`
+- `manifests.get`
+
+That means the HTTP surface should stay boring and resource-oriented while the published contract artifacts describe the workflow clearly enough that generated and handwritten SDK layers do not have to guess.
+
+## 10. References
 
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
+- [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
 
-## 8. Read more
+## 11. Read more
 
 - [API Style Guide](./api-style-guide.md)
 - [SDK Strategy](./sdk-strategy.md)

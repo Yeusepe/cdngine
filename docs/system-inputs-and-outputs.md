@@ -9,15 +9,17 @@ The point is not only to list inputs and outputs, but to make the ownership and 
 | Input source | Entry point | Primary outputs |
 | --- | --- | --- |
 | API client | public asset and metadata APIs | upload session, status, manifests, signed delivery references |
+| platform owner | platform-admin APIs | namespace and capability governance actions |
 | internal service | private service-authenticated APIs | platform-owned asset operations and orchestration commands |
 | operator | operator APIs and admin surfaces | replay, purge, quarantine, diagnostics |
-| upload completion source | completion callback or event | workflow dispatch |
+| upload completion source | completion callback or event | canonicalization and workflow dispatch intent |
 
 ## 2. Core output families
 
 The platform emits:
 
-- raw asset references in Oxen
+- raw asset repository, commit, and canonical path references in Oxen
+- ingest-object references before canonicalization
 - derivative objects in the derived store
 - manifests for complex asset classes
 - workflow and audit state in the registry

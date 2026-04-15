@@ -18,10 +18,10 @@ The earlier Xet-specific decision was directionally useful, but it overcommitted
 
 Recent upstream study points to a stronger composed model:
 
-- **Kopia-style repositories** for deduplicated snapshot history and canonical source identity
+- **Kopia** for deduplicated snapshot history and canonical source identity
 - **SeaweedFS** for tiered storage placement and S3-compatible substrate behavior
 - **JuiceFS** where POSIX workspaces are operationally important
-- **Nydus-style lazy reads** and optional **Alluxio** when repeated package-like reads dominate
+- **Nydus** and optional **Alluxio** when repeated package-like reads dominate
 - **ORAS** for immutable artifact graphs and bundle publication
 
 ## Decision
@@ -30,10 +30,10 @@ Adopt the following default source and storage architecture:
 
 1. public clients still upload to an ingest-managed target, normally `tusd` backed by staging object storage
 2. upload completion snapshots the staged object into a **canonical source repository** instead of treating staging as canonical truth
-3. the default reference repository behaves like a **Kopia-style snapshot repository** and is backed by a **SeaweedFS** S3-compatible namespace
+3. the default reference repository is **Kopia** and is backed by a **SeaweedFS** S3-compatible namespace
 4. **JuiceFS** is an optional workspace profile when processors or tools require POSIX semantics
 5. the registry stores canonical source identity using repository-oriented fields such as repository ID, snapshot identity, canonical path, digest, and size
-6. workers reconstruct from the canonical source repository and may use a **Nydus-style lazy-read path** or **Alluxio** hot cache when the workload benefits from it
+6. workers reconstruct from the canonical source repository and may use **Nydus** or **Alluxio** when the workload benefits from it
 7. immutable bundles and artifact graphs are published through **ORAS**
 8. browser-facing derivatives still live in a separate derived object store in front of the CDN
 

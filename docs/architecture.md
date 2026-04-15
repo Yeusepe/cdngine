@@ -104,7 +104,7 @@ The current default reference profile is:
 
 | Layer | Default |
 | --- | --- |
-| canonical source repository | **Kopia-style repository server** |
+| canonical source repository | **Kopia repository server** |
 | tiered storage substrate | **SeaweedFS** by default, **JuiceFS** when POSIX workspace semantics matter |
 | metadata registry | **PostgreSQL + JSONB** |
 | low-latency coordination and cache | **Redis** |
@@ -112,14 +112,14 @@ The current default reference profile is:
 | image delivery and transform server | **imgproxy** backed by **libvips** |
 | document normalization | **Gotenberg** |
 | video processing | **FFmpeg** with hardware acceleration where available |
-| lazy internal hot-read path | **Nydus-style lazy materialization** plus optional **Alluxio** |
+| lazy internal hot-read path | **Nydus** plus optional **Alluxio** |
 | artifact graph and immutable bundle registry | **ORAS / OCI artifacts** |
 | derived delivery store | **S3-compatible object storage** |
 | CDN profile | Cloudflare-friendly default deployment profile |
 
 ### 5.1 Why these defaults
 
-- **Kopia-style source repository**: rolling-hash chunking, deduplicated snapshot history, compression, and replay-friendly canonical source identity
+- **Kopia**: the default source repository we should run directly for rolling-hash chunking, deduplicated snapshot history, compression, and replay-friendly canonical source identity
 - **SeaweedFS**: tiered byte placement, S3-compatible access, and hot/warm/cold operational storage control
 - **JuiceFS**: strong option when shared workspace or POSIX semantics are more important than a pure object-only posture
 - **PostgreSQL + JSONB**: strong relational core plus flexible metadata fields, queryability, and wide operational adoption
@@ -128,7 +128,7 @@ The current default reference profile is:
 - **imgproxy + libvips**: high-performance, production-proven image processing without writing a custom image pipeline
 - **Gotenberg**: API-first document conversion over LibreOffice and Chromium rather than building custom PPT/PDF normalization infrastructure
 - **FFmpeg**: still the strongest general-purpose video and image-to-video processing foundation with deep hardware acceleration support
-- **Nydus-style lazy reads**: chunk-addressed on-demand loading for package-like or rebuildable hot paths
+- **Nydus**: the default lazy-read component for chunk-addressed on-demand loading on package-like or rebuildable hot paths
 - **ORAS**: immutable artifact graph and bundle publication without inventing a bespoke manifest registry
 - **S3-compatible storage**: lets adopters keep their own object storage while preserving deterministic delivery semantics
 
@@ -138,12 +138,12 @@ The platform should preserve the public API and processor contracts even when in
 
 | Layer | Default | Substitution rule |
 | --- | --- | --- |
-| canonical source repository | Kopia-style repository semantics | any source repository that preserves immutable snapshot identity, deduplicated history, and replay-safe reconstruction |
+| canonical source repository | Kopia | any source repository that preserves immutable snapshot identity, deduplicated history, and replay-safe reconstruction |
 | tiered storage substrate | SeaweedFS | any substrate that preserves S3-compatible placement plus explicit hot/warm/cold policy control |
 | metadata registry | PostgreSQL + JSONB | any SQL database that preserves relational registry semantics |
 | cache and coordination | Redis | Redis-compatible or equivalent behavior is acceptable if operational semantics remain clear |
 | orchestration | Temporal | alternate durable workflow engine only if it preserves retries, replay, visibility, and workflow ownership semantics |
-| lazy-read hot path | Nydus-style representation | alternate lazy materialization only if it preserves chunk-addressed on-demand reads and integrity verification where used |
+| lazy-read hot path | Nydus | alternate lazy materialization only if it preserves chunk-addressed on-demand reads and integrity verification where used |
 | artifact graph | ORAS / OCI artifacts | alternate artifact bundle registry only if immutable references and media-type-aware artifact publication remain explicit |
 | derived store | S3-compatible storage | any S3-compatible provider or equivalent object-storage contract |
 | CDN origin | Cloudflare-friendly profile | any CDN that preserves deterministic cache and signed-delivery behavior |
@@ -785,7 +785,7 @@ Rules:
 - manifests may use shorter TTLs than immutable versioned artifacts when authorization or publication state changes faster than the underlying segments
 - CDN deployment should prefer tiered-cache or origin-shield behavior so origin fan-out does not grow with global demand
 - deployments that support reserve-style persistent cache should use it for high-read, high-rewarm-cost artifacts
-- repeated hot-read pressure should not pull ordinary clients back toward Xet or the API service
+- repeated hot-read pressure should not pull ordinary clients back toward the source repository or the API service
 
 ### 14.2 Private reads and non-disclosure
 
@@ -848,7 +848,7 @@ Redis can accelerate locks, dedupe windows, and hot-path coordination, but it mu
 
 The highest-risk synchronous-to-async handoff in the system is:
 
-`upload complete` -> `canonical source stored in Xet` -> `workflow started`
+`upload complete` -> `canonical source stored in repository` -> `workflow started`
 
 This boundary should be modeled explicitly with:
 
@@ -938,13 +938,13 @@ Custom code should focus on:
 
 ## 20. References
 
-- [Xet Protocol Specification](https://huggingface.co/docs/xet)
-- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
-- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
-- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
-- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
-- [huggingface/xet-core](https://github.com/huggingface/xet-core)
+- [Kopia features](https://kopia.io/docs/features/)
+- [restic repository design](https://restic.readthedocs.io/en/stable/100_references.html)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
+- [JuiceFS architecture](https://juicefs.com/docs/community/architecture)
+- [Nydus](https://nydus.dev/)
+- [ORAS documentation](https://oras.land/docs/)
+- [Alluxio documentation](https://documentation.alluxio.io/os-en)
 - [Temporal documentation](https://docs.temporal.io/)
 - [Temporal TypeScript SDK](https://github.com/temporalio/sdk-typescript)
 - [Temporal TypeScript samples](https://github.com/temporalio/samples-typescript)

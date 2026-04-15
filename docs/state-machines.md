@@ -57,8 +57,8 @@ An upload session never transitions back from `uploaded` to `uploading`.
 | `session_created` | version exists because upload session was issued |
 | `uploading` | bytes are still being transferred |
 | `uploaded` | staged bytes exist and completion was accepted |
-| `canonicalizing` | the staged object is being verified and committed into Xet |
-| `canonical` | canonical Xet identity is durable and immutable |
+| `canonicalizing` | the staged object is being verified and committed into the canonical source repository |
+| `canonical` | canonical source identity is durable and immutable |
 | `processing` | workflow fan-out or derivation work is in progress |
 | `published` | required manifest and derivative publication is complete |
 | `failed_validation` | content or policy rejected the version |
@@ -73,7 +73,7 @@ An upload session never transitions back from `uploaded` to `uploading`.
 | `session_created` | `uploading` | ingest subsystem | upload-session linkage |
 | `uploading` | `uploaded` | completion handler | staged object reference, checksum evidence |
 | `uploaded` | `canonicalizing` | completion handler | idempotency record, accepted completion request |
-| `canonicalizing` | `canonical` | canonicalization worker | Xet identity fields, digest set, canonical path |
+| `canonicalizing` | `canonical` | canonicalization worker | source identity fields, digest set, canonical path |
 | `canonical` | `processing` | workflow starter | workflow-dispatch row and workflow ID |
 | `processing` | `published` | registry publication flow | manifest publication pointer, derivative set |
 | `uploaded` | `failed_validation` | completion handler | problem type, diagnostics |

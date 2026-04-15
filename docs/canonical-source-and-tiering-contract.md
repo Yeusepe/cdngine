@@ -85,7 +85,7 @@ Preferred behavior:
 - materialize whole files only when the processor or export contract truly needs them
 - keep browser-facing delivery on whole published artifacts, not on chunk protocols
 
-This is the layer where Nydus-style on-demand reads and optional Alluxio cache behavior are most useful.
+This is the layer where **Nydus** on-demand reads and optional **Alluxio** cache behavior are most useful.
 
 ## 8. Failure outcomes
 

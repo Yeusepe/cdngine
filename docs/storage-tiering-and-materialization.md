@@ -15,10 +15,10 @@ Those goals should not be solved by one undifferentiated bucket.
 
 | Layer | Primary concern | Default reference |
 | --- | --- | --- |
-| canonical source repository | deduplicated snapshot history for immutable source versions | Kopia-style repository |
+| canonical source repository | deduplicated snapshot history for immutable source versions | Kopia |
 | tiered operational substrate | local and cloud placement, disk classes, S3 access, replication | SeaweedFS by default, JuiceFS when POSIX semantics matter |
 | worker hot cache | repeated chunk or file reads close to compute | worker-local cache, optional Alluxio |
-| lazy-read representation | on-demand reads for package-like or rebuildable assets | Nydus-style lazy chunk loading |
+| lazy-read representation | on-demand reads for package-like or rebuildable assets | Nydus |
 | artifact graph | immutable bundle and manifest references | ORAS / OCI artifacts |
 | browser delivery store | CDN-friendly whole objects and manifests | S3-compatible derived store |
 
@@ -65,10 +65,12 @@ Preferred policy:
 
 The default product posture is:
 
-- **source assets**: always snapshot into the canonical repository
+- **source assets**: always snapshot into **Kopia**
 - **published web outputs**: materialize into the derived store and serve via CDN
-- **package-like internal hot reads**: prefer lazy chunk-backed access when compatible with the consumer
+- **package-like internal hot reads**: prefer **Nydus** when compatible with the consumer
 - **artifact bundles and manifests**: publish through ORAS where an immutable bundle graph is helpful
+
+CDNgine should integrate these systems, not clone their behavior in application code.
 
 ## 6. Promotion and demotion signals
 

@@ -15,13 +15,13 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
-| canonical source repository | Kopia-style repository | chunk-deduplicated canonical asset history and replay provenance |
+| canonical source repository | Kopia | chunk-deduplicated canonical asset history and replay provenance without custom repository code |
 | tiered storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | explicit byte placement and shared-workspace options |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
 | metadata/query indexing | PostgreSQL GIN over JSONB | indexable structured metadata without inventing a custom metadata engine |
 | cache and coordination | Redis | mature cache, lock, and ephemeral coordination primitives |
 | durable workflows | Temporal | retries, replay, timers, testing, and execution history |
-| lazy internal hot reads | Nydus-style lazy representation plus optional Alluxio | on-demand chunk reads and hot caches for package-like assets |
+| lazy internal hot reads | Nydus plus optional Alluxio | on-demand chunk reads and hot caches for package-like assets |
 | artifact graph and immutable bundles | ORAS | OCI-native artifact references and bundle publication |
 | image processing and delivery | imgproxy + libvips | high-performance image processing without building a transform server |
 | video and image-to-video | FFmpeg | broad codec support, hardware acceleration, deep ecosystem |
@@ -178,6 +178,14 @@ Use it deliberately:
 - persist snapshot identities, logical paths, and content digests in the registry
 - treat SeaweedFS or JuiceFS as the physical substrate while the source repository remains the canonical addressing layer
 - use lazy-read or hot-cache layers only where repeated source reconstruction justifies them
+
+Do not reimplement:
+
+- content-defined or rolling-hash chunking
+- snapshot pack and index formats
+- repository maintenance and prune logic
+- lazy chunk-addressed fetch semantics
+- distributed cache coherence for shared hot reads
 
 ### 3.7.1 ORAS
 
@@ -372,14 +380,13 @@ Use for:
 - [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
 - [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
 - [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
-- [Xet Protocol Specification](https://huggingface.co/docs/xet)
-- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
-- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
-- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
-- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
-- [Security Model](https://huggingface.co/docs/hub/en/xet/security)
-- [Hugging Face Storage Buckets](https://huggingface.co/storage)
-- [huggingface/xet-core](https://github.com/huggingface/xet-core)
+- [Kopia features](https://kopia.io/docs/features/)
+- [restic repository design](https://restic.readthedocs.io/en/stable/100_references.html)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
+- [JuiceFS architecture](https://juicefs.com/docs/community/architecture)
+- [Nydus](https://nydus.dev/)
+- [ORAS documentation](https://oras.land/docs/)
+- [Alluxio documentation](https://documentation.alluxio.io/os-en)
+- [DedupBench](https://github.com/UWASL/dedup-bench)
 - [UniFFI user guide](https://mozilla.github.io/uniffi-rs/latest/)
 - [cbindgen](https://github.com/mozilla/cbindgen)

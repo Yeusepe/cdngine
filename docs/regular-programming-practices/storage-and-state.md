@@ -4,7 +4,7 @@ This document defines state ownership.
 
 | System | Owns |
 | --- | --- |
-| Xet | canonical deduplicated asset content, reconstruction metadata, and source history |
+| canonical source repository | canonical deduplicated asset content, reconstruction metadata, and source history |
 | SQL registry | asset metadata, workflow state, manifests, registrations |
 | Redis | cache, locks, and short-lived coordination only |
 | S3-compatible derived store | processed delivery artifacts |

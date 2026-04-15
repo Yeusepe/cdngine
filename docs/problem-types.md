@@ -32,7 +32,7 @@ Every public problem response should include:
 | `https://docs.cdngine.dev/problems/version-not-ready` | `409` | yes | requested derivative, manifest, or authorization target is not yet published |
 | `https://docs.cdngine.dev/problems/delivery-scope-not-found` | `404` | no | delivery scope does not exist or should not be disclosed |
 | `https://docs.cdngine.dev/problems/delivery-not-authorized` | `404` | no | delivery request lacked valid authorization for a private asset |
-| `https://docs.cdngine.dev/problems/upstream-dependency-failed` | `503` | yes | a required dependency such as Xet, derived storage, or Temporal failed |
+| `https://docs.cdngine.dev/problems/upstream-dependency-failed` | `503` | yes | a required dependency such as the canonical source repository, derived storage, or Temporal failed |
 | `https://docs.cdngine.dev/problems/workflow-dispatch-failed` | `503` | yes | the request committed but durable workflow start could not be completed yet |
 | `https://docs.cdngine.dev/problems/operator-action-rejected` | `409` | no | requested replay, quarantine, release, or purge action was rejected by policy or state |
 

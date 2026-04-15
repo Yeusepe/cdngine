@@ -71,7 +71,7 @@ The platform should distinguish three cases:
 ### Generic browser or plain HTTP client
 
 - the client receives a normal byte stream
-- Xet still helps because the source is reconstructed from deduplicated storage
+- the source repository still helps because the source is reconstructed from deduplicated storage
 - but the client does **not** get chunk-aware transfer deduplication across sessions
 
 ### Trusted internal SDK or tool

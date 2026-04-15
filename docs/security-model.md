@@ -67,7 +67,7 @@ Upload flow requirements:
 2. the API validates asset class, declared content constraints, and tenant policy
 3. the API issues a short-lived upload target for the ingest-managed upload object
 4. upload completion is confirmed through a signed or authenticated callback
-5. the ingest service verifies the uploaded object before canonicalization into Xet
+5. the ingest service verifies the uploaded object before snapshotting it into the canonical source repository
 6. the workflow re-validates the uploaded content using signature sniffing and metadata extraction
 
 Do not trust:
@@ -82,16 +82,16 @@ Upload-session issuance should bind the allowed scope explicitly so a completion
 
 The platform intentionally separates:
 
-- **Xet** for canonical originals, deduplicated storage, and provenance
+- the **canonical source repository** for canonical originals, deduplicated storage, and provenance
 - **derived storage** for published generated artifacts
 
 Security implications:
 
-- public delivery traffic should not require direct access to Xet
+- public delivery traffic should not require direct access to the source repository
 - workers should have least-privilege access scoped to the binaries they need
 - private origin access should be enforced between processors and storage systems
 - CDN-origin access should be limited to the derived store, not the canonical raw store
-- raw S3 object keys used beneath Xet should not be treated as public application-level identifiers
+- raw object keys used beneath the source repository should not be treated as public application-level identifiers
 
 ## 6. Signed delivery model
 
@@ -248,4 +248,4 @@ Every production deployment should show:
 - [Cloudflare custom hostnames](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/domain-support/)
 - [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
 - [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
-- [Xet Security Model](https://huggingface.co/docs/hub/en/xet/security)
+- [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html)

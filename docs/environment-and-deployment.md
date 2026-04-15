@@ -26,7 +26,7 @@ The opinionated first production profile is:
 - PostgreSQL control-plane database
 - Redis for cache and short-lived coordination
 - Temporal for durable orchestration
-- Kopia-style canonical source repository over SeaweedFS-backed storage
+- Kopia canonical source repository over SeaweedFS-backed storage
 - optional JuiceFS workspaces where POSIX access is required
 - optional Nydus or Alluxio hot-read layer close to workers
 - ORAS-backed artifact graph

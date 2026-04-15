@@ -4,7 +4,7 @@
 
 Replay is allowed only when:
 
-1. the canonical Xet source identity is durable
+1. the canonical source identity is durable
 2. the replay reason is recorded
 3. the requested action is authorized for the operator
 

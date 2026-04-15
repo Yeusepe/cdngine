@@ -34,12 +34,12 @@ CDNgine is meant to fix that by standardizing a few core rules:
 
 At a high level, CDNgine separates **canonical source**, **control**, **materialization**, and **delivery**:
 
-- a **Kopia-style canonical source repository** stores immutable source versions through rolling-hash chunking, deduplication, compression, and snapshot history
+- **Kopia** is the default canonical source repository and stores immutable source versions through rolling-hash chunking, deduplication, compression, and snapshot history
 - a **SeaweedFS** or **JuiceFS** substrate gives the source and derived planes operational storage tiers, S3-compatible access, and fast local or regional placement
 - the **registry** stores asset, version, derivative, manifest, workflow, and audit state
 - **Temporal** owns long-running orchestration and replay-safe execution
 - **ORAS** packages deterministic derived bundles, manifests, and integrity-linked artifact graphs
-- a **Nydus-style lazy-read layer** and optional **Alluxio hot cache** accelerate repeated internal reads without forcing every output to stay permanently materialized
+- **Nydus** is the default lazy-read layer, with optional **Alluxio** hot caching, to accelerate repeated internal reads without forcing every output to stay permanently materialized
 - the **CDN** serves browser-friendly published artifacts on the hot path
 
 That means the platform treats:
@@ -86,7 +86,7 @@ Trusted internal flows can use the source plane more directly:
 
 - bulk imports can snapshot directly into the canonical repository when the caller already has trusted access to the substrate
 - operator recovery and replay anchor to repository snapshot IDs, content digests, and canonical logical paths
-- package-like or rebuildable assets may also gain a Nydus-style lazy representation for high-frequency internal reads
+- package-like or rebuildable assets may also be exposed through **Nydus** for high-frequency internal reads
 
 ## How delivery actually works
 
@@ -154,10 +154,10 @@ Likewise, if every public upload had to speak source-repository semantics direct
 
 The stronger source-plane posture is not "store everything in the CDN." It is "use the right layer for the right job":
 
-- **Kopia-style repositories** for deduplicated snapshot history and rolling-hash chunking
+- **Kopia** for deduplicated snapshot history and rolling-hash chunking
 - **SeaweedFS** for tiered blob placement, cloud tier movement, and S3-compatible storage access
 - **JuiceFS** where POSIX mounts or shared workspace semantics matter for tools and artists
-- **Nydus-style lazy reads** for package-like or rebuildable hot paths
+- **Nydus** for package-like or rebuildable hot paths
 - **ORAS** for immutable artifact graphs, manifests, and bundle publication
 
 ## Service stack direction
@@ -177,13 +177,22 @@ The current service-level direction is:
 | image delivery and transform | imgproxy + libvips |
 | video processing | FFmpeg |
 | document normalization | Gotenberg |
-| canonical raw source | Kopia-style repository over SeaweedFS-backed S3 namespace |
-| hot read acceleration | Nydus-style lazy materialization plus optional Alluxio cache |
+| canonical raw source | Kopia repository over a SeaweedFS-backed S3 namespace |
+| hot read acceleration | Nydus plus optional Alluxio cache |
 | artifact graph and bundle registry | ORAS over OCI registry |
 | branch/publish semantics when needed | lakeFS |
 | derived delivery origin | S3-compatible object storage |
 
 This is an **opinionated default profile**, not a claim that every adopter must use the exact same infrastructure provider.
+
+You should use these packages and services where possible, but you are free to use your own infrastructure providers if you preserve the platform semantics.
+
+- run **Kopia** for canonical source history instead of rebuilding chunking or snapshot semantics
+- run **SeaweedFS** as the default tiered substrate instead of inventing custom hot/warm/cold placement logic
+- use **JuiceFS** only when a real POSIX workspace is needed
+- use **Nydus** for lazy chunk-addressed reads instead of writing a bespoke lazy materializer
+- use **ORAS** for artifact graphs instead of inventing a custom bundle registry
+- use **Alluxio** only when a shared hot cache is justified by the workload
 
 ## Architectural stance
 

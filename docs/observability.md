@@ -236,6 +236,6 @@ A finished slice should show:
 - [Temporal documentation](https://docs.temporal.io/)
 - [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
 - [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
 - [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)

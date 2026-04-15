@@ -268,8 +268,8 @@ The registry should make it easy to answer:
 
 ## 7. References
 
-- [Xet Protocol Specification](https://huggingface.co/docs/xet)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Kopia features](https://kopia.io/docs/features/)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
 - [Prisma transactions, idempotent APIs, and OCC](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
 - [Prisma index configuration](https://docs.prisma.io/docs/orm/prisma-schema/data-model/indexes)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)

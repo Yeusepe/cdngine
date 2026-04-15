@@ -32,9 +32,9 @@ Default choices should optimize for:
 | cache and coordination | Redis | mature hot-path primitives without inventing ephemeral coordination systems |
 | image transform and delivery | imgproxy + libvips | proven, fast image server instead of building our own resizing service |
 | video and image-to-video | FFmpeg | broad codec and pipeline support, hardware acceleration, deep ecosystem |
-| canonical source repository | Kopia-style repository | deduplicated snapshot history is better than inventing a custom chunk store |
+| canonical source repository | Kopia | run the repository directly instead of inventing a custom chunk store |
 | storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | tiered storage and object-backed workspaces are better than writing bespoke placement logic |
-| lazy hot-read path | Nydus-style lazy representation plus optional Alluxio | on-demand chunk reads and hot caching are better than materializing every large asset eagerly |
+| lazy hot-read path | Nydus plus optional Alluxio | consume the lazy-read and cache layers directly instead of materializing every large asset eagerly |
 | artifact graph | ORAS | immutable bundles and artifact references are better than inventing a custom registry |
 | delivery edge behavior | immutable versioned artifacts plus CDN tiering | hot artifacts should stay cheap and fast without dragging reads back to origin or source repository |
 | document normalization | Gotenberg | LibreOffice and Chromium behind an API instead of custom conversion orchestration |
@@ -222,12 +222,14 @@ The source stack should separate three jobs that are often wrongly collapsed int
 
 The default posture is:
 
-- use a **Kopia-style repository** for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
+- run **Kopia** for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
 - use **SeaweedFS** as the default S3-compatible substrate so the platform can control tiered storage rather than leaving every byte in one undifferentiated class
 - use **JuiceFS** when tools or workers need a shared POSIX workspace
-- use **Nydus-style lazy reads** and optional **Alluxio** only where repeated package-like reads justify them
+- use **Nydus** and optional **Alluxio** only where repeated package-like reads justify them
 
 This lets the platform stay mathematically efficient for large iterative binaries without forcing browser delivery or public ingest to speak chunk semantics directly.
+
+The important implementation rule is: **consume these upstream systems directly**. CDNgine should not reimplement chunking, snapshot packing, lazy chunk fetch, distributed cache coordination, or OCI artifact graph semantics in application code.
 
 ### 4.14 ORAS and the artifact split
 
@@ -298,14 +300,13 @@ The architecture should also consume operating patterns from adjacent systems:
 - [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
 - [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
 - [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
-- [Xet Protocol Specification](https://huggingface.co/docs/xet)
-- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
-- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
-- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
-- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
-- [Security Model](https://huggingface.co/docs/hub/en/xet/security)
-- [Hugging Face Storage Buckets](https://huggingface.co/storage)
-- [huggingface/xet-core](https://github.com/huggingface/xet-core)
+- [Kopia features](https://kopia.io/docs/features/)
+- [restic repository design](https://restic.readthedocs.io/en/stable/100_references.html)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
+- [JuiceFS architecture](https://juicefs.com/docs/community/architecture)
+- [Nydus](https://nydus.dev/)
+- [ORAS documentation](https://oras.land/docs/)
+- [Alluxio documentation](https://documentation.alluxio.io/os-en)
+- [DedupBench](https://github.com/UWASL/dedup-bench)
 - [UniFFI user guide](https://mozilla.github.io/uniffi-rs/latest/)
 - [cbindgen](https://github.com/mozilla/cbindgen)

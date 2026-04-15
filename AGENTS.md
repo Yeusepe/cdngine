@@ -59,7 +59,7 @@ Use this map to decide which docs govern which code.
 | --- | --- |
 | API routes, request/response models, auth boundaries | `docs/service-architecture.md`, `docs/api-surface.md`, `docs/api-style-guide.md`, `docs/security-model.md` |
 | upload flows, ingest, resumable uploads, canonical commit logic | `README.md`, `docs/architecture.md`, `docs/service-architecture.md`, `docs/technology-profile.md`, `docs/security-model.md` |
-| Xet integration, storage adapters, derived-store publication | `docs/architecture.md`, `docs/technology-profile.md`, `docs/repository-layout.md`, `docs/resilience-and-scale-validation.md` |
+| canonical source integration, storage adapters, derived-store publication | `docs/architecture.md`, `docs/technology-profile.md`, `docs/repository-layout.md`, `docs/resilience-and-scale-validation.md` |
 | Prisma schema, migrations, registry data model | `docs/domain-model.md`, `docs/service-registration-model.md`, `docs/repository-layout.md`, `docs/testing-strategy.md` |
 | Temporal workflows, activities, replay, compensation | `docs/architecture.md`, `docs/workflow-extensibility.md`, `docs/testing-strategy.md`, `docs/resilience-and-scale-validation.md` |
 | manifests, derivative records, deterministic keys | `docs/architecture.md`, `docs/domain-model.md`, `docs/pipeline-capability-model.md`, `docs/traceability.md`, `docs/adr/0003-deterministic-derivative-keys.md` |

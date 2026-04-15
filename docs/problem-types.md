@@ -21,6 +21,7 @@ Every public problem response should include:
 | `https://docs.cdngine.dev/problems/forbidden` | `403` | no | caller is authenticated but not allowed on the control plane |
 | `https://docs.cdngine.dev/problems/scope-not-allowed` | `403` | no | caller cannot act in the requested namespace or tenant scope |
 | `https://docs.cdngine.dev/problems/not-found` | `404` | no | addressed resource does not exist or should not be disclosed |
+| `https://docs.cdngine.dev/problems/internal-error` | `500` | no | the service encountered an unexpected internal failure |
 | `https://docs.cdngine.dev/problems/idempotency-key-conflict` | `409` | no | same idempotency key was reused for a different semantic request |
 | `https://docs.cdngine.dev/problems/invalid-state-transition` | `409` | no | request is not allowed from the current lifecycle state |
 | `https://docs.cdngine.dev/problems/upload-session-expired` | `410` | no | upload session expired before valid completion |

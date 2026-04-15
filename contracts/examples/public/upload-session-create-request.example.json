@@ -1,0 +1,18 @@
+{
+  "serviceNamespaceId": "media-platform",
+  "tenantId": "tenant-acme",
+  "assetId": "ast_existing_123",
+  "assetOwner": "customer:acme",
+  "source": {
+    "filename": "hero-banner.png",
+    "contentType": "image/png"
+  },
+  "upload": {
+    "objectKey": "staging/media-platform/tenant-acme/upl_01JQ9YF8QJCPY9G7B8N1F3K6Z1",
+    "byteLength": 1843921,
+    "checksum": {
+      "algorithm": "sha256",
+      "value": "4d5f963e5e94932ea4b112fba6f2a5fd49af6e8ed179e67a0d4a4cc2c4f37df5"
+    }
+  }
+}

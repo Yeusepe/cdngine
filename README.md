@@ -267,7 +267,15 @@ The **public** surface is the product contract. The platform-admin and operator 
 
 ## Current repository state
 
-The repository is documentation-heavy on purpose. It is defining:
+The repository now has a real TypeScript workspace foundation as well as the documentation set. It currently includes:
+
+- root `package.json`, npm workspaces, and shared TypeScript config
+- workspace package metadata that records governing docs, mandatory programming-practices docs, and external references
+- reference-header checks for TypeScript source files in `apps/` and `packages/`
+- the local fast-start dependency stack under `deploy/local-platform`
+- the architecture and service model docs that the implementation must follow
+
+The repository is still implementation-light by design. It is defining and beginning to enforce:
 
 - the architecture and service model
 - canonical source, tiering, and delivery rules
@@ -276,6 +284,31 @@ The repository is documentation-heavy on purpose. It is defining:
 - observability, security, SLOs, runbooks, and threat models
 
 That work comes before a larger implementation push because this platform has too many moving parts to safely improvise its semantics later.
+
+## Workspace bootstrap
+
+The repository now uses **npm workspaces** as the lowest-friction baseline because Node and npm are available in the contributor environment by default.
+
+From the repository root:
+
+```powershell
+npm install
+npm run verify
+```
+
+The important root commands are:
+
+- `npm run docs:check` - verify workspace metadata and source reference headers
+- `npm run typecheck` - run the composite TypeScript workspace typecheck
+- `npm run build` - build the current workspace graph
+- `npm run test` - run repo checks and workspace tests
+- `npm run verify` - run lint, typecheck, and test together
+
+Each workspace in `apps/*` and `packages/*` carries `cdngine` metadata in its `package.json` so the implementation stays coupled to:
+
+- governing local docs
+- the mandatory `docs/regular-programming-practices/` suite
+- upstream references that justify external-system behavior
 
 ## Local fast-start
 

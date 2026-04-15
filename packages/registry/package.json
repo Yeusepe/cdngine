@@ -1,0 +1,33 @@
+{
+  "name": "@cdngine/registry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "cdngine": {
+    "governingDocs": [
+      "docs/domain-model.md",
+      "docs/persistence-model.md",
+      "docs/idempotency-and-dispatch.md"
+    ],
+    "programmingPractices": [
+      "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
+      "docs/regular-programming-practices/interfaces-and-data-flow.md",
+      "docs/regular-programming-practices/storage-and-state.md",
+      "docs/regular-programming-practices/testing-and-scale.md",
+      "docs/regular-programming-practices/security-verification-baseline.md",
+      "docs/regular-programming-practices/implementation-strategy.md"
+    ],
+    "externalReferences": [
+      "https://www.prisma.io/docs/orm/prisma-client/queries/transactions",
+      "https://www.postgresql.org/docs/",
+      "https://semver.org/"
+    ]
+  }
+}

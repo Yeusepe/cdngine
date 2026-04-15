@@ -1,0 +1,33 @@
+{
+  "name": "@cdngine/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "cdngine": {
+    "governingDocs": [
+      "docs/api-style-guide.md",
+      "docs/spec-governance.md",
+      "docs/sdk-strategy.md"
+    ],
+    "programmingPractices": [
+      "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
+      "docs/regular-programming-practices/interfaces-and-data-flow.md",
+      "docs/regular-programming-practices/storage-and-state.md",
+      "docs/regular-programming-practices/testing-and-scale.md",
+      "docs/regular-programming-practices/security-verification-baseline.md",
+      "docs/regular-programming-practices/language-style-and-documentation.md"
+    ],
+    "externalReferences": [
+      "https://spec.openapis.org/oas/latest.html",
+      "https://spec.openapis.org/arazzo/latest.html",
+      "https://www.asyncapi.com/docs/tools/cli/usage"
+    ]
+  }
+}

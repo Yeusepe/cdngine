@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/events/asset-version-canonicalized.schema.json",
+  "title": "AssetVersionCanonicalizedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventType",
+    "eventVersion",
+    "serviceNamespaceId",
+    "assetId",
+    "versionId",
+    "canonicalSourceId",
+    "workflowDispatchId",
+    "occurredAt"
+  ],
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "const": "asset.version.canonicalized"
+    },
+    "eventVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "serviceNamespaceId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "canonicalSourceId": {
+      "type": "string"
+    },
+    "workflowDispatchId": {
+      "type": "string"
+    },
+    "occurredAt": {
+      "type": "string"
+    }
+  }
+}

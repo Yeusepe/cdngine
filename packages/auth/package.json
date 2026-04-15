@@ -1,0 +1,34 @@
+{
+  "name": "@cdngine/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "cdngine": {
+    "governingDocs": [
+      "docs/security-model.md",
+      "docs/service-registration-model.md",
+      "docs/problem-types.md"
+    ],
+    "programmingPractices": [
+      "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
+      "docs/regular-programming-practices/interfaces-and-data-flow.md",
+      "docs/regular-programming-practices/storage-and-state.md",
+      "docs/regular-programming-practices/testing-and-scale.md",
+      "docs/regular-programming-practices/security-verification-baseline.md",
+      "docs/regular-programming-practices/security-and-threat-modeling.md",
+      "docs/regular-programming-practices/secure-development-lifecycle.md"
+    ],
+    "externalReferences": [
+      "https://www.rfc-editor.org/rfc/rfc9457.html",
+      "https://owasp.org/www-project-application-security-verification-standard/",
+      "https://opentelemetry.io/docs/languages/js/"
+    ]
+  }
+}

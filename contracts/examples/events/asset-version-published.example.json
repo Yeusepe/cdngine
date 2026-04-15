@@ -1,0 +1,10 @@
+{
+  "eventType": "asset.version.published",
+  "eventVersion": 1,
+  "serviceNamespaceId": "media-platform",
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "manifestType": "image-default",
+  "derivativeCount": 2,
+  "occurredAt": "2026-01-15T18:06:30Z"
+}

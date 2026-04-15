@@ -1,0 +1,10 @@
+{
+  "eventType": "asset.version.canonicalized",
+  "eventVersion": 1,
+  "serviceNamespaceId": "media-platform",
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "canonicalSourceId": "src_01JQ9YP0XBTGG64AHY7WKNB7KQ",
+  "workflowDispatchId": "wd_01JQ9YPAQ5P1M1AR3JGY1X7A4W",
+  "occurredAt": "2026-01-15T18:05:00Z"
+}

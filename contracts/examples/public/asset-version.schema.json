@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/asset-version.schema.json",
+  "title": "AssetVersion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assetId",
+    "versionId",
+    "serviceNamespaceId",
+    "assetOwner",
+    "versionNumber",
+    "lifecycleState",
+    "workflowState",
+    "source",
+    "links"
+  ],
+  "properties": {
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "serviceNamespaceId": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string"
+    },
+    "assetOwner": {
+      "type": "string"
+    },
+    "versionNumber": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "lifecycleState": {
+      "type": "string",
+      "enum": ["awaiting-upload", "canonicalizing", "canonical", "processing", "published", "quarantined"]
+    },
+    "workflowState": {
+      "type": "string",
+      "enum": ["pending", "running", "completed", "failed", "not-dispatched"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentType", "filename", "byteLength"],
+      "properties": {
+        "contentType": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["self", "derivatives"],
+      "properties": {
+        "self": {
+          "type": "string"
+        },
+        "derivatives": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

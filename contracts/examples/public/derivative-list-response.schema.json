@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/derivative-list-response.schema.json",
+  "title": "DerivativeListResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "versionId", "derivatives"],
+  "properties": {
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "derivatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["derivativeId", "recipeId", "variant", "contentType", "byteLength", "deterministicKey"],
+        "properties": {
+          "derivativeId": {
+            "type": "string"
+          },
+          "recipeId": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deterministicKey": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

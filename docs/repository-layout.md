@@ -12,6 +12,7 @@ contracts/
   asyncapi/
   arazzo/
   examples/
+  dist/
 apps/
   api/
   workers/
@@ -92,6 +93,7 @@ Recommended package ownership:
 | `testing` | fixtures, workflow harnesses, integration helpers |
 
 The top-level `contracts/` directory is where published OpenAPI, AsyncAPI, Arazzo, and example artifacts should live.
+The checked-in `contracts/dist/` directory is where bundled contract outputs should be written.
 
 ## 5. Rules
 
@@ -101,6 +103,7 @@ The top-level `contracts/` directory is where published OpenAPI, AsyncAPI, Arazz
 4. keep contracts versioned and visible
 5. keep test fixtures and harnesses reusable
 6. keep published contract artifacts separate from code-only helpers
+7. keep bundled contract outputs reproducible with root repository commands
 
 ## 6. Anti-patterns to avoid
 
@@ -112,7 +115,28 @@ Avoid:
 - undocumented cross-package imports
 - hiding released contract artifacts inside implementation packages only
 
-## 7. Relationship to docs
+## 7. Workspace metadata and reference headers
+
+Each workspace package under `apps/*` or `packages/*` should carry explicit metadata in `package.json`:
+
+- `cdngine.governingDocs`
+- `cdngine.programmingPractices`
+- `cdngine.externalReferences`
+
+That metadata is part of the implementation contract. It ties code ownership to the governing docs, the mandatory programming-practices suite, and the upstream references that justify external behavior.
+
+Each TypeScript source file that owns logic should also carry a short reference header with:
+
+- purpose
+- governing docs
+- external references
+- test location
+
+The repository root `npm run docs:check` command enforces these requirements.
+
+The repository root `npm run contracts:check` command enforces the contract-artifact baseline.
+
+## 8. Relationship to docs
 
 The repository layout should map cleanly to the docs set:
 

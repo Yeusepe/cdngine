@@ -1,0 +1,9 @@
+{
+  "type": "https://docs.cdngine.dev/problems/idempotency-key-conflict",
+  "title": "Idempotency key conflict",
+  "status": 409,
+  "detail": "The supplied idempotency key was already used for a semantically different upload-session request.",
+  "retryable": false,
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN"
+}

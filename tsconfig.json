@@ -1,0 +1,41 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/operator"
+    },
+    {
+      "path": "./apps/workers"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/capabilities"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/manifests"
+    },
+    {
+      "path": "./packages/observability"
+    },
+    {
+      "path": "./packages/registry"
+    },
+    {
+      "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/testing"
+    },
+    {
+      "path": "./packages/workflows"
+    }
+  ]
+}

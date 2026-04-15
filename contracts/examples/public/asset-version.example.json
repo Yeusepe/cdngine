@@ -1,0 +1,20 @@
+{
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "serviceNamespaceId": "media-platform",
+  "tenantId": "tenant-acme",
+  "assetOwner": "customer:acme",
+  "versionNumber": 3,
+  "lifecycleState": "published",
+  "workflowState": "completed",
+  "source": {
+    "contentType": "image/png",
+    "filename": "hero-banner.png",
+    "byteLength": 1843921
+  },
+  "links": {
+    "self": "/v1/assets/ast_existing_123/versions/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+    "derivatives": "/v1/assets/ast_existing_123/versions/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/derivatives",
+    "manifest": "/v1/assets/ast_existing_123/versions/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/manifests/image-default"
+  }
+}

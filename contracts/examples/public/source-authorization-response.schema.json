@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/source-authorization-response.schema.json",
+  "title": "SourceAuthorizationResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "versionId", "authorizationMode", "resolvedOrigin", "expiresAt", "url"],
+  "properties": {
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "authorizationMode": {
+      "type": "string",
+      "enum": ["signed-url", "proxy-url", "internal-handle"]
+    },
+    "resolvedOrigin": {
+      "type": "string",
+      "enum": ["source-export", "source-proxy", "lazy-read-cache"]
+    },
+    "expiresAt": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

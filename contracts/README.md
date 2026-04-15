@@ -9,6 +9,15 @@ Expected families:
 - `arazzo/` for multi-step workflows
 - `examples/` for request, response, manifest, and event examples
 
+Validation and bundling are part of the repository contract now:
+
+1. `npm run contracts:lint`
+2. `npm run contracts:bundle`
+3. `npm run contracts:examples`
+4. `npm run contracts:check`
+
+Generated bundled artifacts are written to `contracts/dist/`.
+
 The governing docs are:
 
 - `docs/api-surface.md`

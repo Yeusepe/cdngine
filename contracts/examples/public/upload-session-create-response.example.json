@@ -1,0 +1,17 @@
+{
+  "uploadSessionId": "upl_01JQ9YF8QJCPY9G7B8N1F3K6Z1",
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "isDuplicate": false,
+  "uploadTarget": {
+    "protocol": "tus",
+    "method": "PATCH",
+    "url": "https://uploads.cdngine.local/files/upl_01JQ9YF8QJCPY9G7B8N1F3K6Z1",
+    "expiresAt": "2026-01-15T18:00:00Z"
+  },
+  "status": "awaiting-upload",
+  "links": {
+    "complete": "/v1/upload-sessions/upl_01JQ9YF8QJCPY9G7B8N1F3K6Z1/complete",
+    "version": "/v1/assets/ast_existing_123/versions/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN"
+  }
+}

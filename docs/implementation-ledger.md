@@ -9,8 +9,10 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | Slice | Status | What it should prove |
 | --- | --- | --- |
 | docs-foundation | doing | architecture, service model, surface separation, ingest contract, lifecycle state, persistence, compatibility, and platform semantics are documented coherently |
+| program-guardrails | done | coded slices stay coupled to governing docs, the programming-practices suite, and explicit upstream references through executable repository checks |
+| workspace-foundation | done | the repository can bootstrap as a real TypeScript workspace with build, typecheck, test, and docs-coupling gates instead of only documentation scaffolding |
 | control-plane-contracts | doing | lifecycle transitions, persistence writes, idempotency, dispatch, canonicalization, and workflow operator interaction are specified precisely enough to implement safely |
-| contracts-and-schemas | doing | public API, manifests, capability schemas, event shapes, SDK workflow artifacts, and contract-governance scaffolding have a concrete repository home |
+| contracts-and-schemas | done | public API, manifests, capability schemas, event shapes, SDK workflow artifacts, and contract-governance scaffolding have a concrete repository home plus executable lint, bundle, and example-validation gates |
 | ingest-foundation | planned | upload sessions, canonical source snapshotting over a bucket-or-prefix-backed source repository, and idempotent completion behave correctly across single-node or multi-node plus one-bucket or multi-bucket topologies |
 | image-mvp | planned | the platform can validate, derive, publish, and deliver deterministic image outputs through one client-facing authorization flow even when internal resolution paths differ across the supported topology matrix |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |

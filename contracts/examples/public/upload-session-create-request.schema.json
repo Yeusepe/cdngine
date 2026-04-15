@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/upload-session-create-request.schema.json",
+  "title": "UploadSessionCreateRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["serviceNamespaceId", "assetOwner", "source", "upload"],
+  "properties": {
+    "serviceNamespaceId": {
+      "type": "string",
+      "minLength": 3
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assetId": {
+      "type": "string",
+      "description": "Include to create a new immutable version of an existing logical asset."
+    },
+    "assetOwner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "contentType"],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentType": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "upload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectKey", "byteLength", "checksum"],
+      "properties": {
+        "objectKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "enum": ["sha256"]
+            },
+            "value": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        }
+      }
+    }
+  }
+}

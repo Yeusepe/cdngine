@@ -1,0 +1,14 @@
+/**
+ * Purpose: Exposes the manifests package entrypoint for manifest builders, parsers, and publication helpers.
+ * Governing docs:
+ * - docs/domain-model.md
+ * - docs/versioning-and-compatibility.md
+ * - docs/adr/0003-deterministic-derivative-keys.md
+ * External references:
+ * - https://spec.openapis.org/oas/latest.html
+ * - https://semver.org/
+ * Tests:
+ * - tests/conformance/README.md
+ */
+
+export const manifestsPackageName = '@cdngine/manifests';

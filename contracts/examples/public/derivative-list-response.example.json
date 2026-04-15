@@ -1,0 +1,16 @@
+{
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "derivatives": [
+    {
+      "derivativeId": "drv_01JQ9ZHWR1PZK8A2NGW0BEM0DJ",
+      "recipeId": "image-default",
+      "variant": "webp-1600",
+      "contentType": "image/webp",
+      "byteLength": 512334,
+      "deterministicKey": "deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/image-default/webp-1600",
+      "width": 1600,
+      "height": 900
+    }
+  ]
+}

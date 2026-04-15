@@ -1,0 +1,9 @@
+{
+  "assetId": "ast_existing_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "deliveryScopeId": "public-images",
+  "authorizationMode": "signed-url",
+  "resolvedOrigin": "cdn-derived",
+  "expiresAt": "2026-01-15T18:30:00Z",
+  "url": "https://cdn.cdngine.local/i/public-images/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/webp-1600"
+}

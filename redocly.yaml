@@ -1,0 +1,22 @@
+apis:
+  public@v1:
+    root: ./contracts/openapi/public.openapi.yaml
+  platform-admin@v1:
+    root: ./contracts/openapi/platform-admin.openapi.yaml
+  operator@v1:
+    root: ./contracts/openapi/operator.openapi.yaml
+  lifecycle-events@v1:
+    root: ./contracts/asyncapi/lifecycle.asyncapi.yaml
+  public-upload@v1:
+    root: ./contracts/arazzo/public-upload.arazzo.yaml
+
+extends:
+  - recommended
+
+rules:
+  info-license: error
+  no-unused-components: error
+  operation-description: error
+  operation-operationId: error
+  operation-summary: error
+  tag-description: error

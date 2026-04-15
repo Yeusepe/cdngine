@@ -1,0 +1,218 @@
+openapi: 3.1.1
+info:
+  title: CDNgine Operator API
+  version: 1.0.0
+  summary: Internal operator and recovery surface.
+  description: |
+    Operator API for replay, quarantine, release, purge, and diagnostics flows. This
+    surface exists for audited platform recovery rather than public product integration.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://operator.cdngine.local
+    description: Internal operator endpoint.
+security:
+  - bearerAuth: []
+tags:
+  - name: operations
+    description: Operator-initiated replay, quarantine, release, and purge actions.
+  - name: diagnostics
+    description: Workflow, publication, and storage diagnostics for a concrete version.
+paths:
+  /v1/operator/assets/{assetId}/versions/{versionId}/reprocess:
+    post:
+      tags:
+        - operations
+      summary: Reprocess an immutable version
+      description: Queues a replay or reprocess action for the specified immutable version.
+      operationId: reprocessAssetVersion
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '202':
+          description: Operator action accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorActionAccepted'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/operator/assets/{assetId}/versions/{versionId}/quarantine:
+    post:
+      tags:
+        - operations
+      summary: Quarantine an immutable version
+      description: Applies quarantine policy to the specified immutable version.
+      operationId: quarantineAssetVersion
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '202':
+          description: Operator action accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorActionAccepted'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/operator/assets/{assetId}/versions/{versionId}/release:
+    post:
+      tags:
+        - operations
+      summary: Release a quarantined immutable version
+      description: Releases a version from quarantine after operator review.
+      operationId: releaseAssetVersion
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '202':
+          description: Operator action accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorActionAccepted'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/operator/assets/{assetId}/versions/{versionId}/purge:
+    post:
+      tags:
+        - operations
+      summary: Purge a version
+      description: Requests purge of the specified immutable version subject to policy and audit.
+      operationId: purgeAssetVersion
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '202':
+          description: Operator action accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorActionAccepted'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/operator/assets/{assetId}/versions/{versionId}/diagnostics:
+    get:
+      tags:
+        - diagnostics
+      summary: Get diagnostics for an immutable version
+      description: Returns diagnostics that correlate registry, workflow, and publication state.
+      operationId: getAssetVersionDiagnostics
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Diagnostics payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagnostics'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    AssetId:
+      name: assetId
+      in: path
+      required: true
+      description: Stable logical asset identifier.
+      schema:
+        type: string
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      description: Immutable version identifier.
+      schema:
+        type: string
+  schemas:
+    OperatorActionAccepted:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - action
+        - state
+      properties:
+        operationId:
+          type: string
+        action:
+          type: string
+          enum:
+            - reprocess
+            - quarantine
+            - release
+            - purge
+        state:
+          type: string
+          enum:
+            - accepted
+            - pending
+        workflowId:
+          type:
+            - string
+            - 'null'
+    Diagnostics:
+      type: object
+      additionalProperties: false
+      required:
+        - assetId
+        - versionId
+        - lifecycleState
+        - workflow
+      properties:
+        assetId:
+          type: string
+        versionId:
+          type: string
+        lifecycleState:
+          type: string
+        workflow:
+          type: object
+          additionalProperties: false
+          required:
+            - state
+          properties:
+            state:
+              type: string
+            workflowId:
+              type:
+                - string
+                - 'null'
+        publication:
+          type: object
+          additionalProperties: false
+          properties:
+            manifestType:
+              type: string
+            derivativeCount:
+              type: integer
+              minimum: 0
+  responses:
+    Problem:
+      description: RFC 9457 problem detail.
+      content:
+        application/problem+json:
+          schema:
+            $ref: ../examples/public/problem-detail.schema.json
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

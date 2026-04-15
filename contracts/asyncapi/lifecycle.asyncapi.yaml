@@ -1,0 +1,53 @@
+asyncapi: 3.0.0
+info:
+  title: CDNgine Lifecycle Events
+  version: 1.0.0
+  description: |
+    Externally relevant lifecycle events emitted after canonicalization and publication
+    boundaries commit. Event names are stable and versioned deliberately.
+defaultContentType: application/json
+servers:
+  internalBus:
+    host: events.cdngine.local
+    protocol: kafka
+    description: Internal or partner-facing event transport.
+channels:
+  assetVersionCanonicalized:
+    address: cdngine.asset.version.canonicalized.v1
+    messages:
+      canonicalized:
+        $ref: '#/components/messages/AssetVersionCanonicalized'
+  assetVersionPublished:
+    address: cdngine.asset.version.published.v1
+    messages:
+      published:
+        $ref: '#/components/messages/AssetVersionPublished'
+operations:
+  sendAssetVersionCanonicalized:
+    action: send
+    channel:
+      $ref: '#/channels/assetVersionCanonicalized'
+    messages:
+      - $ref: '#/channels/assetVersionCanonicalized/messages/canonicalized'
+  sendAssetVersionPublished:
+    action: send
+    channel:
+      $ref: '#/channels/assetVersionPublished'
+    messages:
+      - $ref: '#/channels/assetVersionPublished/messages/published'
+components:
+  messages:
+    AssetVersionCanonicalized:
+      name: AssetVersionCanonicalized
+      title: Asset version canonicalized
+      summary: Canonical source identity is durable and workflow dispatch may proceed.
+      contentType: application/json
+      payload:
+        $ref: ../examples/events/asset-version-canonicalized.schema.json
+    AssetVersionPublished:
+      name: AssetVersionPublished
+      title: Asset version published
+      summary: Deterministic derivatives and manifest publication have completed.
+      contentType: application/json
+      payload:
+        $ref: ../examples/events/asset-version-published.schema.json

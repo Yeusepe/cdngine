@@ -1,0 +1,206 @@
+openapi: 3.1.1
+info:
+  title: CDNgine Platform Admin API
+  version: 1.0.0
+  summary: Internal platform governance surface.
+  description: |
+    Platform-admin API for namespace registration, capability validation, and recipe
+    validation. This surface is deliberate and documented, but not part of the broad
+    public SDK compatibility contract.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://platform.cdngine.local
+    description: Internal platform-admin endpoint.
+security:
+  - bearerAuth: []
+tags:
+  - name: service-namespaces
+    description: Namespace registration and policy inspection.
+  - name: capabilities
+    description: Capability validation and governance helpers.
+  - name: recipes
+    description: Recipe registration validation helpers.
+paths:
+  /v1/platform/service-namespaces:
+    post:
+      tags:
+        - service-namespaces
+      summary: Register a service namespace
+      description: Creates or validates a service namespace registration record.
+      operationId: createServiceNamespace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - serviceNamespaceId
+                - displayName
+              properties:
+                serviceNamespaceId:
+                  type: string
+                displayName:
+                  type: string
+                tenantScoped:
+                  type: boolean
+                defaultDeliveryScopeId:
+                  type: string
+      responses:
+        '201':
+          description: Namespace created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceNamespace'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/platform/service-namespaces/{namespaceId}:
+    get:
+      tags:
+        - service-namespaces
+      summary: Get a service namespace
+      description: Returns the current namespace registration view.
+      operationId: getServiceNamespace
+      parameters:
+        - $ref: '#/components/parameters/NamespaceId'
+      responses:
+        '200':
+          description: Namespace resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceNamespace'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/platform/capabilities/validate:
+    post:
+      tags:
+        - capabilities
+      summary: Validate a capability registration
+      description: Validates a capability payload before it becomes durable governance state.
+      operationId: validateCapability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Capability validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        '400':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/platform/recipes/validate:
+    post:
+      tags:
+        - recipes
+      summary: Validate a recipe registration
+      description: Validates a recipe binding before it becomes durable governance state.
+      operationId: validateRecipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Recipe validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        '400':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    NamespaceId:
+      name: namespaceId
+      in: path
+      required: true
+      description: Durable service namespace identifier.
+      schema:
+        type: string
+  schemas:
+    ServiceNamespace:
+      type: object
+      additionalProperties: false
+      required:
+        - serviceNamespaceId
+        - displayName
+        - tenantScoped
+        - lifecycleState
+      properties:
+        serviceNamespaceId:
+          type: string
+        displayName:
+          type: string
+        tenantScoped:
+          type: boolean
+        defaultDeliveryScopeId:
+          type:
+            - string
+            - 'null'
+        lifecycleState:
+          type: string
+          enum:
+            - active
+            - disabled
+    ValidationResult:
+      type: object
+      additionalProperties: false
+      required:
+        - accepted
+        - issues
+      properties:
+        accepted:
+          type: boolean
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - level
+              - message
+            properties:
+              level:
+                type: string
+                enum:
+                  - info
+                  - warning
+                  - error
+              message:
+                type: string
+  responses:
+    Problem:
+      description: RFC 9457 problem detail.
+      content:
+        application/problem+json:
+          schema:
+            $ref: ../examples/public/problem-detail.schema.json
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

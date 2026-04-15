@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/upload-session-complete-response.schema.json",
+  "title": "UploadSessionCompleteResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["uploadSessionId", "assetId", "versionId", "versionState", "workflowDispatch", "links"],
+  "properties": {
+    "uploadSessionId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "versionState": {
+      "type": "string",
+      "enum": ["canonicalizing", "canonical", "processing"]
+    },
+    "workflowDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dispatchId", "state", "workflowKey"],
+      "properties": {
+        "dispatchId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["pending", "started", "failed"]
+        },
+        "workflowKey": {
+          "type": "string"
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

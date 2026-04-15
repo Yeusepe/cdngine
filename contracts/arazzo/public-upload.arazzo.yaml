@@ -1,0 +1,119 @@
+arazzo: 1.0.1
+info:
+  title: CDNgine Public Upload Workflow
+  version: 1.0.0
+  description: |
+    Multi-step public flow for creating an upload session, completing it after tus upload,
+    and polling the immutable version resource until publication is visible.
+sourceDescriptions:
+  - name: PublicApi
+    url: ../openapi/public.openapi.yaml
+    type: openapi
+workflows:
+  - workflowId: uploadNewVersion
+    summary: Upload a new immutable version and wait for publication
+    description: |
+      Creates an upload session, completes it once staged bytes are durable, and polls the
+      version resource until a published lifecycle state is visible.
+    inputs:
+      type: object
+      additionalProperties: false
+      required:
+        - serviceNamespaceId
+        - assetOwner
+        - filename
+        - contentType
+        - objectKey
+        - byteLength
+        - checksum
+      properties:
+        serviceNamespaceId:
+          type: string
+        tenantId:
+          type: string
+        assetId:
+          type: string
+        assetOwner:
+          type: string
+        filename:
+          type: string
+        contentType:
+          type: string
+        objectKey:
+          type: string
+        byteLength:
+          type: integer
+          minimum: 0
+        checksum:
+          type: string
+    steps:
+      - stepId: createUploadSession
+        description: Create a staged upload session for a new asset or a new immutable revision.
+        operationId: createUploadSession
+        requestBody:
+          contentType: application/json
+          payload: |
+            {
+              "serviceNamespaceId": "{$inputs.serviceNamespaceId}",
+              "tenantId": "{$inputs.tenantId}",
+              "assetId": "{$inputs.assetId}",
+              "assetOwner": "{$inputs.assetOwner}",
+              "source": {
+                "filename": "{$inputs.filename}",
+                "contentType": "{$inputs.contentType}"
+              },
+              "upload": {
+                "objectKey": "{$inputs.objectKey}",
+                "byteLength": "{$inputs.byteLength}",
+                "checksum": {
+                  "algorithm": "sha256",
+                  "value": "{$inputs.checksum}"
+                }
+              }
+            }
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          uploadSessionId: $response.body#/uploadSessionId
+          assetId: $response.body#/assetId
+          versionId: $response.body#/versionId
+      - stepId: completeUploadSession
+        description: Complete the session once the tus upload is durable in staged storage.
+        operationId: completeUploadSession
+        parameters:
+          - name: uploadSessionId
+            in: path
+            value: $steps.createUploadSession.outputs.uploadSessionId
+        requestBody:
+          contentType: application/json
+          payload: |
+            {
+              "stagedObject": {
+                "objectKey": "{$inputs.objectKey}",
+                "byteLength": "{$inputs.byteLength}",
+                "checksum": {
+                  "algorithm": "sha256",
+                  "value": "{$inputs.checksum}"
+                }
+              }
+            }
+        successCriteria:
+          - condition: $statusCode == 202
+      - stepId: pollVersion
+        description: Poll the immutable version resource until publication is visible.
+        operationId: getAssetVersion
+        parameters:
+          - name: assetId
+            in: path
+            value: $steps.createUploadSession.outputs.assetId
+          - name: versionId
+            in: path
+            value: $steps.createUploadSession.outputs.versionId
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          lifecycleState: $response.body#/lifecycleState
+    outputs:
+      assetId: $steps.createUploadSession.outputs.assetId
+      versionId: $steps.createUploadSession.outputs.versionId
+      lifecycleState: $steps.pollVersion.outputs.lifecycleState

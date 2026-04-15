@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/events/asset-version-published.schema.json",
+  "title": "AssetVersionPublishedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventType",
+    "eventVersion",
+    "serviceNamespaceId",
+    "assetId",
+    "versionId",
+    "manifestType",
+    "derivativeCount",
+    "occurredAt"
+  ],
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "const": "asset.version.published"
+    },
+    "eventVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "serviceNamespaceId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "manifestType": {
+      "type": "string"
+    },
+    "derivativeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occurredAt": {
+      "type": "string"
+    }
+  }
+}

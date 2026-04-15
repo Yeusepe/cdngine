@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/upload-session-create-response.schema.json",
+  "title": "UploadSessionCreateResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["uploadSessionId", "assetId", "versionId", "isDuplicate", "uploadTarget", "status", "links"],
+  "properties": {
+    "uploadSessionId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "isDuplicate": {
+      "type": "boolean"
+    },
+    "uploadTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "method", "url", "expiresAt"],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": ["tus"]
+        },
+        "method": {
+          "type": "string",
+          "enum": ["PATCH"]
+        },
+        "url": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["awaiting-upload"]
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "version"],
+      "properties": {
+        "complete": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

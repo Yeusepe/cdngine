@@ -1,0 +1,33 @@
+{
+  "name": "@cdngine/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "cdngine": {
+    "governingDocs": [
+      "docs/workflow-extensibility.md",
+      "docs/temporal-message-contracts.md",
+      "docs/versioning-and-compatibility.md"
+    ],
+    "programmingPractices": [
+      "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
+      "docs/regular-programming-practices/interfaces-and-data-flow.md",
+      "docs/regular-programming-practices/storage-and-state.md",
+      "docs/regular-programming-practices/testing-and-scale.md",
+      "docs/regular-programming-practices/security-verification-baseline.md",
+      "docs/regular-programming-practices/implementation-strategy.md"
+    ],
+    "externalReferences": [
+      "https://docs.temporal.io/develop/typescript",
+      "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
+      "https://docs.temporal.io/develop/safe-deployments"
+    ]
+  }
+}

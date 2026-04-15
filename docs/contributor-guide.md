@@ -34,6 +34,41 @@ For non-trivial changes:
 4. keep examples and generated docs aligned
 5. update runbook or threat-model indexes when a new operational surface is introduced
 
+## 3.1 Workspace guardrails
+
+The repository now uses a real npm workspace foundation.
+
+Contributors should use these root commands:
+
+1. `npm install`
+2. `npm run docs:check`
+3. `npm run contracts:check`
+4. `npm run typecheck`
+5. `npm run build`
+6. `npm run test`
+7. `npm run verify`
+
+Every workspace package in `apps/*` and `packages/*` must keep its `package.json` metadata up to date:
+
+- `cdngine.governingDocs`
+- `cdngine.programmingPractices`
+- `cdngine.externalReferences`
+
+Every TypeScript source file in those workspaces must also keep a reference header that includes:
+
+- `Purpose:`
+- `Governing docs:`
+- `External references:`
+- `Tests:`
+
+Those checks are enforced by `npm run docs:check`, so this coupling is executable rather than aspirational.
+
+The published-contract baseline is also executable now:
+
+- `npm run contracts:lint` validates the OpenAPI, AsyncAPI, and Arazzo source descriptions
+- `npm run contracts:bundle` writes bundled artifacts to `contracts/dist/`
+- `npm run contracts:examples` validates example JSON files against sibling JSON Schemas
+
 ## 4. Dependency expectations
 
 Default order of preference:
@@ -45,6 +80,8 @@ Default order of preference:
 5. narrow custom code
 
 Any change that skips ahead in that order should explain why.
+
+The programming-practices suite in `docs/regular-programming-practices/` is mandatory for coded changes. Stage-specific docs add to that suite; they do not replace it.
 
 ## 5. Review checklist
 

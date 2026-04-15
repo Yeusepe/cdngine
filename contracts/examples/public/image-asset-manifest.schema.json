@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/image-asset-manifest.schema.json",
+  "title": "ImageAssetManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "manifestType", "assetId", "versionId", "derivatives"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "manifestType": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "derivatives": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["variant", "contentType", "deterministicKey", "width", "height"],
+        "properties": {
+          "variant": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "deterministicKey": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

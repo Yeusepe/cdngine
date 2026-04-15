@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/delivery-authorization-response.schema.json",
+  "title": "DeliveryAuthorizationResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assetId", "versionId", "deliveryScopeId", "authorizationMode", "resolvedOrigin", "expiresAt", "url"],
+  "properties": {
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "deliveryScopeId": {
+      "type": "string"
+    },
+    "authorizationMode": {
+      "type": "string",
+      "enum": ["public", "signed-url", "signed-cookie"]
+    },
+    "resolvedOrigin": {
+      "type": "string",
+      "enum": ["cdn-derived", "origin-derived", "manifest-bundle"]
+    },
+    "expiresAt": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

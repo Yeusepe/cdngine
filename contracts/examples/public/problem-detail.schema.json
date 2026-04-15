@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cdngine.dev/examples/public/problem-detail.schema.json",
+  "title": "ProblemDetail",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["type", "title", "status", "detail", "retryable"],
+  "properties": {
+    "type": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "detail": {
+      "type": "string"
+    },
+    "instance": {
+      "type": "string"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "versionId": {
+      "type": "string"
+    },
+    "workflowId": {
+      "type": "string"
+    }
+  }
+}

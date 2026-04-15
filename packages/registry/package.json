@@ -6,14 +6,16 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run prisma:validate && tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test"
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
+    "test": "npm run prisma:validate && node --test"
   },
   "cdngine": {
     "governingDocs": [
       "docs/domain-model.md",
       "docs/persistence-model.md",
+      "docs/state-machines.md",
       "docs/idempotency-and-dispatch.md"
     ],
     "programmingPractices": [
@@ -26,8 +28,15 @@
     ],
     "externalReferences": [
       "https://www.prisma.io/docs/orm/prisma-client/queries/transactions",
+      "https://www.prisma.io/docs/orm/prisma-schema/data-model/models",
       "https://www.postgresql.org/docs/",
       "https://semver.org/"
     ]
+  },
+  "dependencies": {
+    "@prisma/client": "^7.7.0"
+  },
+  "devDependencies": {
+    "prisma": "^7.7.0"
   }
 }

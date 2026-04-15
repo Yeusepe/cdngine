@@ -12,6 +12,7 @@ Use this page first instead of treating `docs/` as one flat list.
 - [Idempotency And Dispatch](./idempotency-and-dispatch.md)
 - [Canonical Source And Tiering Contract](./canonical-source-and-tiering-contract.md)
 - [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
+- [Upstream Integration Model](./upstream-integration-model.md)
 - [Original Source Delivery](./original-source-delivery.md)
 - [Temporal Message Contracts](./temporal-message-contracts.md)
 - [Versioning And Compatibility](./versioning-and-compatibility.md)

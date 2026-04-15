@@ -12,9 +12,13 @@ ADRs should capture the decision, the alternatives that mattered, and the conseq
 - [0004 Ingest Boundary And API Surfaces](./0004-ingest-boundary-and-api-surfaces.md)
 - [0005 Programmatic Scope And Authorization Model](./0005-programmatic-scope-and-authorization-model.md)
 - [0007 CDN As Code SDK And FFI Model](./0007-cdn-as-code-sdk-and-ffi-model.md)
-- [0008 Xet As Canonical Content Plane](./0008-xet-as-canonical-content-plane.md)
+- [0008 Xet As Canonical Content Plane (Superseded)](./0008-xet-as-canonical-content-plane.md)
 - [0009 Delivery Scopes, Private Access, And Streaming](./0009-delivery-scopes-private-access-and-streaming.md)
 - [0010 Canonical Source Repository And Tiered Storage](./0010-canonical-source-repository-and-tiered-storage.md)
+
+ADR numbering is not required to be contiguous. `0006` is intentionally unused to preserve numbering from earlier planning history.
+
+Superseded ADRs remain in the directory as historical context only. Current implementation guidance should follow the accepted, non-superseded ADRs.
 
 ## ADR writing expectations
 

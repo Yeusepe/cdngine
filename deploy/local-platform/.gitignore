@@ -1,0 +1,7 @@
+# Purpose: Keeps machine-local local-stack configuration out of version control.
+# Governing docs:
+# - deploy/local-platform/README.md
+# Tests:
+# - N/A
+
+.env

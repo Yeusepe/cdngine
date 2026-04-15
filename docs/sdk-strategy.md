@@ -211,6 +211,18 @@ SDK releases should ship with:
 
 The workflow docs should not exist only as prose. Multi-step examples should stay aligned to Arazzo and the generated SDK entry points.
 
+## 10.1 Upstream systems are not the public SDK contract
+
+CDNgine SDKs should wrap **CDNgine**, not the storage/orchestration stack directly.
+
+Public SDKs therefore:
+
+- call CDNgine HTTP APIs generated from OpenAPI
+- use Arazzo-described multi-step flows for upload and polling
+- hide upstream implementation details such as tusd hooks, SeaweedFS buckets, Kopia commands, ORAS publication, Nydus mounts, and Temporal workflow APIs
+
+Internal platform packages may consume those systems directly through adapters, but that is a separate integration surface documented in [Upstream Integration Model](./upstream-integration-model.md).
+
 ## 11. References
 
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
@@ -225,3 +237,4 @@ The workflow docs should not exist only as prose. Multi-step examples should sta
 - [Convex OpenAPI and other languages](https://docs.convex.dev/client/open-api)
 - [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
 - [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [Upstream Integration Model](./upstream-integration-model.md)

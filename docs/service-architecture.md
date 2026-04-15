@@ -76,6 +76,22 @@ Recommended service areas:
 
 The Hono route tree should stay thin. Host-specific composition should wrap these services, not replace their ownership model.
 
+## 4.1 Upstream integration boundary
+
+The service code should not connect to every upstream system ad hoc from random route handlers or activities.
+
+The intended posture is:
+
+- **Temporal** is consumed directly through the TypeScript SDK
+- **SeaweedFS** staging and derived storage are consumed through S3-compatible clients
+- **SeaweedFS filer** is consumed through internal HTTP only where filer semantics are actually needed
+- **Kopia** is consumed through a managed repository server plus controlled CLI adapter
+- **ORAS** is consumed through ORAS CLI and OCI registry semantics
+- **Nydus** is consumed as a worker/runtime layer, not as a public API dependency
+- **Alluxio** is consumed only as an optional cache/control service
+
+See [Upstream Integration Model](./upstream-integration-model.md) for the exact API, SDK, and CLI boundaries.
+
 ## 5. Request path posture
 
 The synchronous request path should do only the work that belongs in a direct request boundary:

@@ -222,8 +222,8 @@ The source stack should separate three jobs that are often wrongly collapsed int
 
 The default posture is:
 
-- run **Kopia** for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
 - use **SeaweedFS** as the default S3-compatible substrate so the platform can control tiered storage rather than leaving every byte in one undifferentiated class
+- run **Kopia** on top of that substrate for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
 - use **JuiceFS** when tools or workers need a shared POSIX workspace
 - use **Nydus** and optional **Alluxio** only where repeated package-like reads justify them
 
@@ -251,7 +251,7 @@ The architecture should also consume operating patterns from adjacent systems:
 - Inngest, Trigger.dev, DBOS, and Restate reinforce that durable business logic belongs in workflows with explicit waits, retries, cancellation, and run history
 - Convex reinforces that the public surface should generate pleasant developer APIs, not just technically valid clients
 - OpenMetadata and DataHub reinforce that the registry is a lineage and metadata plane, not a loose bag of tables
-- lakeFS reinforces that branch, publish, revert, GC, and retention are platform features, not storage afterthoughts
+- lakeFS reinforces that branch, publish, revert, GC, and retention are platform features, not storage afterthoughts when a deployment explicitly needs Git-like branch or publish semantics
 - Kopia, restic, and Borg reinforce immutable snapshot identity, pack-file design, and repository maintenance discipline
 - SeaweedFS and JuiceFS reinforce that byte placement and workspace semantics belong in a real substrate, not in ad hoc application code
 - Nydus reinforces that lazy reads and chunk-aware loading can materially reduce hot-read cost for package-like assets

@@ -495,7 +495,7 @@ The source repository's responsibility is **not** "be the hot delivery origin fo
 - provide the immutable replay source for every later derivation run
 - anchor auditability when recipes, workers, or schemas change over time
 
-By default, CDNgine treats the canonical source repository as the **source-of-truth canonical content plane for source assets**, not as the storage system that must serve every delivery-path read.
+By default, CDNgine treats the canonical source repository as the **source-of-truth canonical source plane for originals**, not as the storage system that must serve every delivery-path read.
 
 Canonical assets may still live physically in the tiered storage substrate beneath the repository. The platform should address them through repository identities and reconstruction metadata, not through raw object keys.
 

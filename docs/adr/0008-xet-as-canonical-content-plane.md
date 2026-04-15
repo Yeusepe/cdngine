@@ -4,71 +4,46 @@
 
 Superseded by [ADR 0010](./0010-canonical-source-repository-and-tiered-storage.md)
 
-## Context
+> Historical record only. Do **not** implement from this ADR. It captures an earlier Xet-based direction that has been replaced by the canonical-source-repository and tiered-storage model in ADR 0010.
 
-CDNgine needs a canonical source plane for large binary assets such as:
+## Historical context
 
-- Unity packages
-- Substance Painter files
-- FBX files
-- textures and texture sets
-- video masters
-- archive-like asset bundles
+At the time of this decision, CDNgine was looking for a stronger answer to storage efficiency across repeated binary revisions than the earlier Oxen-oriented direction.
 
-The previous Oxen-based design preserved provenance correctly, but it was not optimized for storage efficiency across repeated binary revisions.
-
-Official Xet documentation describes a content-addressed storage system with:
+Xet was evaluated because it offered:
 
 - content-defined chunking
 - chunk-level deduplication
-- xorb block aggregation
-- shard-based file reconstruction metadata
-- local, cached, and global deduplication layers
-- storage-bucket deployments with no Git overhead
+- repository-style reconstruction metadata
+- S3-backed storage deployment options
 
-That is a better fit for a binary-heavy asset platform where many revisions share large regions of unchanged content.
+That made it a plausible candidate for large iterative binaries such as Unity packages, Substance Painter files, texture sets, video masters, and archive-like assets.
 
-## Decision
+## Historical decision
 
-Adopt **Xet backed by S3-compatible storage** as the canonical content plane.
+This ADR originally selected **Xet backed by S3-compatible storage** as the canonical source plane.
 
-That means:
+That decision is no longer current.
 
-1. public clients still upload to an ingest-managed target, normally `tusd` backed by S3-compatible staging storage
-2. upload completion canonicalizes the staged object into Xet rather than treating the staging object as canonical
-3. the canonical source identity stored in the registry is Xet-oriented, including:
-   - Xet scope or bucket identity
-   - Xet file ID or equivalent reconstruction identity
-   - content digest
-   - logical canonical path
-4. S3 remains the underlying physical storage substrate, but canonical assets are addressed through Xet semantics rather than raw object keys
-5. workers reconstruct canonical source files from Xet into isolated scratch space before processing
-6. derived artifacts remain in a separate S3-compatible derived object store in front of the CDN
-7. selected source-side evidence may also be stored with Xet when it should remain replay-coupled to the canonical source
+## Why it was superseded
 
-## Alternatives considered
+Later architecture work concluded that the platform needed a broader and clearer model than a single Xet-specific source-plane decision:
 
-### Continue with Oxen
+- a canonical source repository with explicit snapshot semantics
+- a separate tiered storage substrate
+- optional lazy-read and hot-cache layers
+- an explicit artifact-graph publication layer
 
-Rejected because the workload is dominated by large binary assets where chunk-level deduplication over S3-backed storage is a stronger fit.
+Those requirements are now captured by [ADR 0010](./0010-canonical-source-repository-and-tiered-storage.md), which establishes the current direction:
 
-### Upload directly from public clients into Xet as the default
+- **Kopia** as the canonical source repository
+- **SeaweedFS** by default, with **JuiceFS** when POSIX workspace semantics matter
+- **Nydus** with optional **Alluxio** for selected hot-read paths
+- **ORAS** for immutable artifact graphs and bundle publication
 
-Rejected as the default because public ingest still benefits from resumable tus semantics, simpler browser clients, and a clear staging-to-canonicalization boundary.
+## Preserved historical references
 
-### Use raw S3 as the canonical source of truth
-
-Rejected because raw S3 object keys alone do not provide the deduplication, reconstruction, or canonical identity semantics needed by the platform.
-
-## Consequences
-
-- the storage architecture becomes `ingest staging in S3 -> canonicalization into Xet over S3 -> processing from Xet -> publication to derived store`
-- the registry and workflow model must store Xet file identities instead of the earlier Oxen-style source identities
-- observability must track deduplication savings, Xet reconstruction health, and canonicalization throughput
-- worker design should take advantage of local Xet caches where beneficial
-- delivery still does not read canonical source data on the hot path
-
-## References
+These links remain only to preserve the research trail behind the superseded decision:
 
 - [Xet Protocol Specification](https://huggingface.co/docs/xet)
 - [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)

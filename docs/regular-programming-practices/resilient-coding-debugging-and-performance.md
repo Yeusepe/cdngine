@@ -201,7 +201,7 @@ This inventory is the research base behind the rules above. It is intentionally 
 | 65 | state/data/storage | SQLite Locking and Concurrency | https://www.sqlite.org/lockingv3.html | Good explanation of contention and safety. |
 | 66 | state/data/storage | Redis Data Types | https://redis.io/docs/latest/develop/data-types/ | Helps choose correct cache structures. |
 | 67 | state/data/storage | Apache Kafka Documentation | https://kafka.apache.org/documentation/ | Durable event processing reference. |
-| 68 | state/data/storage | MongoDB Data Modeling | https://www.mongodb.com/docs/manual/data-modeling/ | Good schema and access-pattern guidance. |
+| 68 | state/data/storage | PostgreSQL JSON Types | https://www.postgresql.org/docs/current/datatype-json.html | Relevant JSONB and structured-metadata guidance for the default registry stack. |
 | 69 | state/data/storage | DynamoDB Basic Data Modeling | https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-BasicDataModeling.html | Useful scalable data-model guidance. |
 | 70 | state/data/storage | EF Core Concurrency | https://learn.microsoft.com/en-us/ef/core/saving/concurrency | Practical write-conflict handling reference. |
 | 71 | performance | web.dev Performance | https://web.dev/performance/ | Strong modern web performance guidance. |

@@ -1,0 +1,15 @@
+# Purpose: Provides the Temporal dynamic config used by the local fast-start stack.
+# Governing docs:
+# - deploy/local-platform/README.md
+# - docs/environment-and-deployment.md
+# External references:
+# - https://raw.githubusercontent.com/temporalio/docker-compose/main/dynamicconfig/development-sql.yaml
+# Tests:
+# - docker compose --env-file deploy/local-platform/.env.example -f deploy/local-platform/compose.fast-start.yaml config
+
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}

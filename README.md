@@ -1,293 +1,214 @@
 ![CDNgine](https://github.com/user-attachments/assets/8feb6790-796e-4de7-ab57-40bd2942df7f)
 
-CDNgine is a **generic asset processing and delivery platform** for teams that need one durable system for ingest, versioning, derivation, and global delivery of binary assets.
+CDNgine is an asset ingest, processing, and delivery platform for products that need one system for **canonical source storage, durable workflow orchestration, deterministic derivatives, and CDN-friendly delivery**.
 
-It is designed for products and internal domains that work with:
+It is designed for workloads such as:
 
 - images and textures
 - video
 - presentations and PDFs
-- archives and packages
-- future custom asset types registered through explicit capability and workflow contracts
-
-The repository currently focuses on the **architecture, platform model, and implementation guidance** for the system.
-
-## What CDNgine is trying to solve
-
-Most asset systems become inconsistent over time:
-
-- originals and generated outputs get mixed together
-- delivery paths are fast but hard to replay
-- workflows are added through scattered conditionals
-- every new file type forces redesign
-- platform behavior depends too much on one deployment environment
-
-CDNgine is meant to fix that by standardizing a few core rules:
-
-1. **raw uploads stay canonical**
-2. **derivatives are deterministic and regenerable**
-3. **expensive work happens in durable workflows**
-4. **delivery stays CDN-friendly**
-5. **new asset types are added through registration, not service sprawl**
+- archives and package-like assets
+- future file types added through explicit capability and workflow registration
 
 ## Core model
 
-At a high level, CDNgine separates **canonical source**, **control**, **materialization**, and **delivery**:
+CDNgine separates four concerns that most asset systems blur together:
 
-- **Kopia** is the default canonical source repository and stores immutable source versions through rolling-hash chunking, deduplication, compression, and snapshot history
-- a **SeaweedFS** or **JuiceFS** substrate gives the source and derived planes operational storage tiers, S3-compatible access, and fast local or regional placement
-- the **registry** stores asset, version, derivative, manifest, workflow, and audit state
-- **Temporal** owns long-running orchestration and replay-safe execution
-- **ORAS** packages deterministic derived bundles, manifests, and integrity-linked artifact graphs
-- **Nydus** is the default lazy-read layer, with optional **Alluxio** hot caching, to accelerate repeated internal reads without forcing every output to stay permanently materialized
-- the **CDN** serves browser-friendly published artifacts on the hot path
+1. **ingest**: clients upload through a stable API and resumable upload target
+2. **canonical source**: originals are snapshotted into a deduplicated canonical source plane
+3. **processing**: workers derive deterministic outputs through durable workflows
+4. **delivery**: published artifacts are served from a derived delivery plane in front of a CDN
 
-That means the platform treats:
+The intended default flow is:
 
-- the **canonical source repository** as the source of truth for immutable originals and iterative revisions
-- the **tiered storage substrate** as the byte-placement layer for hot, warm, and cold data
-- **ORAS** as the artifact-graph layer for deterministic published bundles
-- the **derived store plus CDN** as the source of truth for browser-facing delivery artifacts
-- the **registry** as the system of record for control-plane state
+`client -> API -> tusd/staging -> canonical source snapshot -> Temporal workflow -> derived publication -> CDN`
 
-## How ingest actually works
+### Platform at a glance
 
-The ingest path is:
+```mermaid
+flowchart LR
+    Client["Client / SDK"] --> API["CDNgine API"]
+    API --> Ingest["tusd ingest target"]
+    API --> Registry["Registry + idempotency"]
+    Registry --> Temporal["Temporal workflows"]
+    Temporal --> Workers["Workers"]
+    Workers --> Source["Canonical source plane\nKopia + tiered substrate"]
+    Workers --> Artifacts["ORAS artifact graph"]
+    Workers --> Derived["Derived delivery plane"]
+    Client --> CDN["CDN"]
+    CDN --> Derived
+```
 
-1. the client calls CDNgine to create an upload session
-2. CDNgine creates the asset and version records in the registry
-3. CDNgine returns upload instructions for an **ingest-managed upload target**
-4. the client uploads the original binary to that ingest target
-5. the client calls upload completion
-6. CDNgine validates the upload and snapshots the staged object into the **canonical source repository**, which stores deduplicated content over the tiered storage substrate
-7. CDNgine starts a durable workflow in **Temporal**
-8. workers materialize the canonical source version through the source repository and hot cache layers
-9. workers validate and transform that source into delivery variants
-10. workers package deterministic delivery bundles and manifests through **ORAS** where bundle semantics matter
-11. workers publish browser-facing outputs into the **derived store**
-12. the registry records the derivative keys, artifact references, and manifest
+The important split is:
 
-The important point is: the **canonical source repository** should own immutable source identity, deduplicated source history, and replay provenance.
+- the **canonical source plane** exists for provenance, deduplication, replay, and storage-efficient retention
+- the **derived delivery plane** exists for browser-friendly published artifacts and hot delivery
 
-That does **not** mean the source repository must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of the source repository is the cleaner operational choice for browser and SDK clients.
+Public clients should not need to understand Kopia, SeaweedFS, ORAS, Nydus, or Temporal directly. They talk to **CDNgine APIs and SDKs**.
 
-The current best default for that public upload endpoint is:
+### What lives where
 
-- **tus/tusd** for resumable, reusable, protocol-level uploads
-- backed by multipart-capable object storage where that improves throughput and recovery
+```mermaid
+flowchart TB
+    subgraph Source["Canonical source plane"]
+        SourceRepo["Kopia\ncanonical source repository"]
+        Substrate["SeaweedFS / JuiceFS\nbyte placement and retention"]
+        SourceRepo --> Substrate
+    end
 
-So the intended default public ingest path is:
+    subgraph Control["Control plane"]
+        ApiLayer["Public / platform / operator APIs"]
+        Registry["PostgreSQL + JSONB"]
+        Workflow["Temporal"]
+    end
 
-- `client -> API session creation -> tusd/staging upload -> snapshot into canonical source repository -> workflow dispatch`
+    subgraph Delivery["Derived delivery plane"]
+        Oras["ORAS / OCI artifacts"]
+        DerivedStore["S3-compatible derived store"]
+        Edge["CDN"]
+        Oras --> DerivedStore
+        Edge --> DerivedStore
+    end
 
-Canonical source assets still live physically on a tiered S3-compatible substrate, but they are addressed through repository snapshots, chunk identities, and canonical logical paths rather than raw application-level object keys.
+    ApiLayer --> Registry
+    Registry --> Workflow
+    Workflow --> SourceRepo
+    Workflow --> Oras
+    Workflow --> DerivedStore
+```
 
-Trusted internal flows can use the source plane more directly:
+### Upload to delivery
 
-- bulk imports can snapshot directly into the canonical repository when the caller already has trusted access to the substrate
-- operator recovery and replay anchor to repository snapshot IDs, content digests, and canonical logical paths
-- package-like or rebuildable assets may also be exposed through **Nydus** for high-frequency internal reads
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as CDNgine API
+    participant Ingest as tusd / staging
+    participant Source as Canonical source plane
+    participant Temporal as Temporal
+    participant Worker as Worker
+    participant Derived as Derived delivery plane
+    participant CDN as CDN
 
-## How delivery actually works
+    Client->>API: Create upload session
+    API-->>Client: Upload target + metadata contract
+    Client->>Ingest: Upload source file
+    Client->>API: Complete upload
+    API->>Source: Snapshot staged asset
+    API->>Temporal: Start durable workflow
+    Temporal->>Worker: Execute validation + processing
+    Worker->>Source: Read canonical source
+    Worker->>Derived: Publish deterministic outputs
+    Client->>CDN: Fetch published derivative
+    CDN->>Derived: Read delivery artifact
+```
 
-The delivery path is different from the ingest path:
+## Default reference stack
 
-1. the client asks CDNgine for asset metadata, derivatives, or a manifest
-2. CDNgine returns manifest data and, where needed, a signed delivery URL or path
-3. the client fetches the published derivative through the **CDN**
-4. the CDN serves from cache or fetches from the **derived store**
+CDNgine is opinionated about the default stack, but not about one mandatory infrastructure vendor.
 
-The important point is: **clients do not normally download published derivatives from the canonical source repository.**
-
-When a client needs the **original source asset itself**, that is a separate flow:
-
-1. the client asks the API to authorize original-source delivery for a version
-2. CDNgine resolves the canonical source snapshot for that version
-3. CDNgine either proxies reconstruction from the source repository, returns a tightly scoped lazy-read handle for trusted internal clients, or, only when justified, materializes a delivery export depending on policy and deployment posture
-
-That means **published delivery** and **original-source delivery** are different concerns:
-
-- published delivery optimizes for CDN-friendly hot reads
-- original-source delivery optimizes for exact canonical reconstruction, policy control, and provenance
-- the original is stored once in the canonical repository by default; a second delivery copy is optional rather than automatic
-
-There is also an important transfer distinction:
-
-- a **generic browser download** of the original is usually just a normal byte stream from a proxy or export path
-- a **trusted internal client** can use a lazy chunk-backed read path and hot cache to avoid rehydrating the full asset on every read
-- published derivatives still rely on CDN caching, immutable artifact keys, and selective materialization rather than source-plane transfer semantics
-
-The canonical source plane is for:
-
-- canonical originals
-- deduplicated source storage across revisions and related binaries
-- replay
-- provenance
-- storage-efficient retention of very large iterative assets such as Unity packages, `.spp` files, PSD/EXR sources, video masters, and archives
-
-The derived store plus CDN are for:
-
-- thumbnails
-- WebP masters
-- posters
-- HLS segments
-- slide images
-- other published delivery outputs
-
-## Why the split exists
-
-This split is intentional:
-
-- the **canonical source repository** answers: "what exact immutable source version should replay use, and which chunks are already stored?"
-- the **derived store** answers: "what exact browser-facing artifact should the client receive right now?"
-
-If the client needs the canonical original, the service should expose that through an explicit **original-source delivery** contract rather than pretending the public delivery CDN path and the canonical source path are the same thing.
-
-If every published derivative had to be delivered from the source repository, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
-
-Likewise, if every public upload had to speak source-repository semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized canonical content system. The cleaner pattern is usually:
-
-- simple upload target for ingress
-- snapshotting into the canonical repository after ingest finalization
-- replay and derivation from the canonical repository
-- selective lazy materialization for hot internal reads
-
-The stronger source-plane posture is not "store everything in the CDN." It is "use the right layer for the right job":
-
-- **Kopia** for deduplicated snapshot history and rolling-hash chunking
-- **SeaweedFS** for tiered blob placement, cloud tier movement, and S3-compatible storage access
-- **JuiceFS** where POSIX mounts or shared workspace semantics matter for tools and artists
-- **Nydus** for package-like or rebuildable hot paths
-- **ORAS** for immutable artifact graphs, manifests, and bundle publication
-
-## Service stack direction
-
-The current service-level direction is:
-
-| Concern | Default direction |
+| Concern | Default |
 | --- | --- |
-| runtime language | TypeScript |
-| HTTP and API layer | Hono |
-| host environment | portable between Encore and Nest |
-| database access and migrations | Prisma |
-| primary SQL engine | PostgreSQL + JSONB |
-| cache and short-lived coordination | Redis |
-| durable workflows | Temporal |
-| resumable upload endpoint | tus / tusd |
-| image delivery and transform | imgproxy + libvips |
-| video processing | FFmpeg |
-| document normalization | Gotenberg |
-| canonical raw source | Kopia repository over a SeaweedFS-backed S3 namespace |
-| hot read acceleration | Nydus plus optional Alluxio cache |
-| artifact graph and bundle registry | ORAS over OCI registry |
-| branch/publish semantics when needed | lakeFS |
-| derived delivery origin | S3-compatible object storage |
+| HTTP and API layer | **Hono** |
+| host shell | **Encore** or **Nest** |
+| database access and migrations | **Prisma** |
+| registry database | **PostgreSQL + JSONB** |
+| cache and short-lived coordination | **Redis** |
+| resumable ingest | **tus / tusd** |
+| durable workflows | **Temporal** |
+| canonical source repository | **Kopia** |
+| tiered storage substrate | **SeaweedFS** by default, **JuiceFS** when POSIX workspace semantics matter |
+| lazy internal reads | **Nydus** plus optional **Alluxio** |
+| artifact graph and immutable bundles | **ORAS / OCI artifacts** |
+| image processing and delivery | **imgproxy + libvips** |
+| video processing | **FFmpeg** |
+| document normalization | **Gotenberg** |
+| derived delivery origin | **S3-compatible object storage + CDN** |
+| optional branch/publish semantics | **lakeFS**, only when that workflow is needed |
 
-This is an **opinionated default profile**, not a claim that every adopter must use the exact same infrastructure provider.
+The architecture is intentionally biased toward **running upstream systems directly** instead of reimplementing chunking, snapshotting, lazy reads, artifact graphs, or workflow bookkeeping in application code.
 
-You should use these packages and services where possible, but you are free to use your own infrastructure providers if you preserve the platform semantics.
+## What CDNgine owns
 
-- run **Kopia** for canonical source history instead of rebuilding chunking or snapshot semantics
-- run **SeaweedFS** as the default tiered substrate instead of inventing custom hot/warm/cold placement logic
-- use **JuiceFS** only when a real POSIX workspace is needed
-- use **Nydus** for lazy chunk-addressed reads instead of writing a bespoke lazy materializer
-- use **ORAS** for artifact graphs instead of inventing a custom bundle registry
-- use **Alluxio** only when a shared hot cache is justified by the workload
+CDNgine should own:
 
-## Architectural stance
+- public, platform-admin, and operator APIs
+- registry state for assets, versions, derivatives, manifests, idempotency, and auditability
+- workflow composition and processor registration
+- delivery policy, signing, and manifest semantics
+- adapter boundaries around the storage and orchestration stack
 
-CDNgine is intentionally opinionated about the things that matter most:
+CDNgine should consume:
 
-- **deduplicated canonical source history** is required
-- **lazy or selective materialization** is required for hot internal reads
-- **deterministic derivative keys** are required
-- **Temporal-style durable orchestration semantics** are required
-- **public API behavior** should remain stable even if host/runtime choices differ
+- **tusd** for resumable uploads
+- **Kopia** for canonical source history
+- **SeaweedFS** and optional **JuiceFS** for substrate and workspace behavior
+- **Temporal** for durable orchestration
+- **ORAS** for artifact publication
+- **Nydus** and optional **Alluxio** for selected hot-read paths
 
-At the same time, the platform is meant to stay portable where that does not break platform semantics:
+## API posture
 
-- SQL deployment
-- object storage provider
-- CDN
-- worker runtime
-- application host shell around the Hono-based API layer
+CDNgine exposes three surfaces:
 
-## Supported workload families
+| Surface | Audience | Compatibility expectation |
+| --- | --- | --- |
+| `public` | product clients and generated SDKs | stable, versioned contract |
+| `platform-admin` | internal platform owners | documented internal API |
+| `operator` | operators and recovery tooling | documented internal API |
 
-The architecture is generic on purpose. It is meant to support workloads such as:
+The **public** surface is the product contract. The platform-admin and operator surfaces are deliberate, but they are not the broad public SDK promise.
 
-- image upload, validation, thumbnails, and format conversion
-- texture slicing, tiling, and other frontend-oriented image derivation
-- video transcoding, poster extraction, and streaming publication
-- PowerPoint or PDF normalization into slide-oriented delivery outputs
-- archive and package preservation, inspection, and future domain-specific transforms
+## Current repository state
 
-## One-sentence mental model
+The repository is documentation-heavy on purpose. It is defining:
 
-If you only remember one thing, remember this:
+- the architecture and service model
+- canonical source, tiering, and delivery rules
+- public API and SDK posture
+- persistence, lifecycle, idempotency, and workflow contracts
+- observability, security, SLOs, runbooks, and threat models
 
-**clients upload originals through the ingest service, CDNgine snapshots them into a deduplicated canonical source repository on a tiered substrate, workers materialize only the bytes they need, and clients download published outputs from the CDN-backed derived store.**
+That work comes before a larger implementation push because this platform has too many moving parts to safely improvise its semantics later.
 
-## What is in this repository
+## Local fast-start
 
-This repository currently contains the **design and implementation guidance** for the platform:
+The easiest supported local path lives in [deploy/local-platform](./deploy/local-platform/README.md).
 
-- reference architecture
-- service architecture
-- state-machine, persistence, and dispatch contracts
-- canonical source, tiering, and materialization rules
-- public, platform-admin, and operator API surface guidance
-- problem-type and compatibility guidance
-- technology profile and upstream package guidance
-- API and SDK guidance
-- contract-governance and conformance guidance
-- pipeline, workflow, and service registration models
-- observability, security, deployment, and resilience expectations
-- SLOs, runbooks, and threat-model guidance
-- SDK, code-generation, and polyglot FFI strategy
-- ADRs, contributor guidance, and implementation traceability docs
+For Windows PowerShell:
 
-## Where to start
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\start.ps1
+```
 
-If you are new to the project, read in this order:
+That brings up PostgreSQL, Redis, Temporal, RustFS, tusd, Kopia, and a local OCI registry with one command.
+
+## Read in this order
 
 1. [docs/architecture.md](./docs/architecture.md)
 2. [docs/service-architecture.md](./docs/service-architecture.md)
-3. [docs/technology-profile.md](./docs/technology-profile.md)
-4. [docs/package-reference.md](./docs/package-reference.md)
-5. [docs/README.md](./docs/README.md)
+3. [docs/upstream-integration-model.md](./docs/upstream-integration-model.md)
+4. [docs/api-surface.md](./docs/api-surface.md)
+5. [docs/technology-profile.md](./docs/technology-profile.md)
+6. [docs/package-reference.md](./docs/package-reference.md)
+7. [docs/README.md](./docs/README.md)
 
-## Documentation map
+## Key documentation
 
-The full docs index lives at [docs/README.md](./docs/README.md).
+The full documentation index lives at [docs/README.md](./docs/README.md).
 
-Key entry points:
+Important entry points:
 
-- **Platform**
-  - [Architecture](./docs/architecture.md)
-  - [Service Architecture](./docs/service-architecture.md)
-  - [State Machines](./docs/state-machines.md)
-  - [Persistence Model](./docs/persistence-model.md)
-  - [Canonical Source And Tiering Contract](./docs/canonical-source-and-tiering-contract.md)
-  - [Technology Profile](./docs/technology-profile.md)
-  - [Package And Repository Reference](./docs/package-reference.md)
-- **Reference**
-  - [API Surface](./docs/api-surface.md)
-  - [API Style Guide](./docs/api-style-guide.md)
-  - [Problem Types](./docs/problem-types.md)
-  - [SDK Strategy](./docs/sdk-strategy.md)
-  - [Spec Governance](./docs/spec-governance.md)
-  - [Pipeline Capability Model](./docs/pipeline-capability-model.md)
-  - [Workflow Extensibility](./docs/workflow-extensibility.md)
-- **Operations**
-  - [Environment And Deployment](./docs/environment-and-deployment.md)
-  - [Observability](./docs/observability.md)
-  - [SLO And Capacity](./docs/slo-and-capacity.md)
-  - [Security Model](./docs/security-model.md)
-  - [Resilience And Scale Validation](./docs/resilience-and-scale-validation.md)
-
-## Current state
-
-The repository is currently architecture- and documentation-heavy. It is establishing the platform contract before implementation fills in the executable services and workflows.
-
-That is intentional: this system has enough moving parts that unclear architecture would create bad implementation faster than useful implementation.
+- [Architecture](./docs/architecture.md)
+- [Service Architecture](./docs/service-architecture.md)
+- [Canonical Source And Tiering Contract](./docs/canonical-source-and-tiering-contract.md)
+- [Storage Tiering And Materialization](./docs/storage-tiering-and-materialization.md)
+- [Upstream Integration Model](./docs/upstream-integration-model.md)
+- [API Surface](./docs/api-surface.md)
+- [SDK Strategy](./docs/sdk-strategy.md)
+- [Technology Profile](./docs/technology-profile.md)
+- [Package And Repository Reference](./docs/package-reference.md)
+- [Environment And Deployment](./docs/environment-and-deployment.md)
+- [Local Platform](./deploy/local-platform/README.md)
+- [Implementation Ledger](./docs/implementation-ledger.md)
+- [Traceability](./docs/traceability.md)

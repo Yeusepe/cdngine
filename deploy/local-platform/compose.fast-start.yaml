@@ -1,0 +1,225 @@
+# Purpose: Starts the lowest-friction local CDNgine dependency stack for contributor bring-up.
+# Governing docs:
+# - README.md
+# - deploy/local-platform/README.md
+# - docs/environment-and-deployment.md
+# External references:
+# - https://docs.temporal.io/
+# - https://tus.github.io/tusd/storage-backends/aws-s3/
+# - https://kopia.io/docs/repositories/
+# - https://docs.rustfs.com/installation/docker/
+# Tests:
+# - docker compose --env-file deploy/local-platform/.env.example -f deploy/local-platform/compose.fast-start.yaml config
+
+name: cdngine-local-fast-start
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/development-sql.yaml
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    ports:
+      - "${TEMPORAL_PORT:-7233}:7233"
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "${TEMPORAL_UI_PORT:-8080}:8080"
+
+  rustfs-perms:
+    image: alpine:3.21
+    user: root
+    volumes:
+      - rustfs-data:/fix_path
+    command: ["/bin/sh", "-ec", "chown -R 10001:10001 /fix_path"]
+    restart: "no"
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    depends_on:
+      rustfs-perms:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    ports:
+      - "${RUSTFS_API_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+    command:
+      - /data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://127.0.0.1:9000/health && curl -f http://127.0.0.1:9001/rustfs/console/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  rustfs-init:
+    image: amazon/aws-cli:2
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_EC2_METADATA_DISABLED: "true"
+      STAGING_BUCKET: ${STAGING_BUCKET:-cdngine-staging}
+      DERIVED_BUCKET: ${DERIVED_BUCKET:-cdngine-derived}
+      KOPIA_BUCKET: ${KOPIA_BUCKET:-cdngine-kopia}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until aws --endpoint-url http://rustfs:9000 s3api list-buckets >/dev/null 2>&1; do
+          sleep 2
+        done
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$STAGING_BUCKET" >/dev/null 2>&1 || true
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$DERIVED_BUCKET" >/dev/null 2>&1 || true
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$KOPIA_BUCKET" >/dev/null 2>&1 || true
+    restart: "no"
+
+  tusd:
+    image: tusproject/tusd:latest
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    command:
+      - -host=0.0.0.0
+      - -port=1080
+      - -base-path=/files/
+      - -behind-proxy
+      - -s3-bucket=${STAGING_BUCKET:-cdngine-staging}
+      - -s3-endpoint=http://rustfs:9000
+      - -s3-object-prefix=${TUSD_OBJECT_PREFIX:-uploads/}
+    ports:
+      - "${TUSD_PORT:-1080}:1080"
+
+  kopia-init:
+    image: kopia/kopia:latest
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      KOPIA_PASSWORD: ${KOPIA_REPOSITORY_PASSWORD:-cdngine-local-repository}
+      KOPIA_BUCKET: ${KOPIA_BUCKET:-cdngine-kopia}
+      KOPIA_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      KOPIA_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    volumes:
+      - kopia-config:/app/config
+      - kopia-cache:/app/cache
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if kopia repository connect s3 \
+          --bucket="$$KOPIA_BUCKET" \
+          --access-key="$$KOPIA_S3_ACCESS_KEY" \
+          --secret-access-key="$$KOPIA_S3_SECRET_KEY" \
+          --endpoint=rustfs:9000 \
+          --disable-tls \
+          --region="$$AWS_REGION"; then
+          echo "Connected to existing Kopia repository."
+        else
+          echo "Creating a fresh Kopia repository in RustFS."
+          kopia repository create s3 \
+            --bucket="$$KOPIA_BUCKET" \
+            --access-key="$$KOPIA_S3_ACCESS_KEY" \
+            --secret-access-key="$$KOPIA_S3_SECRET_KEY" \
+            --endpoint=rustfs:9000 \
+            --disable-tls \
+            --region="$$AWS_REGION"
+        fi
+    restart: "no"
+
+  kopia:
+    image: kopia/kopia:latest
+    depends_on:
+      kopia-init:
+        condition: service_completed_successfully
+    environment:
+      KOPIA_PASSWORD: ${KOPIA_REPOSITORY_PASSWORD:-cdngine-local-repository}
+    volumes:
+      - kopia-config:/app/config
+      - kopia-cache:/app/cache
+    command:
+      - server
+      - start
+      - --insecure
+      - --without-password
+      - --address=0.0.0.0:51515
+    ports:
+      - "${KOPIA_PORT:-51515}:51515"
+
+  registry:
+    image: registry:2
+    ports:
+      - "${OCI_REGISTRY_PORT:-5000}:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+
+volumes:
+  postgres-data:
+  redis-data:
+  rustfs-data:
+  registry-data:
+  kopia-config:
+  kopia-cache:

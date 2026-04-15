@@ -17,6 +17,24 @@ Recommended environments:
 
 The repository should not treat `local` and `production` as the only meaningful states. Asset platforms fail most often at the integration boundaries between control plane, storage, and worker runtimes.
 
+## 1.1 Local fast-start profile
+
+The simplest supported local setup should optimize for **time-to-first-run**, not full production parity.
+
+The current local fast-start posture is:
+
+- PostgreSQL
+- Redis
+- Temporal plus Temporal UI
+- RustFS as the local S3-compatible backend
+- tusd backed by that RustFS instance
+- Kopia repository server backed by a RustFS bucket
+- local OCI registry for ORAS-compatible publication tests
+
+RustFS is acceptable here because the local goal is contributor speed and predictable one-command bring-up. The broader reference architecture still prefers **SeaweedFS** as the default substrate when moving beyond the fast-start profile.
+
+See [`deploy/local-platform/README.md`](../deploy/local-platform/README.md) for the actual compose-based bring-up.
+
 ## 2. Default deployment profile
 
 The opinionated first production profile is:
@@ -33,6 +51,8 @@ The opinionated first production profile is:
 - S3-compatible derived store for published artifacts
 - CDN in front of derived artifacts
 - specialized worker pools split by workload profile
+
+This production-oriented profile is intentionally richer than the local fast-start profile. Local development should not require full production topology just to make progress.
 
 The important storage rule is: source assets may live physically in the tiered substrate, but application code should address them through canonical repository identities rather than raw canonical object keys.
 

@@ -57,7 +57,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | Restate | `restatedev/restate` | durable service orchestration and stateful execution |
 | OpenMetadata | `open-metadata/OpenMetadata` | metadata-plane entity and lineage modeling |
 | DataHub | `datahub-project/datahub` | metadata graph and lineage thinking |
-| lakeFS | `treeverse/lakeFS` | commit semantics, lifecycle, and GC posture |
+| lakeFS | `treeverse/lakeFS` | optional branch/publish/revert semantics and GC posture when that workflow is needed |
 | Unkey | `unkeyed/unkey` | API control-plane auth and permissions patterns |
 | Better Auth | `better-auth/better-auth` | composable organization-aware auth |
 | Medusa | `medusajs/medusa` | modular workflows and provider composition |

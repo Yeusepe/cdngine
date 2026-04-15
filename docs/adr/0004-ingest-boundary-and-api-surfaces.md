@@ -42,7 +42,7 @@ Rejected because it couples internal service ownership, external customer isolat
 ## Consequences
 
 - the public ingest story is `API -> tusd/object storage -> completion -> canonical source repository`
-- the source repository remains the canonical content plane, not the first direct client upload surface
+- the source repository remains the canonical source plane, not the first direct client upload surface
 - replay, quarantine, purge, and namespace governance live on privileged internal surfaces
 - the registry must hold durable idempotency and workflow-dispatch records
 - future implementation must model asset lifecycle and auth around separate namespace, tenant, and ownership concepts

@@ -18,6 +18,10 @@ The `public` surface is the compatibility contract. The other surfaces are still
 
 The public surface should be shaped for direct SDK generation, not only for human documentation.
 
+Only the **public** endpoints in [5.1](#51-public) are part of the broad product-SDK compatibility promise by default.
+
+The `platform-admin` and `operator` surfaces may evolve with platform releases and should be treated as internal platform APIs unless a narrower compatibility policy is published for them explicitly.
+
 ## 2. Public API groups
 
 The initial public API should expose these groups:
@@ -154,6 +158,21 @@ The public API should be easy to wrap into a high-level SDK shape such as:
 
 That means the HTTP surface should stay boring and resource-oriented while the published contract artifacts describe the workflow clearly enough that generated and handwritten SDK layers do not have to guess.
 
+## 10.1 What the public API does not expose
+
+The public API and public SDKs should not expose the upstream stack directly.
+
+That means product-facing consumers should not need to know about:
+
+- SeaweedFS S3 or filer endpoints
+- Kopia repository commands or snapshot IDs beyond CDNgine-owned source identity fields
+- ORAS CLI or OCI registry internals
+- Nydus runtime details
+- Alluxio cache-control APIs
+- Temporal APIs
+
+Those remain internal implementation dependencies behind CDNgine-owned routes and adapters.
+
 ## 11. References
 
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
@@ -165,3 +184,4 @@ That means the HTTP surface should stay boring and resource-oriented while the p
 - [API Style Guide](./api-style-guide.md)
 - [SDK Strategy](./sdk-strategy.md)
 - [Service Architecture](./service-architecture.md)
+- [Upstream Integration Model](./upstream-integration-model.md)

@@ -37,11 +37,15 @@ The service may satisfy original delivery through one of these modes:
 
 The service reconstructs the file from the source repository and streams it through a controlled API or download proxy.
 
+This is the most direct "read from canonical source" mode and can serve warm or cold source data when needed.
+
 ### 3.2 Authorized lazy read
 
 The service issues a tightly scoped, short-lived read capability for a trusted internal client that can use the platform's lazy-read path or hot cache.
 
 This mode is for package-like or rebuildable internal reads, not for ordinary browser delivery.
+
+This is the **hot internal read** mode near compute.
 
 ### 3.3 Materialized source export
 
@@ -50,6 +54,8 @@ The service materializes the canonical original into a delivery scope and serves
 This is still sourced from the canonical repository. It does not make the staging object or raw underlying storage key canonical.
 
 This mode is **optional**, not the default. It should be used only when repeated CDN-backed reads justify a second delivery copy of the original.
+
+This is the **temporary delivery-plane copy** of the original source.
 
 All three modes remain transparent to the client. The public source-download operation does not require callers to understand whether the bytes ultimately came from a CDN-backed export, a proxy reconstruction, or a trusted lazy-read path.
 

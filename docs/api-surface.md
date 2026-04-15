@@ -38,6 +38,8 @@ The initial public API should expose these groups:
 
 The public surface should **not** expose namespace registration, capability governance, replay, purge, or quarantine as ordinary SDK operations.
 
+`POST /v1/upload-sessions` should support both new assets and new revisions of an existing asset. A successful non-duplicate request against an existing logical asset creates a new `AssetVersion`; a retry of the same request converges on the original session and version through idempotency.
+
 ## 3. Platform-admin API groups
 
 The platform-admin surface should expose:
@@ -80,12 +82,19 @@ The public contract intentionally keeps authorization entrypoints small:
 
 Those endpoints are the client-facing contract even when storage resolution differs internally.
 
-The service may resolve the request to:
+`deliveries/{deliveryScopeId}/authorize` is for the **published derivative read family**.
+
+The service may resolve that endpoint to:
 
 1. a hot CDN-backed derivative in the derived store
-2. a materialized export in an `exports/` prefix
-3. a tightly scoped lazy-read handle for trusted internal clients
-4. a proxy reconstruction from the canonical source repository
+
+`source/authorize` is for the **original-source read family**.
+
+The service may resolve that endpoint to:
+
+1. a materialized export in an `exports/` prefix
+2. a tightly scoped lazy-read handle for trusted internal clients
+3. a proxy reconstruction from the canonical source repository
 
 Clients should not need to know which bucket, prefix, cache, or repository path produced the result.
 

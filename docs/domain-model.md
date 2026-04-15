@@ -114,6 +114,8 @@ Should include:
 - current canonical-version pointer where appropriate
 - mutable publication pointer version for optimistic concurrency
 
+One `Asset` represents the stable logical identity across revisions. Uploading a new revision should create a new `AssetVersion`, not mutate the prior one.
+
 ### 4.4 `AssetVersion`
 
 Represents one immutable uploaded source version.
@@ -133,6 +135,8 @@ Should include:
 - optional canonicalization and deduplication metrics for observability
 
 Once a version reaches `canonical`, the source identity must be immutable.
+
+Sibling versions under the same `Asset` may share deduplicated storage underneath in the canonical source plane, but they remain distinct business identities with separate lifecycle state, workflow dispatch, derivatives, manifests, and audit history.
 
 ### 4.5 `DeliveryScope`
 

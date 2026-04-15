@@ -33,6 +33,19 @@ export const backwallImageToVideoWorkflow = registerWorkflow({
 });
 ```
 
+### 2.1 Lifecycle ownership
+
+The registration flow maps onto the lifecycle like this:
+
+| Registration type | Lifecycle stage it mainly affects |
+| --- | --- |
+| capability | validation and canonicalization rules |
+| recipe binding | processing and publication shape |
+| processor registration | processing execution |
+| workflow template | processing to publication orchestration |
+
+The important architectural rule is that processors and workflows run **after** canonicalization. They consume canonical source identity, not staging objects.
+
 ## 3. Template model
 
 The platform should prefer a small number of reusable workflow templates, for example:

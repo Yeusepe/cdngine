@@ -20,13 +20,21 @@ The point is not only to list inputs and outputs, but to make the ownership and 
 The platform emits:
 
 - canonical source repository snapshot, digest, and canonical-path references
-- ingest-object references before canonicalization
+- staged-object references before canonicalization
 - artifact-graph references for immutable bundles and manifests where applicable
 - derivative objects in the derived store
 - source-download handles or proxy/export paths for canonical originals
 - manifests for complex asset classes
 - workflow and audit state in the registry
 - signed delivery URLs or delivery paths
+
+In lifecycle order, the main outputs are:
+
+1. **staged-object evidence** after upload completes
+2. **canonical source identity** after snapshotting succeeds
+3. **workflow-dispatch intent** after canonicalization succeeds
+4. **derivative and manifest publication records** after processing succeeds
+5. **delivery authorization responses** when clients request reads
 
 ## 3. Async flows
 
@@ -51,7 +59,7 @@ The platform emits:
 It should be easy to tell:
 
 - which inputs are public versus private
-- where canonical source data enters the system
+- where staged data stops and canonical source data begins
 - where delivery data leaves the system
 - which boundaries are synchronous and which are workflow-owned
 - where operators intervene in the lifecycle

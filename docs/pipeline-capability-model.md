@@ -74,6 +74,14 @@ export const ffmpegImageToVideoProcessor = registerProcessor({
 });
 ```
 
+Processors run during the **`processing`** lifecycle stage.
+
+That means:
+
+- their input is the **canonical source identity**, not a staging object
+- they execute only after the version has become `canonical`
+- their outputs are publication candidates for the derived store, manifests, exports, or related bundle records
+
 ## 6. Registry rules
 
 1. Capability IDs are stable and versioned deliberately.

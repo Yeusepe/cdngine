@@ -58,6 +58,17 @@ There is **not** a normal "move bytes from the CDN to cold storage" flow. The **
 
 CDNgine owns the **policy decision and materialization contract** for publish, export, replay, and lazy-read authorization. It should not reinvent byte-tiering engines in app code when the storage systems already provide them.
 
+### Revisions of the same logical asset
+
+CDNgine distinguishes the **logical asset** from each immutable **uploaded source version**:
+
+- the `Asset` is the stable logical identity
+- each intentional new upload for that asset creates a new `AssetVersion`
+- a retry of the **same** mutating request converges on the same upload session and version through idempotency
+- a **new revision** goes through canonicalization, workflow dispatch, and publication again for its own version
+
+That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. **Kopia** may deduplicate shared source content internally, but that does not collapse version identity in CDNgine.
+
 ### Logical roles
 
 ```mermaid

@@ -61,6 +61,12 @@ This production-oriented profile is intentionally richer than the local fast-sta
 
 The important storage rule is: source assets may live physically in the tiered substrate, but application code should address them through canonical repository identities rather than raw canonical object keys.
 
+The deployment model does not change the core lifecycle:
+
+`stage -> canonicalize -> process -> publish -> deliver`
+
+Single-node versus multi-node and one-bucket versus multi-bucket are packaging choices around that lifecycle.
+
 ## 2.1 Storage bucket topology
 
 CDNgine should support both **multi-bucket** and **one-bucket** deployments.
@@ -180,7 +186,7 @@ Expected properties:
 Owns:
 
 - resumable upload protocol handling
-- ingest-object persistence before canonicalization
+- staged-object persistence before canonicalization
 - hook-driven metadata validation
 - ingest metrics and operational visibility
 

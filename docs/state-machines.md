@@ -50,6 +50,12 @@ An upload session never transitions back from `uploaded` to `uploading`.
 
 `AssetVersion` is the main cross-boundary lifecycle object.
 
+The most important transition in the whole platform is:
+
+`uploaded -> canonicalizing -> canonical`
+
+That is the boundary where staged bytes stop being "an uploaded file" and become immutable canonical source truth.
+
 ### 3.1 States
 
 | State | Meaning |
@@ -74,7 +80,7 @@ An upload session never transitions back from `uploaded` to `uploading`.
 | `uploading` | `uploaded` | completion handler | staged object reference, checksum evidence |
 | `uploaded` | `canonicalizing` | completion handler | idempotency record, accepted completion request |
 | `canonicalizing` | `canonical` | canonicalization worker | source identity fields, digest set, canonical path |
-| `canonical` | `processing` | workflow starter | workflow-dispatch row and workflow ID |
+| `canonical` | `processing` | workflow dispatch flow | workflow-dispatch row and workflow ID |
 | `processing` | `published` | registry publication flow | manifest publication pointer, derivative set |
 | `uploaded` | `failed_validation` | completion handler | problem type, diagnostics |
 | `canonicalizing` | `failed_retryable` | canonicalization worker | failure class, retry summary |

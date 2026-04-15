@@ -72,6 +72,18 @@ The default product posture is:
 
 CDNgine should integrate these systems, not clone their behavior in application code.
 
+Read the lifecycle in this order:
+
+`stage -> canonicalize -> process -> publish -> deliver`
+
+Mapped to storage roles, that means:
+
+1. uploads land in **staging**
+2. originals become durable truth in the **canonical source repository**
+3. workers read canonical source during **processing**
+4. workers write deterministic outputs to the **derived store** or optional **exports store**
+5. clients read published artifacts through the **CDN**
+
 ### 5.1 Bucket and prefix organization
 
 The storage topology may use one S3-compatible namespace or several.

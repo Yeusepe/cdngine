@@ -4,6 +4,12 @@ This document maps platform concerns to concrete packages, repositories, and ups
 
 The purpose is simple: **consume fast, proven systems wherever possible** and reserve custom code for platform semantics, registration, manifests, and orchestration composition.
 
+The package choices map onto this lifecycle:
+
+`stage -> canonicalize -> process -> publish -> deliver`
+
+That is the easiest way to read the stack list below.
+
 ## 1. Core default set
 
 | Concern | Package / project | Why it helps |

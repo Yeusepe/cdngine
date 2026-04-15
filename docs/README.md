@@ -61,3 +61,10 @@ For topology and setup questions, start with:
 2. [Architecture](./architecture.md)
 3. [Local Platform](../deploy/local-platform/README.md)
 
+For lifecycle questions, start with:
+
+1. [Architecture](./architecture.md)
+2. [State Machines](./state-machines.md)
+3. [Canonical Source And Tiering Contract](./canonical-source-and-tiering-contract.md)
+4. [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
+

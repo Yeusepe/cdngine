@@ -14,7 +14,7 @@ The staged object is not canonical truth.
 
 ## 2. Required verification before snapshotting
 
-Before a version can move from `uploaded` to `canonical`, the platform should verify:
+Before a version can move from `uploaded` to `canonicalizing`, the platform should verify:
 
 1. authorized scope still matches the upload session
 2. staged bytes exist and reported size is stable
@@ -25,7 +25,7 @@ Before a version can move from `uploaded` to `canonical`, the platform should ve
 
 ## 3. Persisted canonical identity
 
-When canonicalization succeeds, the registry must persist:
+When canonicalization succeeds and the version moves from `canonicalizing` to `canonical`, the registry must persist:
 
 - canonical repository identity
 - snapshot or manifest identity for the source version

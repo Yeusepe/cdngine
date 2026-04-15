@@ -10,6 +10,18 @@ The default direction is:
 - **Prisma** for database access and migrations
 - **Encore or Nest** as supported host environments around the same service core
 
+The service lifecycle should be read in one line:
+
+`stage -> canonicalize -> process -> publish -> deliver`
+
+That means:
+
+- **stage**: tusd and staging storage accept the upload
+- **canonicalize**: the service verifies staged bytes and snapshots them into the canonical source repository
+- **process**: Temporal and workers read canonical source and generate outputs
+- **publish**: workers write deterministic derivatives and manifests
+- **deliver**: clients read published artifacts through the delivery plane and CDN
+
 ## 1. Service surfaces
 
 CDNgine should expose distinct surfaces with different auth, stability, and SDK expectations:
@@ -52,7 +64,7 @@ The upload contract is intentionally split into two stages:
 5. the client calls upload completion, or an authenticated completion callback is received
 6. the ingest service verifies the uploaded object, validates metadata and checksums, and snapshots the staged object into the **canonical source repository** on the tiered storage substrate
 7. the service records canonicalization success and emits a durable workflow-dispatch intent
-8. a workflow starter launches the Temporal workflow for that asset version
+8. a workflow dispatcher launches the Temporal workflow for that asset version
 
 The important distinction is:
 
@@ -60,6 +72,41 @@ The important distinction is:
 - the **canonical source repository** owns deduplicated canonical source storage after successful finalization
 
 Clients do **not** upload directly to the source repository by default.
+
+The critical boundary is between:
+
+- **staged bytes**
+- **canonical source identity**
+- **workflow dispatch**
+
+The service must keep those as separate durable steps.
+
+### 3.1 Uploading a new revision of an existing asset
+
+`POST /v1/upload-sessions` must support both:
+
+1. creating the first uploaded version of a logical asset
+2. creating a new uploaded version of an existing logical asset
+
+The intended flow for a new revision is:
+
+1. look up the existing `Asset` by scoped identity
+2. create a new `AssetVersion`
+3. create a new `UploadSession`
+4. return a new **tusd** upload target
+5. accept completion for that version only
+6. snapshot that version into **Kopia**
+7. dispatch a **Temporal** workflow keyed by `(service namespace, asset ID, version ID, workflow template)`
+
+This is where the separation of responsibilities matters:
+
+- **CDNgine** owns the logical asset and version model
+- **tusd** owns resumable upload behavior
+- **RustFS**, **SeaweedFS**, or another S3-compatible substrate hold staged and published objects
+- **Kopia** owns canonical source snapshotting and deduplicated source storage
+- **Temporal** owns durable processing execution
+
+If a caller is only retrying the same mutation, durable idempotency should converge on the original upload session and version. If the caller is intentionally creating a new revision, the result must be a new `AssetVersion` even when the filename is unchanged.
 
 ## 4. Recommended service ownership
 
@@ -120,7 +167,7 @@ The request path may authorize delivery access, but it should not become the str
 
 The most important control-plane boundary in the system is:
 
-`upload complete` -> `canonical source stored in repository` -> `workflow dispatched`
+`upload complete` -> `canonical source identity durable` -> `workflow dispatched`
 
 That boundary must be designed explicitly.
 
@@ -159,6 +206,12 @@ The registry transaction for completion should:
 5. insert a workflow-dispatch outbox record
 
 Only after the outbox record exists should workflow dispatch be attempted.
+
+This is the service-level expression of the core architecture rule:
+
+1. staging is not canonical truth
+2. canonical truth begins only after snapshotting succeeds
+3. workflow work begins only after canonical truth exists
 
 ### 6.3 Workflow dispatch
 
@@ -273,16 +326,22 @@ Preferred behavior:
 - source-download authorization may be stricter than derivative authorization
 - quarantined or policy-blocked versions must not silently fall back to a raw storage read
 
+Those modes map to the architecture like this:
+
+- **proxy reconstruction**: reconstruct from canonical source on demand
+- **lazy-read handle**: trusted internal hot-read path near compute
+- **materialized export**: temporary delivery-plane copy of the original source
+
 ### 6.6.2 Unified authorization response
 
 Client-facing APIs should still look unified even when the backend resolution path changes.
 
 Preferred posture:
 
-- `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize` resolves published derivative and export reads
+- `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize` resolves published derivative reads
 - `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize` resolves canonical original reads
 - both endpoints return the same shape of authorization envelope
-- clients do not choose between derived-store, export-prefix, or proxy reconstruction paths themselves
+- clients do not choose between derived-store, export, lazy-read, or proxy paths themselves
 
 Illustrative response shape:
 

@@ -4,6 +4,10 @@ This document explains the intended package and platform choices for the default
 
 It is not a raw trade-study dump. It records the choices the architecture is trying to optimize for and how to use those packages well enough that we do not leave obvious reliability or ergonomics on the table.
 
+The technology profile follows the same platform lifecycle as the architecture doc:
+
+`stage -> canonicalize -> process -> publish -> deliver`
+
 ## 1. Selection criteria
 
 Default choices should optimize for:

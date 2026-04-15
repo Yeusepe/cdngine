@@ -64,6 +64,20 @@ One transaction should:
 
 The source-repository write itself may happen outside the SQL transaction, but SQL must not claim `canonical` before snapshotting succeeds.
 
+### 3.2.1 The critical boundary
+
+The highest-risk write boundary in the system is:
+
+`uploaded -> canonicalizing -> canonical -> WorkflowDispatch(pending)`
+
+That boundary must stay explicit.
+
+In particular:
+
+1. staged bytes are not canonical truth
+2. the version must not move to `canonical` until snapshotting succeeds
+3. `WorkflowDispatch` must not be created until canonical source identity is durable
+
 ### 3.3 Canonicalization success
 
 One transaction should:

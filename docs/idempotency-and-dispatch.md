@@ -58,10 +58,14 @@ The request path never starts workflow work as a best-effort side effect after c
 
 Required posture:
 
-1. request path creates `WorkflowDispatch` in the registry
-2. dispatcher polls or subscribes to pending rows
-3. dispatcher attempts the Temporal start with a business-keyed workflow ID
-4. dispatcher records `started`, `duplicate`, `failed_retryable`, or `failed_terminal`
+1. canonicalization succeeds and canonical source identity becomes durable
+2. request path or completion flow creates `WorkflowDispatch` in the registry
+3. the version is already in `canonical` when dispatch is created
+4. dispatcher polls or subscribes to pending rows
+5. dispatcher attempts the Temporal start with a business-keyed workflow ID
+6. dispatcher records `started`, `duplicate`, `failed_retryable`, or `failed_terminal`
+
+`WorkflowDispatch` is therefore a **post-canonicalization** record, not a placeholder created while the version is still only staged.
 
 ## 6. Business-keyed workflow identity
 

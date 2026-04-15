@@ -38,6 +38,12 @@ Use validators for:
 
 Validators are non-async and use the same arguments as the Update handler.
 
+Replay and reprocess validators should explicitly reject requests when:
+
+- the version is not yet `canonical`
+- canonical source identity is missing
+- policy forbids replay from the current lifecycle state
+
 ## 4. Handler rules
 
 1. define message types as exported workflow-level identifiers

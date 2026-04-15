@@ -1,15 +1,28 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "v1",
   "manifestType": "image-default",
   "assetId": "ast_existing_123",
   "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
+  "serviceNamespaceId": "media-platform",
+  "generatedAt": "2026-01-15T18:20:00.000Z",
   "derivatives": [
     {
-      "variant": "webp-1600",
+      "byteLength": 128,
+      "checksum": "sha-thumb",
       "contentType": "image/webp",
-      "deterministicKey": "deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/image-default/webp-1600",
-      "width": 1600,
-      "height": 900
+      "deterministicKey": "deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/thumbnail-small/thumbnail-small",
+      "recipeId": "thumbnail-small",
+      "schemaVersion": "v1",
+      "variantKey": "thumbnail-small"
+    },
+    {
+      "byteLength": 512,
+      "checksum": "sha-webp",
+      "contentType": "image/webp",
+      "deterministicKey": "deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/webp-master/webp-master",
+      "recipeId": "webp-master",
+      "schemaVersion": "v1",
+      "variantKey": "webp-master"
     }
   ]
 }

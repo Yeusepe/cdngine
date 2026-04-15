@@ -307,16 +307,56 @@ export interface components {
         };
         /** ImageAssetManifest */
         "image-asset-manifest.schema": {
-            schemaVersion: string;
-            manifestType: string;
+            /** @constant */
+            schemaVersion: "v1";
+            /** @constant */
+            manifestType: "image-default";
             assetId: string;
             versionId: string;
+            serviceNamespaceId: string;
+            /** Format: date-time */
+            generatedAt: string;
             derivatives: {
-                variant: string;
+                byteLength: number;
+                checksum: string;
                 contentType: string;
                 deterministicKey: string;
-                width: number;
-                height: number;
+                recipeId: string;
+                schemaVersion: string;
+                variantKey: string;
+            }[];
+        };
+        /** PresentationAssetManifest */
+        "presentation-asset-manifest.schema": {
+            /** @constant */
+            schemaVersion: "v1";
+            /** @constant */
+            manifestType: "presentation-default";
+            assetId: string;
+            versionId: string;
+            serviceNamespaceId: string;
+            /** Format: date-time */
+            generatedAt: string;
+            normalizedDocument: {
+                byteLength: number;
+                checksum: string;
+                contentType: string;
+                deterministicKey: string;
+                recipeId: string;
+                schemaVersion: string;
+                /** @constant */
+                variantKey: "normalized-pdf";
+            };
+            slides: {
+                byteLength: number;
+                checksum: string;
+                contentType: string;
+                deterministicKey: string;
+                pageNumber: number;
+                /** @constant */
+                recipeId: "slide-images";
+                schemaVersion: string;
+                variantKey: string;
             }[];
         };
         /** DeliveryAuthorizationResponse */
@@ -744,24 +784,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "schemaVersion": "1.0.0",
-                     *       "manifestType": "image-default",
-                     *       "assetId": "ast_existing_123",
-                     *       "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
-                     *       "derivatives": [
-                     *         {
-                     *           "variant": "webp-1600",
-                     *           "contentType": "image/webp",
-                     *           "deterministicKey": "deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/image-default/webp-1600",
-                     *           "width": 1600,
-                     *           "height": 900
-                     *         }
-                     *       ]
-                     *     }
-                     */
-                    "application/json": components["schemas"]["image-asset-manifest.schema"];
+                    "application/json": components["schemas"]["image-asset-manifest.schema"] | components["schemas"]["presentation-asset-manifest.schema"];
                 };
             };
             401: components["responses"]["Problem"];

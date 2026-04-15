@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "v1",
+  "manifestType": "presentation-default",
+  "assetId": "ast_presentation_123",
+  "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6CCN",
+  "serviceNamespaceId": "media-platform",
+  "generatedAt": "2026-01-15T18:40:00.000Z",
+  "normalizedDocument": {
+    "byteLength": 1024,
+    "checksum": "sha-pdf",
+    "contentType": "application/pdf",
+    "deterministicKey": "deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/normalized-pdf/normalized-pdf",
+    "recipeId": "normalized-pdf",
+    "schemaVersion": "v1",
+    "variantKey": "normalized-pdf"
+  },
+  "slides": [
+    {
+      "byteLength": 256,
+      "checksum": "sha-slide-1",
+      "contentType": "image/webp",
+      "deterministicKey": "deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/slide-images/slide-001",
+      "pageNumber": 1,
+      "recipeId": "slide-images",
+      "schemaVersion": "v1",
+      "variantKey": "slide-001"
+    },
+    {
+      "byteLength": 255,
+      "checksum": "sha-slide-2",
+      "contentType": "image/webp",
+      "deterministicKey": "deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/slide-images/slide-002",
+      "pageNumber": 2,
+      "recipeId": "slide-images",
+      "schemaVersion": "v1",
+      "variantKey": "slide-002"
+    }
+  ]
+}

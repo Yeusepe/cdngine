@@ -402,18 +402,66 @@ paths:
           content:
             application/json:
               schema:
-                $ref: ../examples/public/image-asset-manifest.schema.json
-              example:
-                schemaVersion: 1.0.0
-                manifestType: image-default
-                assetId: ast_existing_123
-                versionId: ver_01JQ9YG2PGM4H7QPQY5C8D6BBN
-                derivatives:
-                  - variant: webp-1600
-                    contentType: image/webp
-                    deterministicKey: deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/image-default/webp-1600
-                    width: 1600
-                    height: 900
+                oneOf:
+                  - $ref: ../examples/public/image-asset-manifest.schema.json
+                  - $ref: ../examples/public/presentation-asset-manifest.schema.json
+              examples:
+                image:
+                  value:
+                    schemaVersion: v1
+                    manifestType: image-default
+                    assetId: ast_existing_123
+                    versionId: ver_01JQ9YG2PGM4H7QPQY5C8D6BBN
+                    serviceNamespaceId: media-platform
+                    generatedAt: '2026-01-15T18:20:00.000Z'
+                    derivatives:
+                      - byteLength: 128
+                        checksum: sha-thumb
+                        contentType: image/webp
+                        deterministicKey: deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/thumbnail-small/thumbnail-small
+                        recipeId: thumbnail-small
+                        schemaVersion: v1
+                        variantKey: thumbnail-small
+                      - byteLength: 512
+                        checksum: sha-webp
+                        contentType: image/webp
+                        deterministicKey: deriv/media-platform/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/webp-master/webp-master
+                        recipeId: webp-master
+                        schemaVersion: v1
+                        variantKey: webp-master
+                presentation:
+                  value:
+                    schemaVersion: v1
+                    manifestType: presentation-default
+                    assetId: ast_presentation_123
+                    versionId: ver_01JQ9YG2PGM4H7QPQY5C8D6CCN
+                    serviceNamespaceId: media-platform
+                    generatedAt: '2026-01-15T18:40:00.000Z'
+                    normalizedDocument:
+                      byteLength: 1024
+                      checksum: sha-pdf
+                      contentType: application/pdf
+                      deterministicKey: deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/normalized-pdf/normalized-pdf
+                      recipeId: normalized-pdf
+                      schemaVersion: v1
+                      variantKey: normalized-pdf
+                    slides:
+                      - byteLength: 256
+                        checksum: sha-slide-1
+                        contentType: image/webp
+                        deterministicKey: deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/slide-images/slide-001
+                        pageNumber: 1
+                        recipeId: slide-images
+                        schemaVersion: v1
+                        variantKey: slide-001
+                      - byteLength: 255
+                        checksum: sha-slide-2
+                        contentType: image/webp
+                        deterministicKey: deriv/media-platform/ast_presentation_123/ver_01JQ9YG2PGM4H7QPQY5C8D6CCN/slide-images/slide-002
+                        pageNumber: 2
+                        recipeId: slide-images
+                        schemaVersion: v1
+                        variantKey: slide-002
         '401':
           $ref: '#/components/responses/Problem'
         '403':

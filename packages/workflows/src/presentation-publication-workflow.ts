@@ -143,7 +143,7 @@ export async function runPresentationPublicationWorkflow(
     objectKey: normalizedDeterministicKey
   });
 
-  derivatives.push({
+  const normalizedDerivative: PublishedPresentationDerivativeRecord = {
     assetVersionId: version.versionId,
     byteLength: normalizedIntegrity.byteLength,
     checksumValue: normalizedIntegrity.checksum.value,
@@ -157,7 +157,8 @@ export async function runPresentationPublicationWorkflow(
     storageBucket: normalizedPublication.bucket,
     storageKey: normalizedPublication.key,
     variantKey: 'normalized-pdf'
-  });
+  };
+  derivatives.push(normalizedDerivative);
 
   for (const slide of [...processed.slides].sort((left, right) => left.pageNumber - right.pageNumber)) {
     const slideIntegrity = slide.checksum
@@ -202,13 +203,13 @@ export async function runPresentationPublicationWorkflow(
     generatedAt: now(),
     manifestType: 'presentation-default',
     normalizedDocument: {
-      byteLength: derivatives[0].byteLength,
-      checksum: derivatives[0].checksumValue,
-      contentType: derivatives[0].contentType,
-      deterministicKey: derivatives[0].deterministicKey,
-      recipeId: derivatives[0].recipeId,
-      schemaVersion: derivatives[0].schemaVersion,
-      variantKey: derivatives[0].variantKey
+      byteLength: normalizedDerivative.byteLength,
+      checksum: normalizedDerivative.checksumValue,
+      contentType: normalizedDerivative.contentType,
+      deterministicKey: normalizedDerivative.deterministicKey,
+      recipeId: normalizedDerivative.recipeId,
+      schemaVersion: normalizedDerivative.schemaVersion,
+      variantKey: normalizedDerivative.variantKey
     },
     schemaVersion: 'v1',
     serviceNamespaceId: version.serviceNamespaceId,

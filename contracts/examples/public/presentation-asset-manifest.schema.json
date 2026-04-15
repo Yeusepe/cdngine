@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.cdngine.dev/examples/public/image-asset-manifest.schema.json",
-  "title": "ImageAssetManifest",
+  "$id": "https://contracts.cdngine.dev/examples/public/presentation-asset-manifest.schema.json",
+  "title": "PresentationAssetManifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,7 +11,8 @@
     "versionId",
     "serviceNamespaceId",
     "generatedAt",
-    "derivatives"
+    "normalizedDocument",
+    "slides"
   ],
   "properties": {
     "schemaVersion": {
@@ -20,7 +21,7 @@
     },
     "manifestType": {
       "type": "string",
-      "const": "image-default"
+      "const": "presentation-default"
     },
     "assetId": {
       "type": "string"
@@ -35,9 +36,46 @@
       "type": "string",
       "format": "date-time"
     },
-    "derivatives": {
+    "normalizedDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "byteLength",
+        "checksum",
+        "contentType",
+        "deterministicKey",
+        "recipeId",
+        "schemaVersion",
+        "variantKey"
+      ],
+      "properties": {
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "deterministicKey": {
+          "type": "string"
+        },
+        "recipeId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "variantKey": {
+          "type": "string",
+          "const": "normalized-pdf"
+        }
+      }
+    },
+    "slides": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -46,6 +84,7 @@
           "checksum",
           "contentType",
           "deterministicKey",
+          "pageNumber",
           "recipeId",
           "schemaVersion",
           "variantKey"
@@ -64,8 +103,13 @@
           "deterministicKey": {
             "type": "string"
           },
+          "pageNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
           "recipeId": {
-            "type": "string"
+            "type": "string",
+            "const": "slide-images"
           },
           "schemaVersion": {
             "type": "string"

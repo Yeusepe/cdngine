@@ -21,8 +21,9 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | deployment-profile-foundation | done | one-bucket and multi-bucket runtime profiles plus readiness requirements are expressed as typed config and checked-in deployment examples instead of only prose |
 | sdk-foundation | done | the bundled public contract generates checked-in TypeScript client artifacts, freshness checks, and consumer-facing quickstart docs |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |
-| presentation-mvp | planned | the platform can normalize presentations and publish slide-oriented manifests and derivatives |
+| presentation-mvp | done | the platform can resolve presentation workflow templates from source content type, normalize canonical presentations to PDF plus slide images, publish presentation manifests, and prove the flow through conformance tests |
 | operator-foundation | done | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
+| architecture-conformance-audit | done | every major implemented code area is mapped back to architecture responsibilities, governing docs, and executable evidence with no remaining undocumented workload-specific drift in the public manifest or workflow-selection surfaces |
 
 ## 2. Rules for updating the ledger
 

@@ -37,11 +37,20 @@ for (const artifact of artifacts) {
   const outputPath = join(root, artifact.output);
   mkdirSync(dirname(outputPath), { recursive: true });
 
-  const result = spawnSync(`"${redocly}" bundle "${artifact.source}" --output "${artifact.output}"`, {
-    cwd: root,
-    stdio: 'inherit',
-    shell: true
-  });
+  const result =
+    process.platform === 'win32'
+      ? spawnSync(
+          'cmd.exe',
+          ['/d', '/c', redocly, 'bundle', artifact.source, '--output', artifact.output],
+          {
+            cwd: root,
+            stdio: 'inherit'
+          }
+        )
+      : spawnSync(redocly, ['bundle', artifact.source, '--output', artifact.output], {
+          cwd: root,
+          stdio: 'inherit'
+        });
 
   if (result.error) {
     console.error(result.error);

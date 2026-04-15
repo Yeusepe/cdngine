@@ -10,8 +10,14 @@
  * - packages/capabilities/test/presentation-capability.test.mjs
  */
 
-import { defaultImageCapability, defaultImageRecipeBindings } from './image-capability.js';
-import { defaultPresentationCapability, defaultPresentationRecipeBindings } from './presentation-capability.js';
+import {
+  defaultImageCapability,
+  getImageRecipeBinding
+} from './image-capability.js';
+import {
+  defaultPresentationCapability,
+  getPresentationRecipeBinding
+} from './presentation-capability.js';
 
 export interface ResolvedWorkflowTemplate {
   capabilityId: string;
@@ -22,15 +28,15 @@ export interface ResolvedWorkflowTemplate {
 const defaultWorkflowBindings: Array<ResolvedWorkflowTemplate & { mimeTypes: readonly string[] }> = [
   {
     capabilityId: defaultImageCapability.capabilityId,
-    manifestType: defaultImageRecipeBindings[0].manifestType,
+    manifestType: getImageRecipeBinding('webp-master').manifestType,
     mimeTypes: defaultImageCapability.mimeTypes,
-    workflowTemplateId: defaultImageRecipeBindings[0].workflowTemplateId
+    workflowTemplateId: getImageRecipeBinding('webp-master').workflowTemplateId
   },
   {
     capabilityId: defaultPresentationCapability.capabilityId,
-    manifestType: defaultPresentationRecipeBindings[0].manifestType,
+    manifestType: getPresentationRecipeBinding('normalized-pdf').manifestType,
     mimeTypes: defaultPresentationCapability.mimeTypes,
-    workflowTemplateId: defaultPresentationRecipeBindings[0].workflowTemplateId
+    workflowTemplateId: getPresentationRecipeBinding('normalized-pdf').workflowTemplateId
   }
 ];
 

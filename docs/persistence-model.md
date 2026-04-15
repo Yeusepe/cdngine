@@ -33,6 +33,9 @@ The registry must model at least:
 - `ProcessingJob`
 - `Derivative`
 - `AssetManifest`
+- `DeliveryScope`
+- `DeliveryAuthorizationAudit`
+- `SourceAccessGrant`
 - `ValidationResult`
 - `AuditEvent`
 - `QuarantineCase`
@@ -66,9 +69,10 @@ The source-repository write itself may happen outside the SQL transaction, but S
 One transaction should:
 
 1. persist the canonical source identity set
-2. move `AssetVersion` from `canonicalizing` to `canonical`
-3. create `WorkflowDispatch` in `pending`
-4. emit an `AuditEvent`
+2. persist backing bucket or prefix metadata needed for operator diagnostics without treating raw object keys as public identity
+3. move `AssetVersion` from `canonicalizing` to `canonical`
+4. create `WorkflowDispatch` in `pending`
+5. emit an `AuditEvent`
 
 ### 3.4 Publication
 
@@ -102,6 +106,7 @@ The registry should enforce:
 - one dispatch intent per business-keyed workflow start
 - one deterministic derivative row per `(asset-version, recipe, schema-version, delivery-scope)`
 - one active manifest publication pointer per `(asset-version, manifest-type, delivery-scope)`
+- one durable authorization audit row per issued delivery or source-download grant when auditing is enabled
 
 ## 6. JSONB posture
 

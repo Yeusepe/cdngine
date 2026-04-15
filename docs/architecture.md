@@ -153,20 +153,21 @@ The platform should preserve the public API and processor contracts even when in
 
 ```mermaid
 flowchart LR
-    Clients["Clients and internal services"] --> Gateway["Edge API gateway"]
-    Gateway --> Registry["Asset registry"]
-    Gateway --> Ingest["Ingest target\nstaging uploads"]
-    Gateway --> Redis["Redis"]
-    Registry --> Starter["Workflow dispatch starter"]
-    Starter --> Temporal["Temporal workflows"]
-    Temporal --> Workers["Processor workers"]
-    Workers --> SourceRepo["Canonical source repository"]
-    SourceRepo --> Tiered["Tiered storage substrate"]
-    Workers --> ArtifactGraph["ORAS artifact graph"]
-    Workers --> Derived["Derived store\nhot delivery artifacts"]
+    Clients["Clients / SDKs"] --> Gateway["CDNgine API"]
+    Gateway --> Ingest["tusd + upload-session contract"]
+    Gateway --> Registry["PostgreSQL + JSONB"]
+    Registry --> Starter["Workflow dispatch"]
+    Starter --> Temporal["Temporal"]
+    Temporal --> Workers["Worker pools"]
+    Ingest --> IngestStore["ingest storage role"]
+    Workers --> SourceRepo["Kopia source repository"]
+    SourceRepo --> SourceBacking["source storage role"]
+    Workers --> ArtifactGraph["ORAS / OCI"]
+    Workers --> Derived["derived storage role"]
+    Workers --> Exports["exports storage role"]
     Workers --> Registry
-    Temporal --> Registry
-    CDN["CDN / edge cache"] --> Derived
+    CDN["CDN"] --> Derived
+    CDN --> Exports
     Clients --> CDN
 ```
 
@@ -174,49 +175,251 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Source["Canonical source plane"]
-        SourceRepo["Canonical source repository\nsnapshot history\ndeduplicated chunks\nreplay source"]
-        Tiered["Tiered substrate\nSeaweedFS or JuiceFS\nhot/warm/cold placement"]
-        SourceRepo --> Tiered
+    subgraph Edge["Edge and API"]
+        API["CDNgine API"]
+        CDN["CDN"]
     end
 
     subgraph Control["Control plane"]
-        API["CDNgine API"]
         Registry["SQL registry\nasset/version/derivative state"]
-        Starter["Workflow dispatch starter"]
+        Starter["workflow dispatch"]
         Temporal["Temporal\nworkflow execution history"]
+        Workers["worker pools"]
+    end
+
+    subgraph Source["Source plane"]
+        Ingest["tusd"]
+        IngestStore["ingest role"]
+        SourceRepo["Kopia repository"]
+        SourceBacking["source role"]
     end
 
     subgraph Delivery["Delivery plane"]
-        ArtifactGraph["ORAS\nartifact graph and bundles"]
-        Derived["S3-compatible derived store\ndeterministic published artifacts"]
-        CDN["CDN"]
+        ArtifactGraph["ORAS / OCI"]
+        Derived["derived role"]
+        Exports["exports role"]
     end
 
     Users["Apps, services, SDK consumers"] --> API
     Ops["Operators"] --> API
+    API --> Ingest
     API --> Registry
     Registry --> Starter
     Starter --> Temporal
-    Temporal --> SourceRepo
-    Temporal --> ArtifactGraph
-    Temporal --> Derived
-    Registry --> Derived
-    Registry --> ArtifactGraph
+    Temporal --> Workers
+    Ingest --> IngestStore
+    Workers --> SourceRepo
+    SourceRepo --> SourceBacking
+    Workers --> ArtifactGraph
+    Workers --> Derived
+    Workers --> Exports
     Users --> CDN
     CDN --> Derived
+    CDN --> Exports
 ```
 
-## 7.2 Upload-to-delivery flow
+### 7.1.1 Supported topology matrix
+
+The logical architecture above must remain valid across four supported physical layouts:
+
+| Node topology | Storage topology | Supported | Notes |
+| --- | --- | --- | --- |
+| single-node | single-bucket | yes | one host plus one S3-compatible bucket with `ingest/`, `source/`, `derived/`, and `exports/` prefixes |
+| single-node | multi-bucket | yes | one host but separate buckets for clearer lifecycle and policy boundaries |
+| multi-node | single-bucket | yes | split API, control, and workers across nodes while still using one bucket with prefixes |
+| multi-node | multi-bucket | yes | fullest deployment shape with separate worker pools and bucket roles |
+
+Those are **packaging choices**, not different products. CDNgine should keep the same logical resource model, workflow semantics, and authorization contract across all four.
+
+### 7.1.2 Single-node + single-bucket
+
+```mermaid
+flowchart TB
+    subgraph Host["Single deployment node"]
+        API1["API"]
+        Ingest1["tusd"]
+        Registry1["PostgreSQL + JSONB"]
+        Redis1["Redis"]
+        Temporal1["Temporal"]
+        Workers1["workers"]
+    end
+
+    subgraph Store1["One S3-compatible bucket"]
+        Prefix1["ingest/"]
+        Prefix2["source/"]
+        Prefix3["derived/"]
+        Prefix4["exports/"]
+    end
+
+    API1 --> Ingest1
+    API1 --> Registry1
+    API1 --> Redis1
+    Registry1 --> Temporal1
+    Temporal1 --> Workers1
+    Ingest1 --> Prefix1
+    Workers1 --> Prefix2
+    Workers1 --> Prefix3
+    Workers1 --> Prefix4
+    CDN1["CDN"] --> Prefix3
+    CDN1 --> Prefix4
+```
+
+### 7.1.3 Single-node + multi-bucket
+
+```mermaid
+flowchart TB
+    subgraph Host2["Single deployment node"]
+        API2["API"]
+        Ingest2["tusd"]
+        Registry2["PostgreSQL + JSONB"]
+        Redis2["Redis"]
+        Temporal2["Temporal"]
+        Workers2["workers"]
+    end
+
+    subgraph Store2["Multiple buckets by role"]
+        B1["ingest bucket"]
+        B2["source bucket"]
+        B3["derived bucket"]
+        B4["exports bucket"]
+    end
+
+    API2 --> Ingest2
+    API2 --> Registry2
+    API2 --> Redis2
+    Registry2 --> Temporal2
+    Temporal2 --> Workers2
+    Ingest2 --> B1
+    Workers2 --> B2
+    Workers2 --> B3
+    Workers2 --> B4
+    CDN2["CDN"] --> B3
+    CDN2 --> B4
+```
+
+### 7.1.4 Multi-node + single-bucket
+
+```mermaid
+flowchart LR
+    subgraph Edge["Edge nodes"]
+        API3["API replicas"]
+        Ingest3["tusd replicas"]
+    end
+
+    subgraph Control["Control-plane nodes"]
+        Registry3["PostgreSQL + JSONB"]
+        Redis3["Redis"]
+        Temporal3["Temporal"]
+    end
+
+    subgraph Workers["Worker nodes"]
+        Img3["image workers"]
+        Vid3["video workers"]
+        Doc3["document workers"]
+        Arc3["archive workers"]
+    end
+
+    subgraph Storage3["One S3-compatible bucket"]
+        P1["ingest/"]
+        P2["source/"]
+        P3["derived/"]
+        P4["exports/"]
+    end
+
+    API3 --> Registry3
+    API3 --> Redis3
+    API3 --> Ingest3
+    Registry3 --> Temporal3
+    Temporal3 --> Img3
+    Temporal3 --> Vid3
+    Temporal3 --> Doc3
+    Temporal3 --> Arc3
+    Ingest3 --> P1
+    Img3 --> P2
+    Vid3 --> P2
+    Doc3 --> P2
+    Arc3 --> P2
+    Img3 --> P3
+    Vid3 --> P3
+    Doc3 --> P3
+    Arc3 --> P3
+    Img3 --> P4
+    Vid3 --> P4
+    Doc3 --> P4
+    Arc3 --> P4
+    CDN3["CDN"] --> P3
+    CDN3 --> P4
+```
+
+### 7.1.5 Multi-node + multi-bucket
+
+```mermaid
+flowchart LR
+    subgraph Edge4["Edge nodes"]
+        API4["API replicas"]
+        Ingest4["tusd replicas"]
+    end
+
+    subgraph Control4["Control-plane nodes"]
+        Registry4["PostgreSQL + JSONB"]
+        Redis4["Redis"]
+        Temporal4["Temporal"]
+    end
+
+    subgraph Workers4["Worker nodes"]
+        Img4["image workers"]
+        Vid4["video workers"]
+        Doc4["document workers"]
+        Arc4["archive workers"]
+    end
+
+    subgraph Storage4["Multiple storage roles"]
+        B1["ingest bucket"]
+        B2["source bucket"]
+        B3["derived bucket"]
+        B4["exports bucket"]
+        OCI4["OCI registry"]
+    end
+
+    API4 --> Registry4
+    API4 --> Redis4
+    API4 --> Ingest4
+    Registry4 --> Temporal4
+    Temporal4 --> Img4
+    Temporal4 --> Vid4
+    Temporal4 --> Doc4
+    Temporal4 --> Arc4
+    Ingest4 --> B1
+    Img4 --> B2
+    Vid4 --> B2
+    Doc4 --> B2
+    Arc4 --> B2
+    Img4 --> B3
+    Vid4 --> B3
+    Doc4 --> B3
+    Arc4 --> B3
+    Img4 --> B4
+    Vid4 --> B4
+    Doc4 --> B4
+    Arc4 --> B4
+    Img4 --> OCI4
+    Vid4 --> OCI4
+    Doc4 --> OCI4
+    Arc4 --> OCI4
+    CDN4["CDN"] --> B3
+    CDN4 --> B4
+```
+
+## 7.2 Published upload-to-delivery flow
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant G as Gateway
-    participant I as Ingest Target
-    participant O as Source Repository
+    participant G as API
+    participant I as tusd
+    participant B as Staging storage
+    participant O as Kopia source repository
     participant R as Registry
-    participant S as Workflow Starter
     participant T as Temporal
     participant W as Worker
     participant A as ORAS
@@ -227,12 +430,12 @@ sequenceDiagram
     G->>R: Create asset + version + upload session
     G-->>C: Upload instructions for ingest-managed target
     C->>I: Upload raw asset
+    I->>B: Persist staged bytes
     C->>G: Complete upload
-    G->>R: Verify idempotency + move to canonicalizing
+    G->>B: Verify staged object
     G->>O: Snapshot staged object into canonical source repository
     G->>R: Persist source identity + workflow dispatch intent
-    R->>S: Pending dispatch intent
-    S->>T: Start business-keyed workflow
+    R->>T: Start business-keyed workflow
     T->>W: Run validators and processors
     W->>O: Read canonical source version
     W->>A: Publish immutable bundles or manifests when needed
@@ -247,7 +450,7 @@ sequenceDiagram
 Read the sequence above as:
 
 1. the original upload first lands in an ingest-managed upload target
-2. CDNgine snapshots the staged object into the **canonical source repository**
+2. CDNgine verifies the staged object and snapshots it into the **canonical source repository**
 3. CDNgine persists the canonical source identity and a durable workflow-dispatch intent in the registry
 4. workflows and workers use the **canonical source repository** as the source for validation and derivation
 5. generated outputs are published to the **derived store**
@@ -266,24 +469,95 @@ The default public ingest path is therefore:
 
 - `client -> API session creation -> ingest-managed upload target (normally tusd) -> completion -> snapshot into canonical source repository`
 
+Deployments may back those roles with separate buckets or with one S3-compatible bucket plus prefixes such as `ingest/`, `source/`, `derived/`, and `exports/`. CDNgine persists logical source and delivery identities, not raw storage keys.
+
 ## 7.3 Provenance versus delivery responsibility
 
 ```mermaid
 flowchart LR
-    Source["Uploaded original"] --> SourceRepo["Canonical source repository\nstores canonical original\nstores version history\nanchors replay provenance"]
-    SourceRepo --> Workflow["Workflow derives outputs from canonical source"]
-    Workflow --> ArtifactGraph["ORAS\nstores immutable bundles and artifact graph"]
-    Workflow --> Derived["Derived store\nstores generated delivery artifacts\nserves as CDN origin"]
-    Workflow --> Registry["Registry links source version to derivative key"]
-
-    note1["The source repository is not the hot origin for every generated variant"]
-    note2["Derived store is not the canonical source of truth for uploads"]
-
-    SourceRepo --- note1
-    Derived --- note2
+    Uploaded["Uploaded original"] --> SourceRepo["Kopia source repository"]
+    SourceRepo --> Replay["Replay / processing reads"]
+    Replay --> Derived["derived store"]
+    Replay --> Exports["exports store"]
+    Replay --> Registry["registry evidence"]
+    Replay --> ArtifactGraph["ORAS / OCI"]
+    Derived --> CDN["CDN hot path"]
+    Exports --> CDN
+    SourceRepo --- Note1["source repository anchors provenance and replay"]
+    Derived --- Note2["derived store serves hot published artifacts"]
+    Exports --- Note3["exports are optional source-download materializations"]
 ```
 
-## 7.4 Published derivative read path
+### 7.3.1 Tiering and cache movement ownership
+
+```mermaid
+flowchart TB
+    Client["Client"] --> CDN["CDN edge cache"]
+    CDN -->|cache miss| DeliveryOrigin["derived / exports origin"]
+    DeliveryOrigin -->|edge fill| CDN
+    DeliveryOrigin -. lifecycle or tier policy .-> DeliveryTiers["warmer / colder origin media\nRustFS or SeaweedFS"]
+
+    Workers["workers"] --> WorkerCache["worker-local cache / Alluxio / Nydus"]
+    WorkerCache --> SourcePlane["Kopia source repository"]
+    SourcePlane --> SourceBacking["source backing storage"]
+    SourceBacking -. lifecycle or tier policy .-> SourceTiers["warmer / colder source media\nRustFS or SeaweedFS"]
+
+    Control["CDNgine control plane"] -->|publish / export / replay decisions| DeliveryOrigin
+    Control -->|snapshot / replay decisions| SourcePlane
+```
+
+Read this diagram carefully:
+
+1. **the CDN caches edge copies of published artifacts; it does not own canonical hot/cold placement**
+2. **origin tiering happens in the backing storage layer** such as RustFS lifecycle-tiering or SeaweedFS tiered storage
+3. **worker hot-read acceleration happens near compute** through worker-local caches, Alluxio, or Nydus
+4. **CDNgine owns policy and orchestration**, not a bespoke "copy objects between hot and cold" engine in application code
+
+That means there are three distinct movement classes:
+
+- **edge-cache movement**: CDN fills and evicts cached derivative or export objects
+- **origin-tier movement**: RustFS or SeaweedFS move older or less-frequent objects between hotter and colder media
+- **compute-local promotion**: worker caches, Alluxio, or Nydus bring frequently read source bytes closer to processors
+
+The only times CDNgine should explicitly move whole objects itself are business-level actions such as:
+
+- materializing a source export
+- publishing a new derivative
+- replaying from canonical source to regenerate outputs
+- prewarming a specific cache or export path because policy requires it
+
+## 7.4 Unified client-facing authorization path
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as CDNgine API
+    participant R as Registry
+    participant Resolver as Authorization resolver
+    participant D as Derived storage
+    participant E as Exports storage
+    participant O as Source repository
+
+    Client->>API: Authorize delivery or source download
+    API->>R: Resolve policy, lifecycle, and scope
+    API->>Resolver: Resolve best read path
+    alt Hot published artifact
+        Resolver->>D: Resolve deterministic derivative
+        Resolver-->>API: Return derived delivery path
+    else Source export
+        Resolver->>E: Resolve export object
+        Resolver-->>API: Return export delivery path
+    else Trusted lazy internal read
+        Resolver->>O: Resolve source identity and lazy-read handle
+        Resolver-->>API: Scoped lazy-read capability
+    else Proxy reconstruction
+        Resolver->>O: Resolve canonical source identity
+        Resolver-->>API: Proxy download URL
+    end
+    API-->>Client: Unified authorization response
+```
+
+## 7.4.1 Published derivative hot path
 
 ```mermaid
 sequenceDiagram
@@ -302,26 +576,29 @@ sequenceDiagram
     Note over O: The source repository is not in the hot delivery read path
 ```
 
-## 7.4.1 Original-source read path
+## 7.4.2 Original-source read path
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant API as CDNgine API
     participant R as Registry
-    participant O as Source Repository
+    participant O as Source repository
     participant CDN as CDN / export path
 
     Client->>API: Authorize source download
     API->>R: Resolve version, policy, and lifecycle state
     API->>O: Resolve canonical source identity
-    API-->>Client: Return download mode
+    API-->>Client: Return unified authorization response
 
     alt Trusted lazy source read
         Client->>O: Read canonical source through scoped lazy-read handle
         O-->>Client: Reconstructed original bytes
-    else Generic proxy or materialized export
-        Client->>API: Follow proxy or export URL
+    else Materialized export
+        Client->>CDN: Follow export URL
+        CDN-->>Client: Original bytes from exports prefix
+    else Generic proxy
+        Client->>API: Follow proxy URL
         API->>O: Reconstruct from canonical source repository
         O-->>API: Original bytes
         API-->>Client: Original byte stream
@@ -349,58 +626,34 @@ sequenceDiagram
     W->>R: Update derivative records and manifest
 ```
 
-## 7.6 Deployment profile
+## 7.6 Topology summary
 
 ```mermaid
 flowchart TB
-    subgraph Edge["Edge / API"]
-        Gateway["Gateway / API"]
-        CDN["CDN"]
+    subgraph Roles["Logical roles that stay fixed"]
+        R["API + ingest\nregistry + orchestration\nsource repository\nderived + exports + CDN"]
     end
 
-    subgraph Control["Control Plane"]
-        Registry["PostgreSQL + JSONB"]
-        Redis["Redis"]
-        Starter["Workflow dispatch starter"]
-        Temporal["Temporal"]
+    subgraph Topologies["Supported packaging choices"]
+        T1["single-node + single-bucket"]
+        T2["single-node + multi-bucket"]
+        T3["multi-node + single-bucket"]
+        T4["multi-node + multi-bucket"]
     end
 
-    subgraph Data["Data Plane"]
-        SourceRepo["Canonical source repository"]
-        ArtifactGraph["ORAS"]
-        Derived["S3-compatible derived store"]
-    end
-
-    subgraph Workers["Specialized worker pools"]
-        Img["Image / texture workers"]
-        Vid["Video / image-to-video workers"]
-        Doc["Document / PDF workers"]
-        Arc["Archive / package workers"]
-    end
-
-    Gateway --> Registry
-    Gateway --> Redis
-    Gateway --> Ingest["tusd / ingest target"]
-    Registry --> Starter
-    Starter --> Temporal
-    Temporal --> Img
-    Temporal --> Vid
-    Temporal --> Doc
-    Temporal --> Arc
-    Img --> SourceRepo
-    Vid --> SourceRepo
-    Doc --> SourceRepo
-    Arc --> SourceRepo
-    Img --> ArtifactGraph
-    Vid --> ArtifactGraph
-    Doc --> ArtifactGraph
-    Arc --> ArtifactGraph
-    Img --> Derived
-    Vid --> Derived
-    Doc --> Derived
-    Arc --> Derived
-    CDN --> Derived
+    T1 --> R
+    T2 --> R
+    T3 --> R
+    T4 --> R
 ```
+
+The system should be read in this order:
+
+1. **logical roles stay fixed**
+2. **node count changes packaging**
+3. **bucket count changes storage isolation**
+
+Neither node count nor bucket count should change the public API shape or the canonical-versus-derived responsibility split.
 
 ## 8. Control plane and data plane
 
@@ -426,9 +679,11 @@ Owns:
 Owns:
 
 - canonical binaries in the source repository
+- source bucket or prefix beneath the canonical repository
 - tiered substrate placement for source and derived bytes
 - artifact bundles and immutable references
 - derived binaries in S3-compatible storage
+- optional exports prefixes for repeated original-source downloads
 - transient processor scratch space
 - CDN cache state
 
@@ -684,9 +939,11 @@ The same pattern should support:
 
 ```mermaid
 flowchart LR
+    Namespace["Service namespace"] --> Capability["Capability registration"]
     Capability["Capability registration"] --> Binding["Recipe binding"]
     Binding --> Processor["Processor registration"]
     Processor --> Workflow["Workflow registration"]
+    Workflow --> DeliveryScope["Delivery-scope policy"]
     Workflow --> Execution["Temporal execution"]
 ```
 

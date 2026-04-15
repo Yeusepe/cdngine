@@ -71,6 +71,24 @@ The operator surface should expose:
 - `GET /v1/assets/{assetId}/versions/{versionId}/manifests/{manifestType}`
 - `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize`
 
+#### 5.1.1 Unified authorization operations
+
+The public contract intentionally keeps authorization entrypoints small:
+
+- `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize`
+- `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize`
+
+Those endpoints are the client-facing contract even when storage resolution differs internally.
+
+The service may resolve the request to:
+
+1. a hot CDN-backed derivative in the derived store
+2. a materialized export in an `exports/` prefix
+3. a tightly scoped lazy-read handle for trusted internal clients
+4. a proxy reconstruction from the canonical source repository
+
+Clients should not need to know which bucket, prefix, cache, or repository path produced the result.
+
 ### 5.2 Platform-admin
 
 - `POST /v1/platform/service-namespaces`
@@ -130,7 +148,8 @@ Preferred behavior:
 - asset and version resources expose lifecycle state explicitly
 - source-download authorization exposes whether the caller receives a proxy URL, a tightly scoped lazy-read handle for trusted internal clients, or a materialized export
 - derivatives and manifests appear only after publication
-- delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, or public path
+- delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, public path, or proxy-style follow-up URL
+- authorization responses expose a `resolvedOrigin` field such as `cdn-derived`, `source-export`, `source-proxy`, or `lazy-read-cache`
 - operator actions expose workflow or operation identifiers that can be audited later
 
 ## 9. Contract artifacts

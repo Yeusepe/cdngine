@@ -39,6 +39,17 @@ When canonicalization succeeds, the registry must persist:
 
 Raw object-storage keys beneath the source repository are not public or control-plane identities.
 
+### 3.1 Backing bucket or prefix
+
+The canonical source repository still needs underlying object storage.
+
+Typical deployments use either:
+
+- a dedicated source bucket such as `cdngine-source`
+- or a shared bucket with a `source/` prefix alongside `ingest/`, `derived/`, and `exports/`
+
+In both cases, the registry persists the **Kopia identity** plus deployment metadata such as the backing bucket or prefix. It does not promote raw object keys into the public or control-plane contract.
+
 ## 4. Tiering posture
 
 The canonical source plane and the delivery plane have different goals:

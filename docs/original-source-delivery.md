@@ -2,12 +2,12 @@
 
 This document defines how clients obtain the canonical original asset when they need the source version itself rather than a published derivative.
 
-The platform has two delivery modes:
+The platform has one client-facing authorization pattern with two policy targets:
 
 1. **published delivery** for thumbnails, streams, normalized documents, and other generated artifacts
 2. **original-source delivery** for the exact canonical uploaded asset
 
-Those are related, but they are not the same path.
+Those targets are related, but they do not have to be served from the same internal storage path. The public contract stays small: the caller asks CDNgine to authorize the read, and CDNgine chooses the right backend resolution path.
 
 ## 1. Default rule
 
@@ -27,7 +27,7 @@ When a caller needs the original source asset:
 1. the caller requests source-download authorization from the API
 2. the API verifies scope, policy, and asset lifecycle state
 3. the service resolves the canonical source identity for the version
-4. the service returns one of the supported source-delivery modes
+4. the service returns one unified authorization response that points at one of the supported source-delivery modes
 
 ## 3. Supported source-delivery modes
 
@@ -51,6 +51,8 @@ This is still sourced from the canonical repository. It does not make the stagin
 
 This mode is **optional**, not the default. It should be used only when repeated CDN-backed reads justify a second delivery copy of the original.
 
+All three modes remain transparent to the client. The public source-download operation does not require callers to understand whether the bytes ultimately came from a CDN-backed export, a proxy reconstruction, or a trusted lazy-read path.
+
 ## 4. Public API posture
 
 The preferred public contract is:
@@ -61,6 +63,7 @@ The response should include:
 
 - `authorizationMode`
 - `downloadMode` such as `proxy`, `lazy-read`, or `materialized-export`
+- `resolvedOrigin` such as `source-proxy`, `source-export`, or `lazy-read-cache`
 - `expiresAt`
 - the URL or handle needed by the caller
 
@@ -112,6 +115,8 @@ The strongest posture for repeated source downloads is therefore:
 - store the original once in the source repository
 - expose a lazy or hot-cache-backed source-download mode only for trusted internal tools that benefit from it
 - keep plain browser delivery as a simpler proxy or export path when needed
+
+When a deployment uses only one S3-compatible bucket, the export path may simply be an `exports/` prefix alongside `source/`, `derived/`, and `ingest/`. The public contract does not require separate buckets.
 
 ## 7. Read more
 

@@ -14,10 +14,17 @@ The supported fast-start profile currently brings up:
 4. Temporal UI
 5. RustFS as the local S3-compatible store
 6. tusd backed by RustFS for resumable uploads
-7. Kopia repository server backed by a RustFS bucket
+7. Kopia repository server backed by a RustFS bucket and source prefix
 8. OCI registry for ORAS-compatible artifact publication tests
 
-This profile intentionally uses **RustFS** for local simplicity even though the broader reference architecture still prefers **SeaweedFS** as the default substrate in fuller environments.
+This profile intentionally uses **RustFS** for local simplicity even though the broader reference architecture still prefers **SeaweedFS** as the default substrate in fuller environments. When contributors need to exercise tiered placement, filer semantics, or more production-like substrate behavior, the next step is to move from this RustFS profile to a SeaweedFS-backed environment instead of changing the public platform contract.
+
+The current fast-start profile is best described as **single-node + multi-bucket**:
+
+- single-node because the whole stack runs on one local host
+- multi-bucket because staging, canonical-source, derived, and export roles use separate buckets by default
+
+If needed, the same local posture can be collapsed into **single-node + single-bucket** by switching to prefixes such as `ingest/`, `source/`, `derived/`, and `exports/`.
 
 ## Quickstart
 
@@ -62,10 +69,14 @@ The `.env.example` file documents the defaults. The important local values are:
 - RustFS secret key: `rustfsadmin`
 - staging bucket: `cdngine-staging`
 - derived bucket: `cdngine-derived`
+- exports bucket: `cdngine-exports`
 - Kopia bucket: `cdngine-kopia`
+- Kopia repository prefix: `source/`
 - application database URL: `postgresql://cdngine:cdngine@localhost:5432/cdngine`
 
 Copy `.env.example` to `.env` before changing any local values. The local `.env` file is ignored by Git.
+
+If a contributor or adopter only has one bucket available, the same platform semantics still work by setting `STAGING_BUCKET`, `DERIVED_BUCKET`, `EXPORTS_BUCKET`, and `KOPIA_BUCKET` to the same bucket name and keeping distinct prefixes such as `uploads/`, `source/`, `derived/`, and `exports/`.
 
 ## What this stack is for
 

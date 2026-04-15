@@ -29,6 +29,7 @@ The second layer is implementation plumbing and must stay behind CDNgine-owned p
 | Upstream system | How it runs | CDNgine consumes it through | Preferred implementation boundary |
 | --- | --- | --- | --- |
 | **tusd** | dedicated ingest service | tus HTTP plus hook callbacks | HTTP only; do not embed resumable-upload semantics in app code |
+| **RustFS** | local or simple S3-compatible object store | S3-compatible API | `@aws-sdk/client-s3` against RustFS buckets or prefixes |
 | **SeaweedFS S3 gateway** | stateless gateway in front of filer | S3-compatible API | `@aws-sdk/client-s3` against SeaweedFS buckets for staging and derived blobs |
 | **SeaweedFS filer** | internal metadata and path service | filer HTTP API | internal HTTP client for metadata, listings, and path-scoped operations when S3 is not enough |
 | **Kopia repository server** | repository access proxy | authenticated repository connection | server mode for shared repository access and credential isolation |
@@ -37,6 +38,7 @@ The second layer is implementation plumbing and must stay behind CDNgine-owned p
 | **ORAS / OCI registry** | OCI registry plus ORAS client | ORAS CLI and OCI registry APIs | controlled ORAS CLI boundary first; avoid inventing a custom artifact registry |
 | **Nydus** | worker-local runtime / mount layer | runtime mount or lazy-read path | host or sidecar managed by workers; not a public SDK dependency |
 | **Alluxio** | optional cache / proxy service | S3 API for data and REST API for admin actions | optional node-local or near-worker cache service |
+| **lakeFS** | optional versioned object-storage gateway | S3-compatible API and presigned URLs | optional version-aware read path when Git-like publish or historical access semantics are needed |
 
 ## 4. Concrete integration choices
 
@@ -55,9 +57,26 @@ What CDNgine should not do:
 - implement its own chunk upload protocol
 - embed resumability logic inside normal API route handlers
 
-### 4.2 SeaweedFS
+### 4.2 S3-compatible object backends
 
-CDNgine should use **SeaweedFS in two modes**:
+CDNgine should keep staging, derived delivery, and export paths behind the normal S3-compatible client boundary.
+
+That means the same application code can work with:
+
+- **RustFS** in local fast-start and simple one-bucket profiles
+- **SeaweedFS** when explicit tiering and filer semantics matter
+- other S3-compatible providers for derived delivery or staging
+
+The important abstraction is still logical role plus bucket or prefix:
+
+- `ingest/`
+- `source/`
+- `derived/`
+- `exports/`
+
+### 4.2.1 SeaweedFS
+
+CDNgine should use **SeaweedFS in two modes** when the fuller substrate is enabled:
 
 1. **S3 gateway** for staging and derived object I/O
 2. **filer HTTP API** for internal metadata-oriented operations that are easier through filer semantics than through S3 alone
@@ -76,6 +95,22 @@ Internal admin integration:
   - controlled path listings
   - metadata inspection
   - path-specific operational flows where the S3 gateway is not the right tool
+
+SeaweedFS is also the preferred **fuller tiered-storage substrate** when an operator needs explicit hot/warm/cold placement beyond basic S3-compatible origin storage. In that profile, CDNgine should rely on SeaweedFS disk-tier configuration and administrative move flows instead of inventing an app-level tiering engine.
+
+### 4.2.2 RustFS
+
+CDNgine should use **RustFS** as the fast-start and simple-deployment S3-compatible backend.
+
+Preferred posture:
+
+- use the standard AWS S3 SDK against RustFS because RustFS is intentionally S3-compatible
+- use explicit buckets or prefixes for `ingest`, `source`, `derived`, and `exports`
+- keep RustFS-specific behavior out of the public API contract
+
+RustFS is a backing store, not the canonical source repository itself. Kopia still owns canonical snapshot identity on top of the RustFS bucket or prefix.
+
+When an installation stays on RustFS beyond local fast-start, RustFS can also own **bucket lifecycle and policy-based object tiering** for origin objects. That is still substrate behavior, not application logic. CDNgine should configure or document those rules, then continue to interact through normal S3-compatible object operations and repository adapters.
 
 ### 4.3 Kopia
 
@@ -157,6 +192,18 @@ When enabled:
 
 Alluxio is a cache/control optimization, not business truth.
 
+Alluxio should be read as **worker-side hot-read acceleration**, not as the browser-delivery CDN and not as the canonical source repository.
+
+### 4.8 lakeFS
+
+lakeFS is optional and should only be enabled when a deployment needs Git-like branch, commit, tag, or versioned-read behavior on top of object storage.
+
+When enabled:
+
+- use the S3-compatible gateway or presigned URL flows for version-aware reads
+- keep lakeFS behind CDNgine adapters and delivery resolution logic
+- treat it as an optional versioned-access overlay, not a replacement for the canonical source repository
+
 ## 5. CDNgine-owned adapter interfaces
 
 The repo should keep all upstream integrations behind CDNgine-owned interfaces such as:
@@ -195,7 +242,7 @@ They are **not** where upstream protocols should be reinvented.
 1. client calls `POST /v1/upload-sessions`
 2. CDNgine returns a tus upload target
 3. client uploads through **tusd** over HTTP
-4. tusd stores staged bytes in **SeaweedFS S3** using object storage semantics
+4. tusd stores staged bytes in an **S3-compatible staging bucket or prefix** using object storage semantics
 5. client or hook calls upload completion
 6. CDNgine verifies the staged object through **S3 HEAD/GET** style operations
 7. a source adapter materializes the staged object into controlled local or mounted input
@@ -217,9 +264,11 @@ They are **not** where upstream protocols should be reinvented.
 1. client calls `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize`
 2. CDNgine resolves policy and source identity
 3. service chooses one mode:
-   - proxy bytes from a **Kopia restore**
-   - return a trusted internal lazy-read handle backed by **Nydus**
-   - materialize an export into the delivery plane
+    - proxy bytes from a **Kopia restore**
+    - return a trusted internal lazy-read handle backed by **Nydus**
+    - materialize an export into the delivery plane
+
+The same public contract can resolve to a `source/`, `derived/`, or `exports/` prefix without changing the client-facing endpoint.
 
 ## 7. SDK posture
 
@@ -271,6 +320,8 @@ Do **not** skip to "reimplement the product semantics in app code".
 ## 9. References
 
 - [tusd configuration and hooks](https://tus.github.io/tusd/getting-started/configuration/)
+- [RustFS S3 compatibility](https://docs.rustfs.com/features/s3-compatibility/)
+- [RustFS architecture](https://docs.rustfs.com/concepts/architecture.html)
 - [SeaweedFS filer HTTP API](https://github.com/seaweedfs/seaweedfs/wiki/Filer-Server-API)
 - [SeaweedFS Amazon S3 API](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API)
 - [Kopia repository server](https://kopia.io/docs/repository-server/)
@@ -283,3 +334,4 @@ Do **not** skip to "reimplement the product semantics in app code".
 - [ORAS installation](https://oras.land/docs/installation)
 - [Nydus](https://nydus.dev/)
 - [Alluxio REST API](https://documentation.alluxio.io/os-en/api/rest-api)
+- [lakeFS S3 gateway](https://docs.lakefs.io/latest/reference/s3/)

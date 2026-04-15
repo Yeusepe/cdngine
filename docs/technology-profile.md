@@ -224,6 +224,7 @@ The default posture is:
 
 - use **SeaweedFS** as the default S3-compatible substrate so the platform can control tiered storage rather than leaving every byte in one undifferentiated class
 - run **Kopia** on top of that substrate for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
+- use **RustFS** for fast-start and simple one-bucket profiles because it preserves the same S3-compatible adapter shape while keeping local bring-up easy
 - use **JuiceFS** when tools or workers need a shared POSIX workspace
 - use **Nydus** and optional **Alluxio** only where repeated package-like reads justify them
 

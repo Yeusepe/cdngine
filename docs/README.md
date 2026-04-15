@@ -55,3 +55,9 @@ Use this page first instead of treating `docs/` as one flat list.
 - [Runbook Index](./runbooks/README.md)
 - [Threat Model Index](./threat-models/README.md)
 
+For topology and setup questions, start with:
+
+1. [Environment And Deployment](./environment-and-deployment.md)
+2. [Architecture](./architecture.md)
+3. [Local Platform](../deploy/local-platform/README.md)
+

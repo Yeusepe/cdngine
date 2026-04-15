@@ -119,6 +119,7 @@ services:
       AWS_EC2_METADATA_DISABLED: "true"
       STAGING_BUCKET: ${STAGING_BUCKET:-cdngine-staging}
       DERIVED_BUCKET: ${DERIVED_BUCKET:-cdngine-derived}
+      EXPORTS_BUCKET: ${EXPORTS_BUCKET:-cdngine-exports}
       KOPIA_BUCKET: ${KOPIA_BUCKET:-cdngine-kopia}
     entrypoint:
       - /bin/sh
@@ -129,6 +130,7 @@ services:
         done
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$STAGING_BUCKET" >/dev/null 2>&1 || true
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$DERIVED_BUCKET" >/dev/null 2>&1 || true
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$EXPORTS_BUCKET" >/dev/null 2>&1 || true
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$KOPIA_BUCKET" >/dev/null 2>&1 || true
     restart: "no"
 
@@ -160,6 +162,7 @@ services:
     environment:
       KOPIA_PASSWORD: ${KOPIA_REPOSITORY_PASSWORD:-cdngine-local-repository}
       KOPIA_BUCKET: ${KOPIA_BUCKET:-cdngine-kopia}
+      KOPIA_REPOSITORY_PREFIX: ${KOPIA_REPOSITORY_PREFIX:-source/}
       KOPIA_S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
       KOPIA_S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
       AWS_REGION: ${AWS_REGION:-us-east-1}
@@ -176,7 +179,8 @@ services:
           --secret-access-key="$$KOPIA_S3_SECRET_KEY" \
           --endpoint=rustfs:9000 \
           --disable-tls \
-          --region="$$AWS_REGION"; then
+          --region="$$AWS_REGION" \
+          --prefix="$$KOPIA_REPOSITORY_PREFIX"; then
           echo "Connected to existing Kopia repository."
         else
           echo "Creating a fresh Kopia repository in RustFS."
@@ -186,7 +190,8 @@ services:
             --secret-access-key="$$KOPIA_S3_SECRET_KEY" \
             --endpoint=rustfs:9000 \
             --disable-tls \
-            --region="$$AWS_REGION"
+            --region="$$AWS_REGION" \
+            --prefix="$$KOPIA_REPOSITORY_PREFIX"
         fi
     restart: "no"
 

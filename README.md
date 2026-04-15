@@ -1,5 +1,3 @@
-![CDNgine](https://github.com/user-attachments/assets/8feb6790-796e-4de7-ab57-40bd2942df7f)
-
 CDNgine is an asset ingest, processing, and delivery platform for products that need one system for **canonical source storage, durable workflow orchestration, deterministic derivatives, and CDN-friendly delivery**.
 
 It is designed for workloads such as:
@@ -28,15 +26,19 @@ The intended default flow is:
 ```mermaid
 flowchart LR
     Client["Client / SDK"] --> API["CDNgine API"]
-    API --> Ingest["tusd ingest target"]
-    API --> Registry["Registry + idempotency"]
-    Registry --> Temporal["Temporal workflows"]
-    Temporal --> Workers["Workers"]
-    Workers --> Source["Canonical source plane\nKopia + tiered substrate"]
-    Workers --> Artifacts["ORAS artifact graph"]
-    Workers --> Derived["Derived delivery plane"]
+    API --> Ingest["tusd + upload-session contract"]
+    API --> Registry["PostgreSQL + JSONB"]
+    Registry --> Temporal["Temporal"]
+    Temporal --> Workers["Worker pools"]
+    Ingest --> Staging["ingest storage"]
+    Workers --> SourceRepo["Kopia source repository"]
+    SourceRepo --> SourceStore["source storage"]
+    Workers --> Derived["derived storage"]
+    Workers --> Exports["exports storage"]
+    Workers --> OCI["ORAS / OCI"]
     Client --> CDN["CDN"]
     CDN --> Derived
+    CDN --> Exports
 ```
 
 The important split is:
@@ -46,61 +48,129 @@ The important split is:
 
 Public clients should not need to understand Kopia, SeaweedFS, ORAS, Nydus, or Temporal directly. They talk to **CDNgine APIs and SDKs**.
 
-### What lives where
+Client-facing reads stay unified even when storage is not. A caller asks CDNgine to authorize a delivery or source download once, and CDNgine resolves that request to the right internal path: **CDN-backed derivative**, **materialized export**, or **canonical-source reconstruction**.
+
+There is **not** a normal "move bytes from the CDN to cold storage" flow. The **CDN is an edge cache** for published derivatives and exports: it fills on cache miss and evicts by cache policy. **Hot/warm/cold movement happens in the origin storage layers behind the CDN**, using the selected substrate:
+
+- **RustFS** policy-based object tiering for simple or local S3-compatible deployments
+- **SeaweedFS** tiered storage and admin moves for fuller hot/warm/cold substrate control
+- **Alluxio**, **Nydus**, and worker-local caches for internal hot-read acceleration near compute
+
+CDNgine owns the **policy decision and materialization contract** for publish, export, replay, and lazy-read authorization. It should not reinvent byte-tiering engines in app code when the storage systems already provide them.
+
+### Logical roles
 
 ```mermaid
 flowchart TB
-    subgraph Source["Canonical source plane"]
-        SourceRepo["Kopia\ncanonical source repository"]
-        Substrate["SeaweedFS / JuiceFS\nbyte placement and retention"]
-        SourceRepo --> Substrate
+    subgraph Edge["Edge and API"]
+        Client["Client / SDK"]
+        ApiLayer["CDNgine API"]
+        EdgeCache["CDN"]
     end
 
     subgraph Control["Control plane"]
-        ApiLayer["Public / platform / operator APIs"]
+        Ingest["tusd"]
         Registry["PostgreSQL + JSONB"]
         Workflow["Temporal"]
+        Workers["Worker pools"]
     end
 
-    subgraph Delivery["Derived delivery plane"]
-        Oras["ORAS / OCI artifacts"]
-        DerivedStore["S3-compatible derived store"]
-        Edge["CDN"]
-        Oras --> DerivedStore
-        Edge --> DerivedStore
+    subgraph Source["Canonical source plane"]
+        Staging["ingest role"]
+        SourceRepo["Kopia repository"]
+        SourceBacking["source role"]
     end
 
+    subgraph Delivery["Delivery plane"]
+        DerivedStore["derived role"]
+        ExportStore["exports role"]
+        Oras["ORAS / OCI"]
+    end
+
+    Client --> ApiLayer
+    Client --> EdgeCache
+    ApiLayer --> Ingest
     ApiLayer --> Registry
     Registry --> Workflow
-    Workflow --> SourceRepo
-    Workflow --> Oras
-    Workflow --> DerivedStore
+    Workflow --> Workers
+    Ingest --> Staging
+    Workers --> SourceRepo
+    SourceRepo --> SourceBacking
+    Workers --> DerivedStore
+    Workers --> ExportStore
+    Workers --> Oras
+    EdgeCache --> DerivedStore
+    EdgeCache --> ExportStore
 ```
 
-### Upload to delivery
+This diagram is the **logical model** only. The same roles can be packaged on one node or many nodes, and they can use one bucket or many buckets.
+
+### Supported topology matrix
+
+```mermaid
+flowchart TB
+    subgraph SingleNode["Single-node packaging"]
+        SN1["single-bucket\none S3 namespace with prefixes"]
+        SN2["multi-bucket\nseparate storage roles"]
+    end
+
+    subgraph MultiNode["Multi-node packaging"]
+        MN1["single-bucket\nsplit compute and control,\none S3 namespace with prefixes"]
+        MN2["multi-bucket\nsplit compute and control,\nseparate storage roles"]
+    end
+```
+
+All four combinations are supported as long as the same logical roles are preserved.
+
+| Node topology | Storage topology | Supported | Typical posture |
+| --- | --- | --- | --- |
+ | single-node | single-bucket | yes | smallest install; one S3-compatible bucket with role prefixes |
+ | single-node | multi-bucket | yes | current local fast-start shape, but still one physical host |
+ | multi-node | single-bucket | yes | split compute and control plane first, keep one bucket with role prefixes |
+ | multi-node | multi-bucket | yes | fuller production shape with stronger policy and lifecycle separation |
+
+### Published derivative path
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant API as CDNgine API
-    participant Ingest as tusd / staging
-    participant Source as Canonical source plane
-    participant Temporal as Temporal
-    participant Worker as Worker
-    participant Derived as Derived delivery plane
-    participant CDN as CDN
+    participant Registry
+    participant CDN
+    participant Derived as Derived storage
 
-    Client->>API: Create upload session
-    API-->>Client: Upload target + metadata contract
-    Client->>Ingest: Upload source file
-    Client->>API: Complete upload
-    API->>Source: Snapshot staged asset
-    API->>Temporal: Start durable workflow
-    Temporal->>Worker: Execute validation + processing
-    Worker->>Source: Read canonical source
-    Worker->>Derived: Publish deterministic outputs
-    Client->>CDN: Fetch published derivative
-    CDN->>Derived: Read delivery artifact
+    Client->>API: Get asset or manifest
+    API->>Registry: Resolve version, policy, delivery scope
+    API-->>Client: Return signed or public delivery URL
+    Client->>CDN: Fetch derivative
+    CDN->>Derived: Read deterministic object key
+    Derived-->>CDN: Published artifact
+    CDN-->>Client: Cached derivative response
+```
+
+### Original-source path
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as CDNgine API
+    participant Registry
+    participant Source as Kopia source repository
+    participant CDN as CDN
+    participant Exports as Exports storage
+
+    Client->>API: Authorize source download
+    API->>Registry: Resolve version and source policy
+    alt export already exists
+        API-->>Client: Return export URL
+        Client->>CDN: Fetch source export
+        CDN->>Exports: Read exported source object
+        Exports-->>CDN: Exported bytes
+        CDN-->>Client: Source bytes
+    else proxy or lazy-read
+        API->>Source: Resolve canonical source identity
+        API-->>Client: Return proxy URL or lazy-read handle
+    end
 ```
 
 ## Default reference stack
@@ -127,6 +197,31 @@ CDNgine is opinionated about the default stack, but not about one mandatory infr
 | optional branch/publish semantics | **lakeFS**, only when that workflow is needed |
 
 The architecture is intentionally biased toward **running upstream systems directly** instead of reimplementing chunking, snapshotting, lazy reads, artifact graphs, or workflow bookkeeping in application code.
+
+## High-performance lifecycle posture
+
+If the goal is to make CDNgine as fast and modern as possible without turning it into a research project, the reference posture should be:
+
+1. **keep originals immutable and versioned** in the canonical source repository
+2. **treat derivatives as deterministic, disposable materializations**
+3. **use three distinct fast paths**:
+   - CDN edge cache for public delivery
+   - hot origin tier for currently popular derivatives and exports
+   - worker-local or near-worker hot cache for canonical-source reads
+4. **promote by measured hotness, not just age**
+5. **demote by rebuild cost plus demand decay**, not by naive TTL alone
+6. **mirror small hot sets across tiers when bursts make migration too slow**
+7. **keep manifests, indexes, and tiny metadata objects hotter than bulk binaries**
+
+That means the fastest practical lifecycle model for CDNgine is:
+
+- **canonical originals** stay immutable and replayable
+- **published derivatives** are aggressively cached and can be rebuilt
+- **exports** are short-lived materializations, not long-term truth
+- **tiny, high-fanout metadata** gets finer-grained hot promotion than large blobs
+- **learned eviction and predictive prewarm** are optional shield/origin optimizations after the baseline is proven
+
+The detailed policy lives in [Storage Tiering And Materialization](./docs/storage-tiering-and-materialization.md).
 
 ## What CDNgine owns
 
@@ -174,6 +269,13 @@ That work comes before a larger implementation push because this platform has to
 ## Local fast-start
 
 The easiest supported local path lives in [deploy/local-platform](./deploy/local-platform/README.md).
+
+That fast-start profile is currently **single-node + multi-bucket** by default:
+
+- one local host for API dependencies and storage services
+- separate RustFS buckets for staging, canonical-source repository storage, derived delivery, and exports
+
+It can be collapsed into **single-node + single-bucket** by reusing one bucket name with distinct prefixes.
 
 For Windows PowerShell:
 

@@ -28,10 +28,15 @@ The current local fast-start posture is:
 - Temporal plus Temporal UI
 - RustFS as the local S3-compatible backend
 - tusd backed by that RustFS instance
-- Kopia repository server backed by a RustFS bucket
+- Kopia repository server backed by a RustFS bucket and source prefix
+- a separate RustFS exports bucket for source-download export paths
 - local OCI registry for ORAS-compatible publication tests
 
 RustFS is acceptable here because the local goal is contributor speed and predictable one-command bring-up. The broader reference architecture still prefers **SeaweedFS** as the default substrate when moving beyond the fast-start profile.
+
+RustFS's S3-compatible API and read-after-write consistency make it a good fast-start backing store for the local dependency stack. In fuller environments, move to SeaweedFS when explicit tiering, filer semantics, and hot/warm/cold placement become part of the requirement.
+
+The default local packaging is therefore **single-node + multi-bucket**, with a documented path to **single-node + single-bucket** by reusing one bucket name and switching to distinct prefixes.
 
 See [`deploy/local-platform/README.md`](../deploy/local-platform/README.md) for the actual compose-based bring-up.
 
@@ -55,6 +60,88 @@ The opinionated first production profile is:
 This production-oriented profile is intentionally richer than the local fast-start profile. Local development should not require full production topology just to make progress.
 
 The important storage rule is: source assets may live physically in the tiered substrate, but application code should address them through canonical repository identities rather than raw canonical object keys.
+
+## 2.1 Storage bucket topology
+
+CDNgine should support both **multi-bucket** and **one-bucket** deployments.
+
+### One-bucket deployment
+
+One S3-compatible namespace is enough when the adopter only has one bucket:
+
+- `ingest/` for tusd staging
+- `source/` for the Kopia-backed canonical repository
+- `derived/` for published CDN-facing derivatives
+- `exports/` for repeated original-source downloads when export mode is enabled
+
+This model works well for local RustFS setups and smaller installations. The important rule is that the control plane persists logical source and delivery identities, not raw object keys.
+
+### Multi-bucket deployment
+
+Larger or stricter deployments may split those roles into separate buckets:
+
+- `cdngine-ingest`
+- `cdngine-source`
+- `cdngine-derived`
+- `cdngine-exports` when repeated source-export traffic matters
+
+Separate buckets improve policy isolation, lifecycle tuning, and operational visibility, but they are not required for the platform semantics.
+
+### 2.1.1 Who moves bytes between hot, warm, and cold
+
+This is one of the easiest places to get confused, so the ownership should be explicit:
+
+- **CDN**: caches and evicts edge copies of published derivatives or exports
+- **RustFS**: can apply bucket lifecycle and policy-based object tiering in simple S3-compatible deployments
+- **SeaweedFS**: owns fuller tiered-storage placement and administrative movement in richer deployments
+- **Alluxio / Nydus / worker-local cache**: accelerate repeated worker reads near compute
+- **CDNgine**: decides when to publish, export, replay, or prewarm; it does not normally implement a custom byte-tiering loop itself
+
+There is no standard "CDN to cold" pipeline. The CDN is an edge cache in front of the origin. Hot/warm/cold movement happens in the backing storage substrate and cache layers behind that origin.
+
+The practical consequence is:
+
+1. a derivative is published to the derived store or an original is materialized to exports
+2. the CDN fills its edge cache on demand
+3. the origin store may later transition older objects to colder media according to RustFS or SeaweedFS policy
+4. a later miss can still be served from origin, even if the object is no longer on the hottest media
+
+## 2.2 Node topology
+
+CDNgine should support both **single-node** and **multi-node** deployments.
+
+### Single-node deployment
+
+Single-node means the platform is co-located on one machine or one small compose-style host. The services are still logically separate, but they are packaged together for low operational overhead.
+
+Typical posture:
+
+- API, tusd, workers, PostgreSQL, Redis, and Temporal on one host
+- RustFS or another S3-compatible store on the same host or very close to it
+- one bucket with prefixes or multiple buckets, depending on operator preference
+
+This is valid for local development, trials, and smaller installations.
+
+### Multi-node deployment
+
+Multi-node means packaging by role:
+
+- API replicas on edge or app nodes
+- tusd on ingest nodes
+- PostgreSQL, Redis, and Temporal on control-plane nodes
+- workload-specific workers on dedicated compute nodes
+- object storage and OCI registry on separate storage services
+
+This is the normal direction when throughput, isolation, or failure-domain control matters.
+
+## 2.3 Combined topology matrix
+
+| Node topology | Storage topology | Supported | Typical use |
+| --- | --- | --- | --- |
+| single-node | single-bucket | yes | smallest install with one object namespace and prefixes |
+| single-node | multi-bucket | yes | current local fast-start default and a clean small-install posture |
+| multi-node | single-bucket | yes | split compute and control plane before splitting storage |
+| multi-node | multi-bucket | yes | fuller production posture with cleaner lifecycle and policy boundaries |
 
 ## 3. Workload-separated worker pools
 
@@ -135,6 +222,7 @@ Expected properties:
 - clear private-origin access rules
 - retention policies separated by store role
 - worker-local or distributed caches only where repeated reconstructions justify them
+- canonical repository storage backed by an explicit bucket or prefix, even when the public identity is the Kopia snapshot or manifest identifier
 
 ## 5. Regionality and latency posture
 
@@ -205,6 +293,8 @@ At minimum:
 - [Redis documentation](https://redis.io/docs/latest/)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
 - [Kopia features](https://kopia.io/docs/features/)
+- [RustFS S3 compatibility](https://docs.rustfs.com/features/s3-compatibility/)
+- [RustFS architecture](https://docs.rustfs.com/concepts/architecture.html)
 - [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
 - [JuiceFS architecture](https://juicefs.com/docs/community/architecture)
 - [Nydus](https://nydus.dev/)

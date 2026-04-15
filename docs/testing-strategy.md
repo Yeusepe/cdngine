@@ -72,7 +72,17 @@ The platform needs real integration tests for:
 
 Mock-heavy tests are not enough for storage and workflow boundaries.
 
-## 5.1 Contract-build expectations
+### 5.1 Topology coverage
+
+Integration and end-to-end coverage should prove that packaging changes do not change semantics.
+
+At minimum, keep explicit coverage for:
+
+- single-node + multi-bucket
+- single-node + single-bucket with prefixes
+- adapter behavior that remains stable when later multi-node deployment profiles are introduced
+
+## 5.2 Contract-build expectations
 
 Because the repository is contract-first, the test plan should also validate:
 

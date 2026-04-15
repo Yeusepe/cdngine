@@ -83,7 +83,9 @@ The service code should not connect to every upstream system ad hoc from random 
 The intended posture is:
 
 - **Temporal** is consumed directly through the TypeScript SDK
-- **SeaweedFS** staging and derived storage are consumed through S3-compatible clients
+- **S3-compatible staging and derived storage** are consumed through standard S3-compatible clients
+- **RustFS** is the default fast-start S3-compatible backend for local development and simple single-bucket deployments
+- **SeaweedFS** is the richer default substrate when explicit tiering, filer semantics, and hot/warm/cold placement matter
 - **SeaweedFS filer** is consumed through internal HTTP only where filer semantics are actually needed
 - **Kopia** is consumed through a managed repository server plus controlled CLI adapter
 - **ORAS** is consumed through ORAS CLI and OCI registry semantics
@@ -271,6 +273,31 @@ Preferred behavior:
 - source-download authorization may be stricter than derivative authorization
 - quarantined or policy-blocked versions must not silently fall back to a raw storage read
 
+### 6.6.2 Unified authorization response
+
+Client-facing APIs should still look unified even when the backend resolution path changes.
+
+Preferred posture:
+
+- `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize` resolves published derivative and export reads
+- `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize` resolves canonical original reads
+- both endpoints return the same shape of authorization envelope
+- clients do not choose between derived-store, export-prefix, or proxy reconstruction paths themselves
+
+Illustrative response shape:
+
+```json
+{
+  "authorizationMode": "signed-url",
+  "deliveryMode": "derived",
+  "resolvedOrigin": "cdn-derived",
+  "expiresAt": "2026-04-15T16:00:00Z",
+  "url": "https://cdn.example.com/..."
+}
+```
+
+`resolvedOrigin` should be modeled explicitly enough that SDKs can log or branch safely when needed, while still treating the response as one public contract.
+
 ## 6.7 Delivery scope resolution
 
 Delivery URL shape should be a modeled service concern.
@@ -282,6 +309,8 @@ The service layer should resolve a request against a registered `DeliveryScope` 
 - public versus private delivery mode
 - signed-URL versus signed-cookie posture
 - stream-bundle behavior where applicable
+- one-bucket versus multi-bucket prefix resolution for the actual origin path
+- derived hot path versus export or proxy fallback
 
 Hostnames alone are not authorization truth. They are one input into delivery-scope resolution.
 

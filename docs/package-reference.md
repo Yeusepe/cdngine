@@ -17,6 +17,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
 | canonical source repository | Kopia | chunk-deduplicated canonical asset history and replay provenance without custom repository code |
 | tiered storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | explicit byte placement and shared-workspace options |
+| local or simple S3-compatible backend | RustFS | active S3-compatible object store for fast-start and one-bucket profiles |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
 | metadata/query indexing | PostgreSQL GIN over JSONB | indexable structured metadata without inventing a custom metadata engine |
 | cache and coordination | Redis | mature cache, lock, and ephemeral coordination primitives |
@@ -45,6 +46,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
 | Kopia | `kopia/kopia` | snapshot repository layout, deduplication, and source-history management |
+| RustFS | `rustfs/rustfs` | S3-compatible local or simple deployment backend for staging, source, and derived prefixes |
 | SeaweedFS | `seaweedfs/seaweedfs` | tiered storage, S3-compatible substrate, and placement controls |
 | JuiceFS | `juicedata/juicefs` | object-backed POSIX workspace semantics |
 | Nydus | `dragonflyoss/nydus` | lazy chunk-addressed reads and on-demand materialization |
@@ -176,6 +178,7 @@ Use it deliberately:
 
 - keep public clients on the simpler ingest target and snapshot into the source repository after verification
 - persist snapshot identities, logical paths, and content digests in the registry
+- back the repository with an explicit bucket or prefix whether the deployment uses RustFS locally or SeaweedFS in fuller environments
 - treat SeaweedFS or JuiceFS as the physical substrate while the source repository remains the canonical addressing layer
 - use lazy-read or hot-cache layers only where repeated source reconstruction justifies them
 

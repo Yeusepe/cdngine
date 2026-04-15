@@ -162,6 +162,7 @@ What matters for CDNgine:
 - canonical content and published delivery should each have explicit lifecycle semantics
 - GC, purge, and retention are platform features and need API and operator design, not just storage scripts
 - storage efficiency should be paired with lifecycle controls
+- the S3 gateway and presigned-read pattern show how a deployment can preserve one client-facing access style while resolving versioned reads behind the scenes
 
 Adopted rule:
 

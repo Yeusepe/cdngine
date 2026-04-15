@@ -48,20 +48,26 @@ Authorization policy should be evaluated over attributes, not only over static r
 ```mermaid
 flowchart LR
     Namespace["ServiceNamespace"] --> Tenant["TenantScope"]
+    Namespace --> DeliveryScope["DeliveryScope"]
+    Tenant --> DeliveryScope
     Namespace --> Asset["Asset"]
     Tenant --> Asset
     Asset --> Version["AssetVersion"]
-    Asset --> DeliveryScope["DeliveryScope"]
     Version --> Validation["ValidationResult"]
-    Version --> Job["ProcessingJob"]
+    Version --> Dispatch["WorkflowDispatch"]
+    Dispatch --> Run["WorkflowRun"]
+    Run --> Job["ProcessingJob"]
     Job --> Derivative["Derivative"]
     Version --> Manifest["AssetManifest"]
+    DeliveryScope --> Derivative
+    DeliveryScope --> Manifest
     Asset --> Binding["RecipeBinding"]
     Binding --> Capability["CapabilityRegistration"]
     Namespace --> ScopePolicy["ScopePolicyBinding"]
-    Job --> Run["WorkflowRun"]
     Version --> Idempotency["IdempotencyRecord"]
-    Version --> Dispatch["WorkflowDispatch"]
+    Version --> SourceGrant["SourceAccessGrant"]
+    DeliveryScope --> DeliveryAudit["DeliveryAuthorizationAudit"]
+    SourceGrant --> DeliveryAudit
 ```
 
 ## 4. Record responsibilities

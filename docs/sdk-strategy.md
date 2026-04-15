@@ -70,7 +70,7 @@ Some logic is annoying, easy to get wrong, and repeated across languages if left
 The shared core should own:
 
 - upload orchestration
-- lazy-read or source-download helpers where the SDK is allowed to fetch canonical originals directly
+- source-download and delivery-authorization helpers that follow one public authorize contract and then honor the returned mode
 - resumable-upload helper behavior
 - polling and wait helpers
 - manifest parsing and validation helpers
@@ -168,6 +168,7 @@ Public SDKs should:
 6. avoid forcing callers to individually sign or stitch stream segments
 7. preserve ownership and scope concepts explicitly
 8. expose the difference between plain source download and lazy or source-aware internal read when the original-delivery contract supports both
+9. avoid making callers choose between derived-store URLs, export URLs, or proxy reconstruction when the authorization response already resolved that choice
 
 ## 8. API design rules for SDK generation
 

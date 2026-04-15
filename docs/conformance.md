@@ -70,6 +70,12 @@ The conformance suite should have a matching local platform bring-up in `deploy/
 4. workflow dispatch
 5. one deterministic publication path
 
+The conformance matrix should also prove that the same logical behavior holds across supported packaging choices:
+
+1. single-node + multi-bucket fast-start
+2. single-node + single-bucket prefix layout
+3. later multi-node deployment profiles where API, control plane, and workers are separated
+
 ## 7. Read more
 
 - [Testing Strategy](./testing-strategy.md)

@@ -1,0 +1,2486 @@
+{
+  "crossTenantDenial": {
+    "actorTenantId": "tenant-beta",
+    "detail": "The caller is not allowed to act in tenant scope tenant-acme.",
+    "status": 403,
+    "targetTenantId": "tenant-acme",
+    "type": "https://docs.cdngine.dev/problems/scope-not-allowed"
+  },
+  "environment": {
+    "apiBaseUrl": "https://api.cdngine.local",
+    "demoUrl": "http://localhost:5173",
+    "storage": {
+      "autoCreatedBuckets": true,
+      "bucketPrefix": "cdngine-demo",
+      "buckets": {
+        "derived": "cdngine-demo-derived",
+        "exports": "cdngine-demo-exports",
+        "ingest": "cdngine-demo-ingest",
+        "source": "cdngine-demo-source"
+      },
+      "configurationSource": "auto-created-defaults",
+      "configuredBucketKeys": []
+    }
+  },
+  "examples": {
+    "api": {
+      "description": "Raw HTTP flow using the public API surface directly.",
+      "language": "bash",
+      "title": "API example",
+      "code": "API_BASE_URL=https://api.cdngine.local\nACCESS_TOKEN=replace-with-host-access-token\n\ncurl -X POST \"$API_BASE_URL/v1/upload-sessions\" \\\n  -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Idempotency-Key: create-ast_001\" \\\n  -d '{\n    \"assetOwner\": \"customer:acme\",\n    \"serviceNamespaceId\": \"media-platform\",\n    \"tenantId\": \"tenant-acme\",\n    \"source\": {\n      \"filename\": \"hero-banner-v1.png\",\n      \"contentType\": \"image/png\"\n    },\n    \"upload\": {\n      \"objectKey\": \"ingest/media-platform/tenant-acme/hero-banner-v1.png\",\n      \"byteLength\": 1843921,\n      \"checksum\": { \"algorithm\": \"sha256\", \"value\": \"replace-with-real-checksum\" }\n    }\n  }'\n\ncurl -X POST \"$API_BASE_URL/v1/upload-sessions/$SESSION_ID/complete\" \\\n  -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Idempotency-Key: complete-$SESSION_ID\" \\\n  -d '{\n    \"stagedObject\": {\n      \"objectKey\": \"ingest/media-platform/tenant-acme/hero-banner-v1.png\",\n      \"byteLength\": 1843921,\n      \"checksum\": { \"algorithm\": \"sha256\", \"value\": \"replace-with-real-checksum\" }\n    }\n  }'\n\ncurl \"$API_BASE_URL/v1/assets/ast_001/versions/ver_001\" \\\n  -H \"Authorization: Bearer $ACCESS_TOKEN\"\n\ncurl -X POST \"$API_BASE_URL/v1/assets/ast_001/versions/ver_001/deliveries/public-images/authorize\" \\\n  -H \"Authorization: Bearer $ACCESS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Idempotency-Key: authorize-ver_001\" \\\n  -d '{ \"variant\": \"webp-master\", \"responseFormat\": \"url\" }'"
+    },
+    "sdk": {
+      "description": "TypeScript flow using the ergonomic checked-in CDNgine client surface.",
+      "language": "ts",
+      "title": "SDK example",
+      "code": "import { createCDNgineClient } from \"@cdngine/sdk\";\n\nconst client = createCDNgineClient({\n  baseUrl: \"https://api.cdngine.local\",\n  getAccessToken: () => \"replace-with-host-access-token\"\n});\n\nconst media = client.withDefaults({\n  assetOwner: \"customer:acme\",\n  serviceNamespaceId: \"media-platform\",\n  tenantId: \"tenant-acme\"\n});\n\nconst fileBytes = new Uint8Array(/* file bytes go here */);\n\nconst uploaded = await media.upload(fileBytes, {\n  contentType: \"image/png\",\n  filename: \"hero-banner-v1.png\",\n  idempotencyKey: \"upload-ast_001\"\n});\n\nconst version = client.asset(uploaded.assetId).version(uploaded.versionId);\n\nconst delivery = await version.delivery(\"public-images\").authorize({\n  idempotencyKey: `authorize-${uploaded.versionId}`,\n  body: {\n    variant: \"webp-master\",\n    responseFormat: \"url\"\n  }\n});\n\nconst source = await version.authorizeSourceDownload({\n  idempotencyKey: `source-${uploaded.versionId}`,\n  body: {\n    preferredDisposition: \"attachment\"\n  }\n});\n\nconsole.log({ uploaded, delivery, source });"
+    }
+  },
+  "generatedAt": "2026-01-15T19:00:00.000Z",
+  "generatedObjects": [
+    {
+      "assetId": "ast_001",
+      "deliveryScopeId": "public-images",
+      "lifecycleState": "published",
+      "manifestType": "image-default",
+      "objectKey": "ast_001:ver_001",
+      "source": {
+        "byteLength": 1843921,
+        "contentType": "image/png",
+        "filename": "hero-banner-v1.png"
+      },
+      "tenantId": "tenant-acme",
+      "title": "Hero banner v1",
+      "uploadSessionId": "upl_001",
+      "versionId": "ver_001",
+      "versionNumber": 1,
+      "workflowKey": "media-platform:ast_001:ver_001:image-derivation-v1",
+      "downloads": [
+        {
+          "kind": "derivative",
+          "label": "webp-master",
+          "resolvedOrigin": "cdn-derived",
+          "url": "https://cdn.cdngine.local/public-images/webp-master"
+        },
+        {
+          "kind": "source",
+          "label": "original source",
+          "resolvedOrigin": "source-export",
+          "url": "https://downloads.cdngine.local/cdngine-demo-exports/ast_001/ver_001"
+        }
+      ]
+    },
+    {
+      "assetId": "ast_001",
+      "deliveryScopeId": "public-images",
+      "lifecycleState": "published",
+      "manifestType": "image-default",
+      "objectKey": "ast_001:ver_002",
+      "source": {
+        "byteLength": 1910244,
+        "contentType": "image/png",
+        "filename": "hero-banner-v2.png"
+      },
+      "tenantId": "tenant-acme",
+      "title": "Hero banner v2",
+      "uploadSessionId": "upl_002",
+      "versionId": "ver_002",
+      "versionNumber": 2,
+      "workflowKey": "media-platform:ast_001:ver_002:image-derivation-v1",
+      "downloads": [
+        {
+          "kind": "derivative",
+          "label": "webp-master",
+          "resolvedOrigin": "cdn-derived",
+          "url": "https://cdn.cdngine.local/public-images/webp-master"
+        },
+        {
+          "kind": "source",
+          "label": "original source",
+          "resolvedOrigin": "source-export",
+          "url": "https://downloads.cdngine.local/cdngine-demo-exports/ast_001/ver_002"
+        }
+      ]
+    },
+    {
+      "assetId": "ast_002",
+      "deliveryScopeId": "presentations",
+      "lifecycleState": "published",
+      "manifestType": "presentation-default",
+      "objectKey": "ast_002:ver_003",
+      "source": {
+        "byteLength": 4096,
+        "contentType": "application/pdf",
+        "filename": "event-deck.pdf"
+      },
+      "tenantId": "tenant-acme",
+      "title": "Event deck",
+      "uploadSessionId": "upl_003",
+      "versionId": "ver_003",
+      "versionNumber": 1,
+      "workflowKey": "media-platform:ast_002:ver_003:presentation-normalization-v1",
+      "downloads": [
+        {
+          "kind": "derivative",
+          "label": "normalized-pdf",
+          "resolvedOrigin": "cdn-derived",
+          "url": "https://cdn.cdngine.local/presentations/normalized-pdf"
+        },
+        {
+          "kind": "source",
+          "label": "original source",
+          "resolvedOrigin": "source-export",
+          "url": "https://downloads.cdngine.local/cdngine-demo-exports/ast_002/ver_003"
+        }
+      ]
+    },
+    {
+      "assetId": "ast_003",
+      "deliveryScopeId": "public-images",
+      "lifecycleState": "published",
+      "manifestType": "image-default",
+      "objectKey": "ast_003:ver_004",
+      "source": {
+        "byteLength": 512443,
+        "contentType": "image/png",
+        "filename": "brand-logo.png"
+      },
+      "tenantId": "tenant-beta",
+      "title": "Brand logo",
+      "uploadSessionId": "upl_004",
+      "versionId": "ver_004",
+      "versionNumber": 1,
+      "workflowKey": "media-platform:ast_003:ver_004:image-derivation-v1",
+      "downloads": [
+        {
+          "kind": "derivative",
+          "label": "webp-master",
+          "resolvedOrigin": "cdn-derived",
+          "url": "https://cdn.cdngine.local/public-images/webp-master"
+        },
+        {
+          "kind": "source",
+          "label": "original source",
+          "resolvedOrigin": "source-export",
+          "url": "https://downloads.cdngine.local/cdngine-demo-exports/ast_003/ver_004"
+        }
+      ]
+    }
+  ],
+  "simulation": {
+    "architectureComponents": [
+      {
+        "componentId": "api-edge",
+        "label": "API edge / auth",
+        "layer": "control-plane",
+        "responsibility": "Authenticates the caller, enforces tenant and namespace scope, and emits request correlation."
+      },
+      {
+        "componentId": "registry",
+        "label": "Registry metadata",
+        "layer": "control-plane",
+        "responsibility": "Resolves immutable asset-version metadata, manifests, and delivery authorization context."
+      },
+      {
+        "componentId": "ingest-staging",
+        "label": "tusd staging",
+        "layer": "ingest",
+        "responsibility": "Accepts resumable upload bytes before canonicalization turns them into durable source truth."
+      },
+      {
+        "componentId": "canonical-source-repo",
+        "label": "Canonical source repository",
+        "layer": "source-plane",
+        "responsibility": "Stores immutable source truth and reconstruction evidence for replay and source-export flows."
+      },
+      {
+        "componentId": "workflow-controller",
+        "label": "Temporal workflow dispatch",
+        "layer": "orchestration",
+        "responsibility": "Starts publication workflows and tracks long-running processing state."
+      },
+      {
+        "componentId": "worker-cache",
+        "label": "Worker hot cache",
+        "layer": "processing",
+        "responsibility": "Accelerates repeated source reads close to compute during publication and replay."
+      },
+      {
+        "componentId": "derived-hot-origin",
+        "label": "Derived hot origin",
+        "layer": "delivery",
+        "responsibility": "Stores current published derivatives and manifests for low-latency origin fetches."
+      },
+      {
+        "componentId": "cold-origin-tier",
+        "label": "Cold origin media",
+        "layer": "delivery",
+        "responsibility": "Holds demoted derivative objects until a cold read triggers rehydration back into hot origin storage."
+      },
+      {
+        "componentId": "source-export",
+        "label": "Source export materialization",
+        "layer": "delivery",
+        "responsibility": "Materializes authorized original-source downloads from the canonical source plane."
+      },
+      {
+        "componentId": "cdn-edge",
+        "label": "CDN edge",
+        "layer": "delivery",
+        "responsibility": "Serves hot derivatives directly and refills from origin on cache misses."
+      }
+    ],
+    "storageProfiles": [
+      {
+        "componentHits": [
+          {
+            "componentId": "api-edge",
+            "hitCount": 16,
+            "slowestEventMs": 13,
+            "totalDurationMs": 136
+          },
+          {
+            "componentId": "registry",
+            "hitCount": 12,
+            "slowestEventMs": 22,
+            "totalDurationMs": 235
+          },
+          {
+            "componentId": "ingest-staging",
+            "hitCount": 4,
+            "slowestEventMs": 33,
+            "totalDurationMs": 107
+          },
+          {
+            "componentId": "canonical-source-repo",
+            "hitCount": 8,
+            "slowestEventMs": 690,
+            "totalDurationMs": 2820
+          },
+          {
+            "componentId": "workflow-controller",
+            "hitCount": 4,
+            "slowestEventMs": 16,
+            "totalDurationMs": 57
+          },
+          {
+            "componentId": "worker-cache",
+            "hitCount": 4,
+            "slowestEventMs": 88,
+            "totalDurationMs": 289
+          },
+          {
+            "componentId": "derived-hot-origin",
+            "hitCount": 12,
+            "slowestEventMs": 122,
+            "totalDurationMs": 827
+          },
+          {
+            "componentId": "cold-origin-tier",
+            "hitCount": 4,
+            "slowestEventMs": 1062,
+            "totalDurationMs": 3972
+          },
+          {
+            "componentId": "source-export",
+            "hitCount": 4,
+            "slowestEventMs": 231,
+            "totalDurationMs": 850
+          },
+          {
+            "componentId": "cdn-edge",
+            "hitCount": 12,
+            "slowestEventMs": 121,
+            "totalDurationMs": 556
+          }
+        ],
+        "demotionPolicy": {
+          "hotWindowSeconds": 900,
+          "warmWindowSeconds": 3600,
+          "coldAfterSeconds": 14400
+        },
+        "description": "Uses realistic hot and warm windows before lifecycle policy demotes the origin copy to cold media.",
+        "label": "Standard tiering",
+        "objectStates": [
+          {
+            "assetId": "ast_001",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 14400,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Realistic restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 14405,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 14408,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 1265,
+              "coldRestoreMs": 1057,
+              "hotDeliveryMs": 48,
+              "manifestMs": 12,
+              "publicationMs": 343,
+              "sourceExportMs": 657
+            },
+            "objectKey": "ast_001:ver_001",
+            "tenantId": "tenant-acme",
+            "title": "Hero banner v1",
+            "versionId": "ver_001"
+          },
+          {
+            "assetId": "ast_001",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 14400,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Realistic restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 14405,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 14408,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 1271,
+              "coldRestoreMs": 1062,
+              "hotDeliveryMs": 49,
+              "manifestMs": 12,
+              "publicationMs": 346,
+              "sourceExportMs": 661
+            },
+            "objectKey": "ast_001:ver_002",
+            "tenantId": "tenant-acme",
+            "title": "Hero banner v2",
+            "versionId": "ver_002"
+          },
+          {
+            "assetId": "ast_002",
+            "contentType": "application/pdf",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 14400,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Realistic restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 14405,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 14408,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 1099,
+              "coldRestoreMs": 909,
+              "hotDeliveryMs": 30,
+              "manifestMs": 8,
+              "publicationMs": 531,
+              "sourceExportMs": 542
+            },
+            "objectKey": "ast_002:ver_003",
+            "tenantId": "tenant-acme",
+            "title": "Event deck",
+            "versionId": "ver_003"
+          },
+          {
+            "assetId": "ast_003",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 14400,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Realistic restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 14405,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 14408,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 1130,
+              "coldRestoreMs": 944,
+              "hotDeliveryMs": 26,
+              "manifestMs": 9,
+              "publicationMs": 283,
+              "sourceExportMs": 569
+            },
+            "objectKey": "ast_003:ver_004",
+            "tenantId": "tenant-beta",
+            "title": "Brand logo",
+            "versionId": "ver_004"
+          }
+        ],
+        "profileId": "standard-tiering",
+        "restoreProfile": {
+          "cacheFillMs": 160,
+          "label": "Realistic restore",
+          "restoreBaseMs": 900,
+          "restoreSizeFactorMs": 85
+        },
+        "summaryMetrics": {
+          "cdnEdgeHitRate": 0.93,
+          "coldDeliveryMs": 1191,
+          "coldRestoreMs": 993,
+          "hotDeliveryMs": 38,
+          "hotOriginHitRate": 0.79,
+          "manifestMs": 10,
+          "publicationMs": 376,
+          "sourceExportMs": 607
+        },
+        "traces": [
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "standard-tiering",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Hero banner v1",
+            "totalMs": 343,
+            "traceId": "standard-tiering:ast_001:ver_001:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 13,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 33,
+                "storageState": "staging",
+                "offsetMs": 13
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 73,
+                "storageState": "canonical-hot",
+                "offsetMs": 46
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 16,
+                "storageState": "queued",
+                "offsetMs": 119
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 87,
+                "storageState": "worker-hot",
+                "offsetMs": 135
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 121,
+                "storageState": "origin-hot",
+                "offsetMs": 222
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "standard-tiering",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Hero banner v1",
+            "totalMs": 52,
+            "traceId": "standard-tiering:ast_001:ver_001:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 20,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 24,
+                "storageState": "edge-hot",
+                "offsetMs": 28
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "cold-restore",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "standard-tiering",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Hero banner v1",
+            "totalMs": 1321,
+            "traceId": "standard-tiering:ast_001:ver_001:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 30
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 42
+              },
+              {
+                "action": "Realistic restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 1057,
+                "storageState": "cold-restore",
+                "offsetMs": 56
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 88,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 1113
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 120,
+                "storageState": "edge-refill",
+                "offsetMs": 1201
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "standard-tiering",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Hero banner v1",
+            "totalMs": 948,
+            "traceId": "standard-tiering:ast_001:ver_001:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 9
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 687,
+                "storageState": "canonical-read",
+                "offsetMs": 31
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 230,
+                "storageState": "export-hot",
+                "offsetMs": 718
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "standard-tiering",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Hero banner v2",
+            "totalMs": 346,
+            "traceId": "standard-tiering:ast_001:ver_002:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 13,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 33,
+                "storageState": "staging",
+                "offsetMs": 13
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 74,
+                "storageState": "canonical-hot",
+                "offsetMs": 46
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 16,
+                "storageState": "queued",
+                "offsetMs": 120
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 88,
+                "storageState": "worker-hot",
+                "offsetMs": 136
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 122,
+                "storageState": "origin-hot",
+                "offsetMs": 224
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "standard-tiering",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Hero banner v2",
+            "totalMs": 53,
+            "traceId": "standard-tiering:ast_001:ver_002:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 20,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 25,
+                "storageState": "edge-hot",
+                "offsetMs": 28
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "cold-restore",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "standard-tiering",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Hero banner v2",
+            "totalMs": 1327,
+            "traceId": "standard-tiering:ast_001:ver_002:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 30
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 42
+              },
+              {
+                "action": "Realistic restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 1062,
+                "storageState": "cold-restore",
+                "offsetMs": 56
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 88,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 1118
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 121,
+                "storageState": "edge-refill",
+                "offsetMs": 1206
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "standard-tiering",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Hero banner v2",
+            "totalMs": 952,
+            "traceId": "standard-tiering:ast_001:ver_002:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 9
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 690,
+                "storageState": "canonical-read",
+                "offsetMs": 31
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 231,
+                "storageState": "export-hot",
+                "offsetMs": 721
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "standard-tiering",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Event deck",
+            "totalMs": 221,
+            "traceId": "standard-tiering:ast_002:ver_003:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 19,
+                "storageState": "staging",
+                "offsetMs": 9
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 42,
+                "storageState": "canonical-hot",
+                "offsetMs": 28
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 12,
+                "storageState": "queued",
+                "offsetMs": 70
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 54,
+                "storageState": "worker-hot",
+                "offsetMs": 82
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 85,
+                "storageState": "origin-hot",
+                "offsetMs": 136
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "standard-tiering",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Event deck",
+            "totalMs": 32,
+            "traceId": "standard-tiering:ast_002:ver_003:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 6,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 16,
+                "storageState": "metadata-hot",
+                "offsetMs": 6
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 10,
+                "storageState": "edge-hot",
+                "offsetMs": 22
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "cold-restore",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "standard-tiering",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Event deck",
+            "totalMs": 1149,
+            "traceId": "standard-tiering:ast_002:ver_003:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 6,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 18,
+                "storageState": "metadata-hot",
+                "offsetMs": 6
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 24
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 36
+              },
+              {
+                "action": "Realistic restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 909,
+                "storageState": "cold-restore",
+                "offsetMs": 50
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 88,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 959
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 102,
+                "storageState": "edge-refill",
+                "offsetMs": 1047
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "standard-tiering",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Event deck",
+            "totalMs": 806,
+            "traceId": "standard-tiering:ast_002:ver_003:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 18,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 591,
+                "storageState": "canonical-read",
+                "offsetMs": 25
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 190,
+                "storageState": "export-hot",
+                "offsetMs": 616
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "standard-tiering",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Brand logo",
+            "totalMs": 245,
+            "traceId": "standard-tiering:ast_003:ver_004:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 10,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 22,
+                "storageState": "staging",
+                "offsetMs": 10
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 49,
+                "storageState": "canonical-hot",
+                "offsetMs": 32
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 13,
+                "storageState": "queued",
+                "offsetMs": 81
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 60,
+                "storageState": "worker-hot",
+                "offsetMs": 94
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 91,
+                "storageState": "origin-hot",
+                "offsetMs": 154
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "standard-tiering",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Brand logo",
+            "totalMs": 32,
+            "traceId": "standard-tiering:ast_003:ver_004:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 17,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 8,
+                "storageState": "edge-hot",
+                "offsetMs": 24
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "cold-restore",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "standard-tiering",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Brand logo",
+            "totalMs": 1182,
+            "traceId": "standard-tiering:ast_003:ver_004:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 19,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 26
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 38
+              },
+              {
+                "action": "Realistic restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 944,
+                "storageState": "cold-restore",
+                "offsetMs": 52
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 88,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 996
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 98,
+                "storageState": "edge-refill",
+                "offsetMs": 1084
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "standard-tiering",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Brand logo",
+            "totalMs": 840,
+            "traceId": "standard-tiering:ast_003:ver_004:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 19,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 614,
+                "storageState": "canonical-read",
+                "offsetMs": 27
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 199,
+                "storageState": "export-hot",
+                "offsetMs": 641
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "componentHits": [
+          {
+            "componentId": "api-edge",
+            "hitCount": 16,
+            "slowestEventMs": 13,
+            "totalDurationMs": 136
+          },
+          {
+            "componentId": "registry",
+            "hitCount": 12,
+            "slowestEventMs": 22,
+            "totalDurationMs": 235
+          },
+          {
+            "componentId": "ingest-staging",
+            "hitCount": 4,
+            "slowestEventMs": 33,
+            "totalDurationMs": 107
+          },
+          {
+            "componentId": "canonical-source-repo",
+            "hitCount": 8,
+            "slowestEventMs": 74,
+            "totalDurationMs": 314
+          },
+          {
+            "componentId": "workflow-controller",
+            "hitCount": 4,
+            "slowestEventMs": 16,
+            "totalDurationMs": 57
+          },
+          {
+            "componentId": "worker-cache",
+            "hitCount": 4,
+            "slowestEventMs": 88,
+            "totalDurationMs": 289
+          },
+          {
+            "componentId": "derived-hot-origin",
+            "hitCount": 12,
+            "slowestEventMs": 122,
+            "totalDurationMs": 551
+          },
+          {
+            "componentId": "cold-origin-tier",
+            "hitCount": 4,
+            "slowestEventMs": 33,
+            "totalDurationMs": 117
+          },
+          {
+            "componentId": "source-export",
+            "hitCount": 4,
+            "slowestEventMs": 69,
+            "totalDurationMs": 243
+          },
+          {
+            "componentId": "cdn-edge",
+            "hitCount": 12,
+            "slowestEventMs": 65,
+            "totalDurationMs": 332
+          }
+        ],
+        "demotionPolicy": {
+          "hotWindowSeconds": 15,
+          "warmWindowSeconds": 30,
+          "coldAfterSeconds": 45
+        },
+        "description": "Compresses the hot and warm windows and makes cold restores nearly instant so the architecture can be demonstrated interactively.",
+        "label": "Accelerated cold demo",
+        "objectStates": [
+          {
+            "assetId": "ast_001",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 45,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Instant restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 50,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 53,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 115,
+              "coldRestoreMs": 32,
+              "hotDeliveryMs": 48,
+              "manifestMs": 12,
+              "publicationMs": 343,
+              "sourceExportMs": 196
+            },
+            "objectKey": "ast_001:ver_001",
+            "tenantId": "tenant-acme",
+            "title": "Hero banner v1",
+            "versionId": "ver_001"
+          },
+          {
+            "assetId": "ast_001",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 45,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Instant restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 50,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 53,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 117,
+              "coldRestoreMs": 33,
+              "hotDeliveryMs": 49,
+              "manifestMs": 12,
+              "publicationMs": 346,
+              "sourceExportMs": 198
+            },
+            "objectKey": "ast_001:ver_002",
+            "tenantId": "tenant-acme",
+            "title": "Hero banner v2",
+            "versionId": "ver_002"
+          },
+          {
+            "assetId": "ast_002",
+            "contentType": "application/pdf",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 45,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Instant restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 50,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 53,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 90,
+              "coldRestoreMs": 25,
+              "hotDeliveryMs": 30,
+              "manifestMs": 8,
+              "publicationMs": 531,
+              "sourceExportMs": 144
+            },
+            "objectKey": "ast_002:ver_003",
+            "tenantId": "tenant-acme",
+            "title": "Event deck",
+            "versionId": "ver_003"
+          },
+          {
+            "assetId": "ast_003",
+            "contentType": "image/png",
+            "lifecycleTimeline": [
+              {
+                "componentId": "ingest-staging",
+                "label": "Upload bytes arrive in staging.",
+                "offsetSeconds": 0,
+                "storageState": "staging"
+              },
+              {
+                "componentId": "canonical-source-repo",
+                "label": "Canonical source snapshot completes.",
+                "offsetSeconds": 3,
+                "storageState": "canonical-hot"
+              },
+              {
+                "componentId": "workflow-controller",
+                "label": "Publication workflow is dispatched.",
+                "offsetSeconds": 5,
+                "storageState": "queued"
+              },
+              {
+                "componentId": "derived-hot-origin",
+                "label": "Deterministic derivative is published into hot origin storage.",
+                "offsetSeconds": 12,
+                "storageState": "origin-hot"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "First delivery warms the CDN edge cache.",
+                "offsetSeconds": 18,
+                "storageState": "edge-hot"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Lifecycle policy demotes the origin copy to colder storage media.",
+                "offsetSeconds": 45,
+                "storageState": "origin-cold"
+              },
+              {
+                "componentId": "cold-origin-tier",
+                "label": "Instant restore makes a cold-read restore observable in the demo.",
+                "offsetSeconds": 50,
+                "storageState": "cold-restore"
+              },
+              {
+                "componentId": "cdn-edge",
+                "label": "The CDN is refilled after rehydration and returns to hot service.",
+                "offsetSeconds": 53,
+                "storageState": "edge-refilled"
+              }
+            ],
+            "metrics": {
+              "coldDeliveryMs": 88,
+              "coldRestoreMs": 27,
+              "hotDeliveryMs": 26,
+              "manifestMs": 9,
+              "publicationMs": 283,
+              "sourceExportMs": 156
+            },
+            "objectKey": "ast_003:ver_004",
+            "tenantId": "tenant-beta",
+            "title": "Brand logo",
+            "versionId": "ver_004"
+          }
+        ],
+        "profileId": "instant-cold-demo",
+        "restoreProfile": {
+          "cacheFillMs": 35,
+          "label": "Instant restore",
+          "restoreBaseMs": 25,
+          "restoreSizeFactorMs": 4
+        },
+        "summaryMetrics": {
+          "cdnEdgeHitRate": 0.42,
+          "coldDeliveryMs": 103,
+          "coldRestoreMs": 29,
+          "hotDeliveryMs": 38,
+          "hotOriginHitRate": 0.31,
+          "manifestMs": 10,
+          "publicationMs": 376,
+          "sourceExportMs": 174
+        },
+        "traces": [
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "instant-cold-demo",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Hero banner v1",
+            "totalMs": 343,
+            "traceId": "instant-cold-demo:ast_001:ver_001:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 13,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 33,
+                "storageState": "staging",
+                "offsetMs": 13
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 73,
+                "storageState": "canonical-hot",
+                "offsetMs": 46
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 16,
+                "storageState": "queued",
+                "offsetMs": 119
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 87,
+                "storageState": "worker-hot",
+                "offsetMs": 135
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 121,
+                "storageState": "origin-hot",
+                "offsetMs": 222
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "instant-cold-demo",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Hero banner v1",
+            "totalMs": 52,
+            "traceId": "instant-cold-demo:ast_001:ver_001:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 20,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 24,
+                "storageState": "edge-hot",
+                "offsetMs": 28
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "instant-restore",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "instant-cold-demo",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Hero banner v1",
+            "totalMs": 171,
+            "traceId": "instant-cold-demo:ast_001:ver_001:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 30
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 42
+              },
+              {
+                "action": "Instant restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 32,
+                "storageState": "cold-restore",
+                "offsetMs": 56
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 19,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 88
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 64,
+                "storageState": "edge-refill",
+                "offsetMs": 107
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_001:ver_001",
+            "profileId": "instant-cold-demo",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Hero banner v1",
+            "totalMs": 121,
+            "traceId": "instant-cold-demo:ast_001:ver_001:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 9
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 21,
+                "storageState": "canonical-read",
+                "offsetMs": 31
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 69,
+                "storageState": "export-hot",
+                "offsetMs": 52
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "instant-cold-demo",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Hero banner v2",
+            "totalMs": 346,
+            "traceId": "instant-cold-demo:ast_001:ver_002:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 13,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 33,
+                "storageState": "staging",
+                "offsetMs": 13
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 74,
+                "storageState": "canonical-hot",
+                "offsetMs": 46
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 16,
+                "storageState": "queued",
+                "offsetMs": 120
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 88,
+                "storageState": "worker-hot",
+                "offsetMs": 136
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 122,
+                "storageState": "origin-hot",
+                "offsetMs": 224
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "instant-cold-demo",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Hero banner v2",
+            "totalMs": 53,
+            "traceId": "instant-cold-demo:ast_001:ver_002:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 20,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 25,
+                "storageState": "edge-hot",
+                "offsetMs": 28
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "instant-restore",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "instant-cold-demo",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Hero banner v2",
+            "totalMs": 173,
+            "traceId": "instant-cold-demo:ast_001:ver_002:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 30
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 42
+              },
+              {
+                "action": "Instant restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 33,
+                "storageState": "cold-restore",
+                "offsetMs": 56
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 19,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 89
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 65,
+                "storageState": "edge-refill",
+                "offsetMs": 108
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_001:ver_002",
+            "profileId": "instant-cold-demo",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Hero banner v2",
+            "totalMs": 121,
+            "traceId": "instant-cold-demo:ast_001:ver_002:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 22,
+                "storageState": "metadata-hot",
+                "offsetMs": 9
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 21,
+                "storageState": "canonical-read",
+                "offsetMs": 31
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 69,
+                "storageState": "export-hot",
+                "offsetMs": 52
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "instant-cold-demo",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Event deck",
+            "totalMs": 221,
+            "traceId": "instant-cold-demo:ast_002:ver_003:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 9,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 19,
+                "storageState": "staging",
+                "offsetMs": 9
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 42,
+                "storageState": "canonical-hot",
+                "offsetMs": 28
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 12,
+                "storageState": "queued",
+                "offsetMs": 70
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 54,
+                "storageState": "worker-hot",
+                "offsetMs": 82
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 85,
+                "storageState": "origin-hot",
+                "offsetMs": 136
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "instant-cold-demo",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Event deck",
+            "totalMs": 32,
+            "traceId": "instant-cold-demo:ast_002:ver_003:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 6,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 16,
+                "storageState": "metadata-hot",
+                "offsetMs": 6
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 10,
+                "storageState": "edge-hot",
+                "offsetMs": 22
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "instant-restore",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "instant-cold-demo",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Event deck",
+            "totalMs": 140,
+            "traceId": "instant-cold-demo:ast_002:ver_003:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 6,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 18,
+                "storageState": "metadata-hot",
+                "offsetMs": 6
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 24
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 36
+              },
+              {
+                "action": "Instant restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 25,
+                "storageState": "cold-restore",
+                "offsetMs": 50
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 19,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 75
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 46,
+                "storageState": "edge-refill",
+                "offsetMs": 94
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_002:ver_003",
+            "profileId": "instant-cold-demo",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Event deck",
+            "totalMs": 91,
+            "traceId": "instant-cold-demo:ast_002:ver_003:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 18,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 16,
+                "storageState": "canonical-read",
+                "offsetMs": 25
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 50,
+                "storageState": "export-hot",
+                "offsetMs": 41
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "workflow-publish",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "instant-cold-demo",
+            "summary": "Upload lands in staging, canonicalizes into source truth, and publishes deterministic delivery outputs.",
+            "title": "Brand logo",
+            "totalMs": 245,
+            "traceId": "instant-cold-demo:ast_003:ver_004:publication",
+            "traceType": "publication",
+            "events": [
+              {
+                "action": "Issue upload session, authenticate caller, and validate idempotency.",
+                "componentId": "api-edge",
+                "durationMs": 10,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Receive resumable upload bytes in staging.",
+                "componentId": "ingest-staging",
+                "durationMs": 22,
+                "storageState": "staging",
+                "offsetMs": 10
+              },
+              {
+                "action": "Snapshot immutable source bytes into the canonical repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 49,
+                "storageState": "canonical-hot",
+                "offsetMs": 32
+              },
+              {
+                "action": "Dispatch the publication workflow.",
+                "componentId": "workflow-controller",
+                "durationMs": 13,
+                "storageState": "queued",
+                "offsetMs": 81
+              },
+              {
+                "action": "Read source data through the worker-side hot cache during processing.",
+                "componentId": "worker-cache",
+                "durationMs": 60,
+                "storageState": "worker-hot",
+                "offsetMs": 94
+              },
+              {
+                "action": "Write deterministic derivatives and the manifest into hot origin storage.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 91,
+                "storageState": "origin-hot",
+                "offsetMs": 154
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "edge-hit",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "instant-cold-demo",
+            "summary": "Published derivative is still hot, so the CDN serves it directly after authorization and metadata lookup.",
+            "title": "Brand logo",
+            "totalMs": 32,
+            "traceId": "instant-cold-demo:ast_003:ver_004:hot-delivery",
+            "traceType": "hot-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve delivery metadata and manifest context.",
+                "componentId": "registry",
+                "durationMs": 17,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "Serve the derivative from the CDN edge cache.",
+                "componentId": "cdn-edge",
+                "durationMs": 8,
+                "storageState": "edge-hot",
+                "offsetMs": 24
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "instant-restore",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "instant-cold-demo",
+            "summary": "The CDN misses, the hot origin copy has already been demoted, and the colder origin tier rehydrates the object before the edge is refilled.",
+            "title": "Brand logo",
+            "totalMs": 140,
+            "traceId": "instant-cold-demo:ast_003:ver_004:cold-delivery",
+            "traceType": "cold-delivery",
+            "events": [
+              {
+                "action": "Authorize delivery URL and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 7,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve immutable version metadata and derivative binding.",
+                "componentId": "registry",
+                "durationMs": 19,
+                "storageState": "metadata-hot",
+                "offsetMs": 7
+              },
+              {
+                "action": "CDN edge misses because the hot window has expired.",
+                "componentId": "cdn-edge",
+                "durationMs": 12,
+                "storageState": "edge-miss",
+                "offsetMs": 26
+              },
+              {
+                "action": "Hot origin checks for the derivative and finds it demoted.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 14,
+                "storageState": "origin-cold-miss",
+                "offsetMs": 38
+              },
+              {
+                "action": "Instant restore from colder origin media back into hot origin storage.",
+                "componentId": "cold-origin-tier",
+                "durationMs": 27,
+                "storageState": "cold-restore",
+                "offsetMs": 52
+              },
+              {
+                "action": "Refill the hot origin copy.",
+                "componentId": "derived-hot-origin",
+                "durationMs": 19,
+                "storageState": "origin-rehydrated",
+                "offsetMs": 79
+              },
+              {
+                "action": "Refill the CDN edge and serve the request.",
+                "componentId": "cdn-edge",
+                "durationMs": 42,
+                "storageState": "edge-refill",
+                "offsetMs": 98
+              }
+            ]
+          },
+          {
+            "cacheOutcome": "source-materialization",
+            "objectKey": "ast_003:ver_004",
+            "profileId": "instant-cold-demo",
+            "summary": "The authorized original-source download reconstructs from canonical truth and materializes a short-lived export.",
+            "title": "Brand logo",
+            "totalMs": 100,
+            "traceId": "instant-cold-demo:ast_003:ver_004:source-export",
+            "traceType": "source-export",
+            "events": [
+              {
+                "action": "Authorize original-source access and enforce scope.",
+                "componentId": "api-edge",
+                "durationMs": 8,
+                "storageState": "control-plane",
+                "offsetMs": 0
+              },
+              {
+                "action": "Resolve source-export authorization context.",
+                "componentId": "registry",
+                "durationMs": 19,
+                "storageState": "metadata-hot",
+                "offsetMs": 8
+              },
+              {
+                "action": "Restore original bytes from the canonical source repository.",
+                "componentId": "canonical-source-repo",
+                "durationMs": 18,
+                "storageState": "canonical-read",
+                "offsetMs": 27
+              },
+              {
+                "action": "Materialize a short-lived export object.",
+                "componentId": "source-export",
+                "durationMs": 55,
+                "storageState": "export-hot",
+                "offsetMs": 45
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "tenants": [
+    {
+      "actorEmail": "customer-acme-demo@cdngine.test",
+      "actorSubject": "customer-acme-demo",
+      "allowedServiceNamespaces": [
+        "media-platform"
+      ],
+      "allowedTenantIds": [
+        "tenant-acme"
+      ],
+      "roles": [
+        "public-user"
+      ],
+      "tenantId": "tenant-acme",
+      "tenantName": "Tenant Acme",
+      "tokenPreview": "0fbqw9CfQmKGlcbf..."
+    },
+    {
+      "actorEmail": "customer-beta-demo@cdngine.test",
+      "actorSubject": "customer-beta-demo",
+      "allowedServiceNamespaces": [
+        "media-platform"
+      ],
+      "allowedTenantIds": [
+        "tenant-beta"
+      ],
+      "roles": [
+        "public-user"
+      ],
+      "tenantId": "tenant-beta",
+      "tenantName": "Tenant Beta",
+      "tokenPreview": "uWc0NovFLW1au3Yn..."
+    }
+  ]
+}

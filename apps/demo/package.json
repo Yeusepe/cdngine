@@ -1,0 +1,59 @@
+{
+  "name": "@cdngine/demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && node ./scripts/generate-demo-scenario.mjs && vite",
+    "build": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && node ./scripts/generate-demo-scenario.mjs && tsc -b && vite build",
+    "lint": "tsc -b --pretty false",
+    "preview": "vite preview",
+    "test": "node --test"
+  },
+  "cdngine": {
+    "governingDocs": [
+      "docs/repository-layout.md",
+      "docs/api-surface.md",
+      "docs/service-architecture.md",
+      "docs/testing-strategy.md"
+    ],
+    "programmingPractices": [
+      "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
+      "docs/regular-programming-practices/interfaces-and-data-flow.md",
+      "docs/regular-programming-practices/storage-and-state.md",
+      "docs/regular-programming-practices/testing-and-scale.md",
+      "docs/regular-programming-practices/security-verification-baseline.md",
+      "docs/regular-programming-practices/language-style-and-documentation.md",
+      "docs/regular-programming-practices/delivery-and-review.md"
+    ],
+    "externalReferences": [
+      "https://react.dev/",
+      "https://vite.dev/guide/",
+      "https://ui.shadcn.com/docs/installation/vite",
+      "https://reui.io/"
+    ]
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.2.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "shadcn": "^4.2.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.4"
+  }
+}

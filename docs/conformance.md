@@ -10,7 +10,7 @@ The conformance suite should prove:
 
 1. lifecycle transitions are real and stable
 2. idempotency behaves as documented
-3. canonical replay starts from Xet identity
+3. canonical replay starts from source-repository identity
 4. deterministic publication stays deterministic
 5. operator actions are auditable and policy-bound
 
@@ -30,7 +30,7 @@ tests/
 | Scenario | What it proves |
 | --- | --- |
 | upload-session creation and completion | idempotency, scope checks, lifecycle progression |
-| canonicalization into Xet | staged-to-canonical handoff and replay identity |
+| canonicalization into the source repository | staged-to-canonical handoff and replay identity |
 | workflow dispatch | outbox-to-Temporal behavior and duplicate convergence |
 | derivative publication | deterministic keys and manifest integrity |
 | private delivery | scope-aware authorization and non-disclosing behavior |

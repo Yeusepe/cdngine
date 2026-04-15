@@ -80,9 +80,11 @@ Track:
 
 Track:
 
-- Xet read and write latency
-- Xet deduplication ratio and bytes avoided
-- Xet reconstruction latency and cache-hit rate
+- canonical source read and write latency
+- canonical source deduplication ratio and bytes avoided
+- canonical source reconstruction latency and cache-hit rate
+- lazy-read miss amplification and hot-cache hit rate where those layers are enabled
+- artifact-graph publish latency and failure rate
 - derived-store write latency and failure rate
 - CDN cache-hit ratio by derivative class
 - CDN tiered-cache or shield hit behavior where the provider exposes it
@@ -125,7 +127,7 @@ Delivery requests should form a different trace family:
 
 `metadata lookup or signed URL generation` -> `CDN request` -> `derived origin fetch on miss`
 
-The delivery path must not appear to depend on Xet during ordinary derivative fetches.
+The delivery path must not appear to depend on the canonical source repository during ordinary derivative fetches.
 
 ## 6. Asset lineage observability
 
@@ -134,7 +136,7 @@ Every asset version should be observable as a lineage, not just as unrelated log
 Minimum lineage checkpoints:
 
 1. upload session created
-2. raw asset canonicalized into Xet
+2. raw asset canonicalized into the source repository
 3. upload marked complete
 4. workflow started
 5. validation passed, failed, or quarantined
@@ -153,8 +155,8 @@ Operators should have at least these dashboards:
 - request rate and latency
 - upload completion success
 - validation rejection rate
-- Xet canonicalization latency
-- Xet deduplication effectiveness
+- source snapshot latency
+- source deduplication effectiveness
 
 ### 7.2 Workflow health
 
@@ -196,7 +198,7 @@ High-priority alerts include:
 - workflow backlog above agreed operational threshold
 - repeated processor failures for a capability or recipe
 - dead-letter queue growth without drain
-- Xet unavailable for canonicalization or source reconstruction
+- canonical source repository unavailable for snapshotting or source reconstruction
 - derived-store write failures blocking publication
 - CDN or origin errors causing delivery failure for published derivatives
 - operator replay failures

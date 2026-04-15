@@ -14,6 +14,7 @@ ADRs should capture the decision, the alternatives that mattered, and the conseq
 - [0007 CDN As Code SDK And FFI Model](./0007-cdn-as-code-sdk-and-ffi-model.md)
 - [0008 Xet As Canonical Content Plane](./0008-xet-as-canonical-content-plane.md)
 - [0009 Delivery Scopes, Private Access, And Streaming](./0009-delivery-scopes-private-access-and-streaming.md)
+- [0010 Canonical Source Repository And Tiered Storage](./0010-canonical-source-repository-and-tiered-storage.md)
 
 ## ADR writing expectations
 

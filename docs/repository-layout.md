@@ -83,7 +83,7 @@ Recommended package ownership:
 | --- | --- |
 | `contracts` | code-near schema helpers, generators, and contract-build support |
 | `registry` | SQL models, queries, migrations, idempotency state |
-| `storage` | Xet canonicalization and reconstruction adapters, derived-store adapters, signing helpers |
+| `storage` | canonical source adapters, tiered-store adapters, lazy-read adapters, ORAS helpers, derived-store adapters, signing helpers |
 | `workflows` | Temporal workflow definitions and activity contracts |
 | `capabilities` | file-type and recipe registration |
 | `manifests` | manifest builders, parsers, deterministic publication helpers |

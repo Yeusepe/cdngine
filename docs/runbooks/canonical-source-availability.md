@@ -1,9 +1,9 @@
-# Xet Availability
+# Canonical Source Availability
 
 ## Detection
 
 - canonicalization latency spikes
-- Xet write or reconstruction failures
+- source-repository write or reconstruction failures
 - replay failures that cannot read canonical source identity
 
 ## Scope and blast radius
@@ -15,7 +15,7 @@
 ## Inspect
 
 - ingest health dashboard
-- Xet read/write and reconstruction metrics
+- source-repository read/write and reconstruction metrics
 - worker logs for reconstruction failures
 
 ## Safe actions
@@ -32,5 +32,5 @@
 ## Confirm recovery
 
 - canonicalization succeeds again
-- workers reconstruct from Xet successfully
-- replay starts from canonical Xet identity without manual substitution
+- workers reconstruct from the source repository successfully
+- replay starts from canonical source identity without manual substitution

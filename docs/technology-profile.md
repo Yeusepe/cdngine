@@ -32,7 +32,11 @@ Default choices should optimize for:
 | cache and coordination | Redis | mature hot-path primitives without inventing ephemeral coordination systems |
 | image transform and delivery | imgproxy + libvips | proven, fast image server instead of building our own resizing service |
 | video and image-to-video | FFmpeg | broad codec and pipeline support, hardware acceleration, deep ecosystem |
-| delivery edge behavior | immutable versioned artifacts plus CDN tiering | hot artifacts should stay cheap and fast without dragging reads back to origin or Xet |
+| canonical source repository | Kopia-style repository | deduplicated snapshot history is better than inventing a custom chunk store |
+| storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | tiered storage and object-backed workspaces are better than writing bespoke placement logic |
+| lazy hot-read path | Nydus-style lazy representation plus optional Alluxio | on-demand chunk reads and hot caching are better than materializing every large asset eagerly |
+| artifact graph | ORAS | immutable bundles and artifact references are better than inventing a custom registry |
+| delivery edge behavior | immutable versioned artifacts plus CDN tiering | hot artifacts should stay cheap and fast without dragging reads back to origin or source repository |
 | document normalization | Gotenberg | LibreOffice and Chromium behind an API instead of custom conversion orchestration |
 | derived artifact storage | S3-compatible store | avoids bespoke binary storage and lets adopters bring their own provider |
 | native SDK core | Rust + UniFFI + cbindgen | lets the platform share hard client logic across languages instead of reimplementing it repeatedly |
@@ -99,7 +103,7 @@ To use it well:
 
 tus is the strongest general-purpose resumable upload protocol in the current ecosystem, and tusd is the clearest reusable server choice when CDNgine needs a public upload endpoint that supports resume, retries, and operational maturity.
 
-It should sit in front of ingest finalization and Xet canonicalization rather than being replaced with custom upload-session chunk semantics.
+It should sit in front of ingest finalization and source snapshotting rather than being replaced with custom upload-session chunk semantics.
 
 To use it well:
 
@@ -208,43 +212,49 @@ For streaming-oriented outputs, FFmpeg should publish:
 
 The API and CDN layers then decide how those bundles are authorized and exposed.
 
-### 4.13 Xet and the storage split
+### 4.13 Canonical source, tiering, and hot-read split
 
-Xet is the canonical raw source of truth for binary assets. It should own:
+The source stack should separate three jobs that are often wrongly collapsed into one bucket:
 
-- immutable uploaded originals
-- storage-efficient repeated revisions of related binaries
-- replay provenance
-- auditability of what the platform derived from
-- canonical file identity and reconstruction metadata for source history
-- selected immutable source-side evidence that should travel with that history
+- **canonical source history**
+- **byte placement across hot, warm, and cold tiers**
+- **hot internal reads**
 
-Its best fit is the **canonical content plane after ingest finalization**, not necessarily acting as the first direct public upload endpoint for every browser or SDK client.
+The default posture is:
 
-To use Xet well in CDNgine:
+- use a **Kopia-style repository** for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
+- use **SeaweedFS** as the default S3-compatible substrate so the platform can control tiered storage rather than leaving every byte in one undifferentiated class
+- use **JuiceFS** when tools or workers need a shared POSIX workspace
+- use **Nydus-style lazy reads** and optional **Alluxio** only where repeated package-like reads justify them
 
-- treat Xet scopes or buckets as part of the scoping model, usually one per service namespace or stronger isolation boundary
-- persist Xet file IDs, canonical logical paths, and content digests in the registry
-- canonicalize staged uploads through a Xet-aware service built on `xet-core`
-- exploit chunk-level deduplication for repeated revisions of binary-heavy assets
-- use local Xet caches on workers when repeated reconstruction makes them worthwhile
-- keep immutable source-side manifests or inspection evidence in Xet when that evidence should replay with the source
+This lets the platform stay mathematically efficient for large iterative binaries without forcing browser delivery or public ingest to speak chunk semantics directly.
 
-The derived store exists for a different reason: serve deterministic generated artifacts cheaply and fast through the CDN. The platform therefore defaults to:
+### 4.14 ORAS and the artifact split
 
-- **Xet for originals and replay**
-- **S3-compatible derived storage for delivery artifacts**
+ORAS is the preferred artifact-graph layer for immutable bundles, manifests, and related metadata.
 
-That split is deliberate, not accidental. It avoids forcing hot derivative traffic through the same system that exists to preserve provenance.
+Use it for:
 
-### 4.14 Lessons from external platforms
+- derived bundle publication
+- manifest-adjacent artifact graphs
+- integrity-linked metadata packages
+- internal or cross-service distribution of deterministic outputs
+
+Keep browser-facing delivery in the derived store plus CDN. ORAS is the artifact graph, not the public edge cache.
+
+### 4.15 Lessons from external platforms
 
 The architecture should also consume operating patterns from adjacent systems:
 
 - Inngest, Trigger.dev, DBOS, and Restate reinforce that durable business logic belongs in workflows with explicit waits, retries, cancellation, and run history
 - Convex reinforces that the public surface should generate pleasant developer APIs, not just technically valid clients
 - OpenMetadata and DataHub reinforce that the registry is a lineage and metadata plane, not a loose bag of tables
-- lakeFS reinforces that GC, retention, and replay are platform features, not storage afterthoughts
+- lakeFS reinforces that branch, publish, revert, GC, and retention are platform features, not storage afterthoughts
+- Kopia, restic, and Borg reinforce immutable snapshot identity, pack-file design, and repository maintenance discipline
+- SeaweedFS and JuiceFS reinforce that byte placement and workspace semantics belong in a real substrate, not in ad hoc application code
+- Nydus reinforces that lazy reads and chunk-aware loading can materially reduce hot-read cost for package-like assets
+- ORAS reinforces that immutable artifact graphs should reuse OCI semantics instead of inventing a bespoke bundle registry
+- DedupBench reinforces that chunking algorithms should be benchmarked on the real corpus instead of chosen by folklore
 - Unkey and Better Auth reinforce that authorization and organization context should be modeled explicitly and auditable
 - Medusa and Cal.com reinforce that modular boundaries and explicit package ownership matter when the platform grows
 

@@ -49,7 +49,7 @@ The platform does not define:
 
 ### 4.1 Immutable raw assets
 
-Every upload is preserved canonically in Xet. Derived artifacts are never treated as the source of truth.
+Every upload is preserved canonically in a deduplicated source repository. Derived artifacts are never treated as the source of truth.
 
 ### 4.2 Separate control plane and data plane
 
@@ -104,25 +104,32 @@ The current default reference profile is:
 
 | Layer | Default |
 | --- | --- |
-| raw/versioned source of truth | **Xet** |
+| canonical source repository | **Kopia-style repository server** |
+| tiered storage substrate | **SeaweedFS** by default, **JuiceFS** when POSIX workspace semantics matter |
 | metadata registry | **PostgreSQL + JSONB** |
 | low-latency coordination and cache | **Redis** |
 | durable orchestration | **Temporal** |
 | image delivery and transform server | **imgproxy** backed by **libvips** |
 | document normalization | **Gotenberg** |
 | video processing | **FFmpeg** with hardware acceleration where available |
+| lazy internal hot-read path | **Nydus-style lazy materialization** plus optional **Alluxio** |
+| artifact graph and immutable bundle registry | **ORAS / OCI artifacts** |
 | derived delivery store | **S3-compatible object storage** |
 | CDN profile | Cloudflare-friendly default deployment profile |
 
 ### 5.1 Why these defaults
 
-- **Xet**: content-defined chunking, chunk-level deduplication, and canonical source provenance over S3-backed storage
+- **Kopia-style source repository**: rolling-hash chunking, deduplicated snapshot history, compression, and replay-friendly canonical source identity
+- **SeaweedFS**: tiered byte placement, S3-compatible access, and hot/warm/cold operational storage control
+- **JuiceFS**: strong option when shared workspace or POSIX semantics are more important than a pure object-only posture
 - **PostgreSQL + JSONB**: strong relational core plus flexible metadata fields, queryability, and wide operational adoption
 - **Redis**: mature, fast coordination for cache, locks, and short-lived state without pretending to be durable truth
 - **Temporal**: strong retries, replay, visibility, long-running workflow semantics, and testing support
 - **imgproxy + libvips**: high-performance, production-proven image processing without writing a custom image pipeline
 - **Gotenberg**: API-first document conversion over LibreOffice and Chromium rather than building custom PPT/PDF normalization infrastructure
 - **FFmpeg**: still the strongest general-purpose video and image-to-video processing foundation with deep hardware acceleration support
+- **Nydus-style lazy reads**: chunk-addressed on-demand loading for package-like or rebuildable hot paths
+- **ORAS**: immutable artifact graph and bundle publication without inventing a bespoke manifest registry
 - **S3-compatible storage**: lets adopters keep their own object storage while preserving deterministic delivery semantics
 
 ## 6. Supported substitution points
@@ -131,10 +138,13 @@ The platform should preserve the public API and processor contracts even when in
 
 | Layer | Default | Substitution rule |
 | --- | --- | --- |
-| raw source of truth | Xet | fixed |
+| canonical source repository | Kopia-style repository semantics | any source repository that preserves immutable snapshot identity, deduplicated history, and replay-safe reconstruction |
+| tiered storage substrate | SeaweedFS | any substrate that preserves S3-compatible placement plus explicit hot/warm/cold policy control |
 | metadata registry | PostgreSQL + JSONB | any SQL database that preserves relational registry semantics |
 | cache and coordination | Redis | Redis-compatible or equivalent behavior is acceptable if operational semantics remain clear |
 | orchestration | Temporal | alternate durable workflow engine only if it preserves retries, replay, visibility, and workflow ownership semantics |
+| lazy-read hot path | Nydus-style representation | alternate lazy materialization only if it preserves chunk-addressed on-demand reads and integrity verification where used |
+| artifact graph | ORAS / OCI artifacts | alternate artifact bundle registry only if immutable references and media-type-aware artifact publication remain explicit |
 | derived store | S3-compatible storage | any S3-compatible provider or equivalent object-storage contract |
 | CDN origin | Cloudflare-friendly profile | any CDN that preserves deterministic cache and signed-delivery behavior |
 | processor runtime | containerized workers | any runtime that preserves the processor contract and observability model |
@@ -145,11 +155,14 @@ The platform should preserve the public API and processor contracts even when in
 flowchart LR
     Clients["Clients and internal services"] --> Gateway["Edge API gateway"]
     Gateway --> Registry["Asset registry"]
-    Gateway --> Xet["Xet\ncanonical content plane"]
+    Gateway --> Ingest["Ingest target\nstaging uploads"]
     Gateway --> Redis["Redis"]
-    Gateway --> Temporal["Temporal workflows"]
+    Registry --> Starter["Workflow dispatch starter"]
+    Starter --> Temporal["Temporal workflows"]
     Temporal --> Workers["Processor workers"]
-    Workers --> Xet
+    Workers --> SourceRepo["Canonical source repository"]
+    SourceRepo --> Tiered["Tiered storage substrate"]
+    Workers --> ArtifactGraph["ORAS artifact graph"]
     Workers --> Derived["Derived store\nhot delivery artifacts"]
     Workers --> Registry
     Temporal --> Registry
@@ -161,17 +174,21 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Provenance["Canonical provenance plane"]
-        Xet["Xet\ncanonical originals\ndeduplicated chunks\nreplay source"]
+    subgraph Source["Canonical source plane"]
+        SourceRepo["Canonical source repository\nsnapshot history\ndeduplicated chunks\nreplay source"]
+        Tiered["Tiered substrate\nSeaweedFS or JuiceFS\nhot/warm/cold placement"]
+        SourceRepo --> Tiered
     end
 
     subgraph Control["Control plane"]
         API["CDNgine API"]
         Registry["SQL registry\nasset/version/derivative state"]
+        Starter["Workflow dispatch starter"]
         Temporal["Temporal\nworkflow execution history"]
     end
 
     subgraph Delivery["Delivery plane"]
+        ArtifactGraph["ORAS\nartifact graph and bundles"]
         Derived["S3-compatible derived store\ndeterministic published artifacts"]
         CDN["CDN"]
     end
@@ -179,11 +196,13 @@ flowchart TB
     Users["Apps, services, SDK consumers"] --> API
     Ops["Operators"] --> API
     API --> Registry
-    API --> Xet
-    API --> Temporal
-    Temporal --> Xet
+    Registry --> Starter
+    Starter --> Temporal
+    Temporal --> SourceRepo
+    Temporal --> ArtifactGraph
     Temporal --> Derived
     Registry --> Derived
+    Registry --> ArtifactGraph
     Users --> CDN
     CDN --> Derived
 ```
@@ -195,24 +214,30 @@ sequenceDiagram
     participant C as Client
     participant G as Gateway
     participant I as Ingest Target
-    participant O as Xet
+    participant O as Source Repository
     participant R as Registry
+    participant S as Workflow Starter
     participant T as Temporal
     participant W as Worker
+    participant A as ORAS
     participant D as Derived Store
     participant CDN as CDN
 
     C->>G: CreateUploadSession
-    G->>R: Create Asset + Version
+    G->>R: Create asset + version + upload session
     G-->>C: Upload instructions for ingest-managed target
     C->>I: Upload raw asset
     C->>G: Complete upload
-    G->>O: Canonicalize staged object
-    G->>T: Start workflow
+    G->>R: Verify idempotency + move to canonicalizing
+    G->>O: Snapshot staged object into canonical source repository
+    G->>R: Persist source identity + workflow dispatch intent
+    R->>S: Pending dispatch intent
+    S->>T: Start business-keyed workflow
     T->>W: Run validators and processors
     W->>O: Read canonical source version
+    W->>A: Publish immutable bundles or manifests when needed
     W->>D: Write deterministic derivatives
-    W->>R: Record derivatives + manifest
+    W->>R: Record derivatives + manifest + artifact references
     C->>CDN: Request manifest or derivative
     CDN->>D: Fetch deterministic derivative from delivery origin
 ```
@@ -222,35 +247,43 @@ sequenceDiagram
 Read the sequence above as:
 
 1. the original upload first lands in an ingest-managed upload target
-2. CDNgine canonicalizes the staged object into **Xet**
-3. workflows and workers use **Xet** as the canonical source for validation and derivation
-4. generated outputs are published to the **derived store**
-5. clients receive those published outputs from the **CDN** in front of the derived store
+2. CDNgine snapshots the staged object into the **canonical source repository**
+3. CDNgine persists the canonical source identity and a durable workflow-dispatch intent in the registry
+4. workflows and workers use the **canonical source repository** as the source for validation and derivation
+5. generated outputs are published to the **derived store**
+6. clients receive those published outputs from the **CDN** in front of the derived store
 
 That means:
 
-- **Xet owns canonical source identity, deduplication, and replay**
+- **the canonical source repository owns source identity, deduplication, and replay**
 - **the ingest target owns client-facing upload ergonomics**
-- **the derived store owns published delivery artifacts**
+- **the registry and dispatch starter own the sync-to-async handoff**
+- **ORAS owns immutable bundle and artifact-graph references when bundle semantics matter**
+- **the derived store owns browser-facing delivery artifacts**
 - **the CDN is the ordinary client delivery path**
+
+The default public ingest path is therefore:
+
+- `client -> API session creation -> ingest-managed upload target (normally tusd) -> completion -> snapshot into canonical source repository`
 
 ## 7.3 Provenance versus delivery responsibility
 
 ```mermaid
 flowchart LR
-    Source["Uploaded original"] --> Xet["Xet\nstores canonical original\nstores version history\nanchors replay provenance"]
-    Xet --> Workflow["Workflow derives outputs from canonical source"]
+    Source["Uploaded original"] --> SourceRepo["Canonical source repository\nstores canonical original\nstores version history\nanchors replay provenance"]
+    SourceRepo --> Workflow["Workflow derives outputs from canonical source"]
+    Workflow --> ArtifactGraph["ORAS\nstores immutable bundles and artifact graph"]
     Workflow --> Derived["Derived store\nstores generated delivery artifacts\nserves as CDN origin"]
     Workflow --> Registry["Registry links source version to derivative key"]
 
-    note1["Xet is not the hot origin for every generated variant"]
+    note1["The source repository is not the hot origin for every generated variant"]
     note2["Derived store is not the canonical source of truth for uploads"]
 
-    Xet --- note1
+    SourceRepo --- note1
     Derived --- note2
 ```
 
-## 7.4 Delivery read path
+## 7.4 Published derivative read path
 
 ```mermaid
 sequenceDiagram
@@ -258,7 +291,7 @@ sequenceDiagram
     participant API as CDNgine API
     participant CDN as CDN
     participant D as Derived Store
-    participant O as Xet
+    participant O as Source Repository
 
     Client->>API: Request asset metadata or manifest
     API-->>Client: Return signed delivery URL or manifest path
@@ -266,7 +299,33 @@ sequenceDiagram
     CDN->>D: Cache miss origin fetch
     D-->>CDN: Deterministic derivative object
     CDN-->>Client: Cached derivative response
-    Note over O: Xet is not in the hot delivery read path
+    Note over O: The source repository is not in the hot delivery read path
+```
+
+## 7.4.1 Original-source read path
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as CDNgine API
+    participant R as Registry
+    participant O as Source Repository
+    participant CDN as CDN / export path
+
+    Client->>API: Authorize source download
+    API->>R: Resolve version, policy, and lifecycle state
+    API->>O: Resolve canonical source identity
+    API-->>Client: Return download mode
+
+    alt Trusted lazy source read
+        Client->>O: Read canonical source through scoped lazy-read handle
+        O-->>Client: Reconstructed original bytes
+    else Generic proxy or materialized export
+        Client->>API: Follow proxy or export URL
+        API->>O: Reconstruct from canonical source repository
+        O-->>API: Original bytes
+        API-->>Client: Original byte stream
+    end
 ```
 
 ## 7.5 Replay and reprocessing path
@@ -277,7 +336,7 @@ sequenceDiagram
     participant API as Operator/API surface
     participant R as Registry
     participant T as Temporal
-    participant O as Xet
+    participant O as Source Repository
     participant W as Worker
     participant D as Derived Store
 
@@ -302,11 +361,13 @@ flowchart TB
     subgraph Control["Control Plane"]
         Registry["PostgreSQL + JSONB"]
         Redis["Redis"]
+        Starter["Workflow dispatch starter"]
         Temporal["Temporal"]
     end
 
     subgraph Data["Data Plane"]
-        Xet["Xet"]
+        SourceRepo["Canonical source repository"]
+        ArtifactGraph["ORAS"]
         Derived["S3-compatible derived store"]
     end
 
@@ -319,16 +380,21 @@ flowchart TB
 
     Gateway --> Registry
     Gateway --> Redis
-    Gateway --> Xet
-    Gateway --> Temporal
+    Gateway --> Ingest["tusd / ingest target"]
+    Registry --> Starter
+    Starter --> Temporal
     Temporal --> Img
     Temporal --> Vid
     Temporal --> Doc
     Temporal --> Arc
-    Img --> Xet
-    Vid --> Xet
-    Doc --> Xet
-    Arc --> Xet
+    Img --> SourceRepo
+    Vid --> SourceRepo
+    Doc --> SourceRepo
+    Arc --> SourceRepo
+    Img --> ArtifactGraph
+    Vid --> ArtifactGraph
+    Doc --> ArtifactGraph
+    Arc --> ArtifactGraph
     Img --> Derived
     Vid --> Derived
     Doc --> Derived
@@ -359,7 +425,9 @@ Owns:
 
 Owns:
 
-- raw binaries in Xet
+- canonical binaries in the source repository
+- tiered substrate placement for source and derived bytes
+- artifact bundles and immutable references
 - derived binaries in S3-compatible storage
 - transient processor scratch space
 - CDN cache state
@@ -408,9 +476,9 @@ Owns:
 
 The default metadata database is PostgreSQL with JSONB for extensible fields, manifest fragments, processor outputs, and domain-specific structured metadata.
 
-### 9.3 Raw asset source of truth
+### 9.3 Canonical source of truth
 
-Xet is mandatory for canonical source provenance, deduplication, and replay semantics.
+The canonical source repository is mandatory for source provenance, deduplication, and replay semantics.
 
 This gives the architecture one clear answer to:
 
@@ -418,7 +486,7 @@ This gives the architecture one clear answer to:
 - what version is canonical
 - what replay should derive from
 
-Xet's responsibility is **not** "be the hot delivery origin for every generated artifact." Its responsibility is:
+The source repository's responsibility is **not** "be the hot delivery origin for every generated artifact." Its responsibility is:
 
 - preserve the canonical uploaded binary
 - preserve deduplicated storage across repeated revisions
@@ -427,9 +495,9 @@ Xet's responsibility is **not** "be the hot delivery origin for every generated 
 - provide the immutable replay source for every later derivation run
 - anchor auditability when recipes, workers, or schemas change over time
 
-By default, CDNgine treats Xet as the **source-of-truth canonical content plane for source assets**, not as the storage system that must serve every delivery-path read.
+By default, CDNgine treats the canonical source repository as the **source-of-truth canonical content plane for source assets**, not as the storage system that must serve every delivery-path read.
 
-Canonical assets may still live physically in S3-compatible storage beneath Xet. The platform should address them through Xet identities and reconstruction metadata, not through raw canonical object keys.
+Canonical assets may still live physically in the tiered storage substrate beneath the repository. The platform should address them through repository identities and reconstruction metadata, not through raw object keys.
 
 ### 9.4 Durable orchestration
 
@@ -474,7 +542,7 @@ Redis is not durable truth and must not become the platform's hidden state machi
 
 Derived artifacts are written under deterministic keys to S3-compatible storage and served through CDN paths and manifests.
 
-They do **not** go back through Xet by default because the delivery profile optimizes for:
+They do **not** go back through the source repository by default because the delivery profile optimizes for:
 
 - very high read throughput
 - low-latency CDN origin behavior
@@ -482,7 +550,7 @@ They do **not** go back through Xet by default because the delivery profile opti
 - independent retention and purge policy for derivatives
 - cost separation between canonical provenance storage and hot delivery storage
 
-If every generated thumbnail, poster, HLS segment, slide image, and future derivative had to round-trip back into Xet, the platform would couple the delivery plane to the provenance plane too tightly. That makes hot delivery, cache invalidation, derivative churn, and retention policy harder to operate.
+If every generated thumbnail, poster, HLS segment, slide image, and future derivative had to round-trip back into the source repository, the platform would couple the delivery plane to the provenance plane too tightly. That makes hot delivery, cache invalidation, derivative churn, and retention policy harder to operate.
 
 ## 10. Storage model
 
@@ -490,30 +558,32 @@ Separate stores exist for separate purposes:
 
 | Store | Role | System of record |
 | --- | --- | --- |
-| Xet | canonical source content, deduplicated chunks, and replay identity | yes for originals |
+| canonical source repository | canonical source content, deduplicated chunks, and replay identity | yes for originals |
+| tiered storage substrate | byte placement across hot, warm, and cold classes | supports source and derived stores |
+| ORAS artifact graph | immutable bundles, manifests, and artifact references | yes for bundle publication |
 | SQL metadata registry | metadata, state, manifests, registrations | yes for platform state |
 | S3-compatible derived store | delivery artifacts | yes for processed variants |
 | Redis | cache, locks, ephemeral coordination | no |
 
-In the reference profile, Xet itself is backed by S3-compatible storage. That means the source binaries still live in storage, but the platform should go through Xet for canonical identity, deduplication, and reconstruction instead of treating raw S3 keys as the source contract.
+In the reference profile, the source repository is backed by the tiered substrate. That means the source binaries still live in storage, but the platform should go through repository identity, deduplication, and reconstruction instead of treating raw object keys as the source contract.
 
-### 10.1 Why derivatives do not default to Xet
+### 10.1 Why derivatives do not default to the source repository
 
 The split is intentional:
 
-1. **Xet answers canonical source questions.** What exact source file should replay use, and which stored chunks already exist?
+1. **The source repository answers canonical source questions.** What exact source file should replay use, and which stored chunks already exist?
 2. **The derived store answers delivery questions.** What exact optimized artifact should the CDN fetch right now under a deterministic key?
 3. **The registry binds the two together.** It records which source version, recipe version, and schema version produced which derivative key.
 
 That means the derivation contract is:
 
-`Xet canonical source identity` + `recipe binding` + `schema version` -> `deterministic derived object key`
+`canonical source identity` + `recipe binding` + `schema version` -> `deterministic derived object key`
 
-The platform can therefore replay from Xet whenever needed without forcing the delivery path to read from Xet on every request.
+The platform can therefore replay from the source repository whenever needed without forcing the delivery path to read from that repository on every request.
 
-### 10.2 When Xet would hold more than originals
+### 10.2 When the source repository would hold more than originals
 
-An adopter could choose a stricter profile where Xet also stores selected published artifacts, but that should be treated as an **optional archival or compliance profile**, not the default hot-path design.
+An adopter could choose a stricter profile where the source repository also stores selected published artifacts, but that should be treated as an **optional archival or compliance profile**, not the default hot-path design.
 
 Reasonable cases include:
 
@@ -523,23 +593,23 @@ Reasonable cases include:
 
 Even in that stricter profile, the recommended delivery origin for hot traffic is still the derived store in front of the CDN.
 
-### 10.3 How to use Xet deeply without overloading it
+### 10.3 How to use the source stack deeply without overloading it
 
-Xet should be used more deeply than "store the original file once," but not so broadly that it absorbs responsibilities better handled elsewhere.
+The source stack should be used more deeply than "store the original file once," but not so broadly that it absorbs responsibilities better handled elsewhere.
 
 The reference posture is:
 
-- use Xet scopes or buckets as canonical content boundaries, normally aligned to service namespaces or stricter isolation boundaries
-- persist Xet file IDs, canonical logical paths, and strong content digests in the registry
-- canonicalize staged uploads through a Xet-aware service built on `xet-core`
-- keep source-side immutable evidence in Xet when that evidence should travel with source history
-- use Xet's deduplication and reconstruction model to reduce repeated storage for binary-heavy revisions
+- use repository or namespace boundaries aligned to service namespaces or stricter isolation boundaries
+- persist snapshot identities, canonical logical paths, and strong content digests in the registry
+- snapshot staged uploads through a repository-aware ingest service
+- keep source-side immutable evidence in the repository when that evidence should travel with source history
+- use lazy-read or hot-cache layers to reduce repeated rehydration for binary-heavy revisions
 
 The platform should still avoid:
 
-- putting mutable control-plane state into Xet
-- routing hot derivative delivery through Xet
-- forcing every public browser upload to speak Xet semantics directly
+- putting mutable control-plane state into the source repository
+- routing hot derivative delivery through the source repository
+- forcing every public browser upload to speak source-repository semantics directly
 
 ### 10.4 Original-source delivery
 
@@ -548,15 +618,21 @@ The architecture distinguishes:
 1. **published delivery** of derivatives through the derived store and CDN
 2. **original-source delivery** of the canonical uploaded asset
 
-Original-source delivery should start from the canonical Xet identity for the version.
+Original-source delivery should start from the canonical source identity for the version.
 
 The client-facing delivery mode may be:
 
-- proxied reconstruction from Xet
-- a tightly scoped Xet-backed read path
+- proxied reconstruction from the source repository
+- a tightly scoped lazy-read or hot-cache-backed read path for trusted internal clients
 - a materialized export into the delivery plane
 
-The important point is that the source asset still remains canonical in Xet even when the service chooses to expose it through a controlled export or proxy path.
+The important point is that the source asset still remains canonical in the source repository even when the service chooses to expose it through a controlled export or proxy path.
+
+How deduplication applies to transfer depends on the client path:
+
+- plain browser or generic HTTP clients usually receive a reconstructed byte stream, not chunk-aware transfer dedupe
+- trusted internal tools can use the lazy-read path and benefit from chunk-aware reads directly
+- published derivatives continue to optimize for CDN caching rather than source-aware transfer
 
 ## 11. Multi-service registration model
 

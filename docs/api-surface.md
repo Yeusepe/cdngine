@@ -124,7 +124,7 @@ Preferred behavior:
 
 - completion returns accepted work and a status handle when processing is deferred
 - asset and version resources expose lifecycle state explicitly
-- source-download authorization exposes whether the caller receives a proxy URL, a tightly scoped Xet-backed read, or a materialized export
+- source-download authorization exposes whether the caller receives a proxy URL, a tightly scoped lazy-read handle for trusted internal clients, or a materialized export
 - derivatives and manifests appear only after publication
 - delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, or public path
 - operator actions expose workflow or operation identifiers that can be audited later

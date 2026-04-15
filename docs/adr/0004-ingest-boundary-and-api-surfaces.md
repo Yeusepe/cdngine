@@ -20,14 +20,14 @@ Without an explicit answer, the platform will accumulate inconsistent auth, idem
 Adopt the following platform contract:
 
 1. clients upload to an ingest-managed target, normally **tusd** backed by object storage
-2. the ingest service verifies the uploaded object and canonicalizes it into **Xet**
+2. the ingest service verifies the uploaded object and snapshots it into the **canonical source repository**
 3. public, platform-admin, and operator HTTP surfaces are documented separately
 4. service namespace, tenant scope, and asset owner remain distinct control-plane concepts
 5. upload completion writes a durable workflow-dispatch intent before Temporal start
 
 ## Alternatives considered
 
-### Upload directly to Xet from clients
+### Upload directly to the source repository from clients
 
 Rejected as the default because it couples client ingest ergonomics to the canonical version store and weakens resumable-upload flexibility.
 
@@ -41,8 +41,8 @@ Rejected because it couples internal service ownership, external customer isolat
 
 ## Consequences
 
-- the public ingest story is `API -> tusd/object storage -> completion -> Xet`
-- Xet remains the canonical content plane, not the first direct client upload surface
+- the public ingest story is `API -> tusd/object storage -> completion -> canonical source repository`
+- the source repository remains the canonical content plane, not the first direct client upload surface
 - replay, quarantine, purge, and namespace governance live on privileged internal surfaces
 - the registry must hold durable idempotency and workflow-dispatch records
 - future implementation must model asset lifecycle and auth around separate namespace, tenant, and ownership concepts

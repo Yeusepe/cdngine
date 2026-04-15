@@ -79,7 +79,7 @@ Examples:
 - **Prisma** for schema, client, and migrations
 - **Temporal** for workflow semantics and testing
 - **tus / tusd** for resumable ingest
-- **Xet** for canonical versioned raw storage
+- **Kopia / SeaweedFS / JuiceFS / Nydus / ORAS** for canonical source storage, tiering, lazy reads, and artifact publication
 - **imgproxy / libvips** for image transformation and delivery
 - **Gotenberg** for document conversion
 - **FFmpeg** for video and media operations
@@ -147,7 +147,7 @@ The testing expectations are governed by `docs/testing-strategy.md`.
 High-risk areas that must have explicit tests include:
 
 - upload completion idempotency
-- replay from Xet
+- replay from the canonical source repository
 - deterministic derivative keys
 - manifest publication integrity
 - signed delivery behavior

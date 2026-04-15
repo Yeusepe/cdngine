@@ -14,7 +14,7 @@ Runbooks should exist for:
 - replay operations
 - security quarantine flows
 - CDN or delivery-origin degradation
-- Xet availability, canonicalization, or replay-source failure
+- canonical source availability, snapshotting, or replay-source failure
 
 ## 2. What every runbook should contain
 
@@ -34,7 +34,7 @@ Current files:
 - `workflow-backlog.md`
 - `processor-outage.md`
 - `derived-store-degradation.md`
-- `xet-availability.md`
+- `canonical-source-availability.md`
 - `replay-operations.md`
 - `quarantine-and-release.md`
 

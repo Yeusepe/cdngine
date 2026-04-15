@@ -4,7 +4,7 @@ This document defines how CDNgine saves durable control-plane state.
 
 The storage split is already established:
 
-- **Xet** is the canonical source plane for originals
+- the **canonical source repository** is the canonical source plane for originals
 - **PostgreSQL** is the durable control-plane source of truth
 - **derived object storage** is the durable delivery artifact store
 - **Redis** is support state only
@@ -16,7 +16,7 @@ What this document adds is the write contract: which records exist, which mutati
 | System | Durable truth for |
 | --- | --- |
 | PostgreSQL | asset metadata, version state, workflow projection, idempotency, dispatch, manifests, audit |
-| Xet | canonical source identity, deduplicated content, source reconstruction |
+| canonical source repository | canonical source identity, deduplicated content, source reconstruction |
 | Derived store | published derivatives and manifest objects |
 | Redis | never durable truth |
 
@@ -59,13 +59,13 @@ One transaction should:
 4. persist staged-object verification evidence
 5. create or update `ValidationResult` when needed
 
-The Xet write itself may happen outside the SQL transaction, but SQL must not claim `canonical` before canonicalization succeeds.
+The source-repository write itself may happen outside the SQL transaction, but SQL must not claim `canonical` before snapshotting succeeds.
 
 ### 3.3 Canonicalization success
 
 One transaction should:
 
-1. persist the Xet identity set
+1. persist the canonical source identity set
 2. move `AssetVersion` from `canonicalizing` to `canonical`
 3. create `WorkflowDispatch` in `pending`
 4. emit an `AuditEvent`
@@ -118,7 +118,7 @@ JSONB is not an excuse to hide relational truth that needs joins, uniqueness, or
 
 Retention rules must distinguish:
 
-- canonical source retention in Xet
+- canonical source retention in the source repository
 - delivery artifact retention in the derived store
 - metadata and audit retention in PostgreSQL
 
@@ -134,7 +134,7 @@ Purge actions record:
 Recovery must be driven from durable evidence:
 
 - registry state says what should exist
-- Xet identity says what the source of replay is
+- canonical source identity says what the source of replay is
 - dispatch and workflow projection say whether work should be restarted
 
 Redis may accelerate recovery, but it is never sufficient evidence on its own.
@@ -144,5 +144,5 @@ Redis may accelerate recovery, but it is never sufficient evidence on its own.
 - [Domain Model](./domain-model.md)
 - [State Machines](./state-machines.md)
 - [Idempotency And Dispatch](./idempotency-and-dispatch.md)
-- [Canonicalization And Xet Contract](./canonicalization-and-xet-contract.md)
+- [Canonical Source And Tiering Contract](./canonical-source-and-tiering-contract.md)
 - [Prisma transactions, idempotent APIs, and OCC](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)

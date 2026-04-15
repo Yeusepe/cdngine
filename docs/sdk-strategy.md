@@ -70,6 +70,7 @@ Some logic is annoying, easy to get wrong, and repeated across languages if left
 The shared core should own:
 
 - upload orchestration
+- Xet-aware source-download helpers where the SDK is allowed to fetch canonical originals directly
 - resumable-upload helper behavior
 - polling and wait helpers
 - manifest parsing and validation helpers
@@ -166,6 +167,7 @@ Public SDKs should:
 5. avoid forcing callers to manually assemble signed URLs, polling loops, or multipart upload semantics
 6. avoid forcing callers to individually sign or stitch stream segments
 7. preserve ownership and scope concepts explicitly
+8. expose the difference between plain source download and Xet-aware source read when the original-delivery contract supports both
 
 ## 8. API design rules for SDK generation
 

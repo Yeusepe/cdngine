@@ -32,18 +32,22 @@ CDNgine is meant to fix that by standardizing a few core rules:
 
 ## Core model
 
-At a high level, CDNgine separates **provenance**, **control**, and **delivery**:
+At a high level, CDNgine separates **canonical source**, **control**, **materialization**, and **delivery**:
 
-- **Xet** stores canonical source assets through content-defined chunking, deduplication, and reconstruction metadata over S3-backed storage
+- a **Kopia-style canonical source repository** stores immutable source versions through rolling-hash chunking, deduplication, compression, and snapshot history
+- a **SeaweedFS** or **JuiceFS** substrate gives the source and derived planes operational storage tiers, S3-compatible access, and fast local or regional placement
 - the **registry** stores asset, version, derivative, manifest, workflow, and audit state
 - **Temporal** owns long-running orchestration and replay-safe execution
-- workers generate deterministic outputs into a **derived object store**
-- the **CDN** serves those published artifacts on the hot path
+- **ORAS** packages deterministic derived bundles, manifests, and integrity-linked artifact graphs
+- a **Nydus-style lazy-read layer** and optional **Alluxio hot cache** accelerate repeated internal reads without forcing every output to stay permanently materialized
+- the **CDN** serves browser-friendly published artifacts on the hot path
 
 That means the platform treats:
 
-- **Xet** as the canonical content plane for originals
-- the **derived store** as the source of truth for published delivery artifacts
+- the **canonical source repository** as the source of truth for immutable originals and iterative revisions
+- the **tiered storage substrate** as the byte-placement layer for hot, warm, and cold data
+- **ORAS** as the artifact-graph layer for deterministic published bundles
+- the **derived store plus CDN** as the source of truth for browser-facing delivery artifacts
 - the **registry** as the system of record for control-plane state
 
 ## How ingest actually works
@@ -55,29 +59,34 @@ The ingest path is:
 3. CDNgine returns upload instructions for an **ingest-managed upload target**
 4. the client uploads the original binary to that ingest target
 5. the client calls upload completion
-6. CDNgine validates the upload and canonicalizes the staged object into **Xet**, which stores deduplicated content over S3-backed storage
+6. CDNgine validates the upload and snapshots the staged object into the **canonical source repository**, which stores deduplicated content over the tiered storage substrate
 7. CDNgine starts a durable workflow in **Temporal**
-8. workers read the canonical source version from **Xet**
+8. workers materialize the canonical source version through the source repository and hot cache layers
 9. workers validate and transform that source into delivery variants
-10. workers publish those variants into the **derived store**
-11. the registry records the derivative keys and manifest
+10. workers package deterministic delivery bundles and manifests through **ORAS** where bundle semantics matter
+11. workers publish browser-facing outputs into the **derived store**
+12. the registry records the derivative keys, artifact references, and manifest
 
-The important point is: **Xet should own the canonical source identity, deduplicated storage layout, and replay source.**
+The important point is: the **canonical source repository** should own immutable source identity, deduplicated source history, and replay provenance.
 
-That does **not** mean Xet must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of Xet is the cleaner operational choice for browser and SDK clients.
+That does **not** mean the source repository must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of the source repository is the cleaner operational choice for browser and SDK clients.
 
 The current best default for that public upload endpoint is:
 
 - **tus/tusd** for resumable, reusable, protocol-level uploads
 - backed by multipart-capable object storage where that improves throughput and recovery
 
-Canonical source assets still live physically in S3-compatible storage, but they are addressed through Xet identities and reconstruction metadata rather than exposed as raw application-level object keys.
+So the intended default public ingest path is:
 
-Trusted internal flows can use Xet more directly:
+- `client -> API session creation -> tusd/staging upload -> snapshot into canonical source repository -> workflow dispatch`
 
-- bulk imports can canonicalize directly through Xet-aware services built on `xet-core`
-- operator recovery and replay can anchor to Xet file IDs, content digests, and canonical logical paths
-- source-side immutable evidence can live in the same Xet-backed canonical scope when it must replay with the asset
+Canonical source assets still live physically on a tiered S3-compatible substrate, but they are addressed through repository snapshots, chunk identities, and canonical logical paths rather than raw application-level object keys.
+
+Trusted internal flows can use the source plane more directly:
+
+- bulk imports can snapshot directly into the canonical repository when the caller already has trusted access to the substrate
+- operator recovery and replay anchor to repository snapshot IDs, content digests, and canonical logical paths
+- package-like or rebuildable assets may also gain a Nydus-style lazy representation for high-frequency internal reads
 
 ## How delivery actually works
 
@@ -88,25 +97,33 @@ The delivery path is different from the ingest path:
 3. the client fetches the published derivative through the **CDN**
 4. the CDN serves from cache or fetches from the **derived store**
 
-The important point is: **clients do not normally download published derivatives from Xet.**
+The important point is: **clients do not normally download published derivatives from the canonical source repository.**
 
 When a client needs the **original source asset itself**, that is a separate flow:
 
 1. the client asks the API to authorize original-source delivery for a version
-2. CDNgine resolves the canonical Xet identity for that version
-3. CDNgine either proxies reconstruction from Xet, returns a tightly scoped Xet-backed read handle, or materializes a delivery export depending on policy and deployment posture
+2. CDNgine resolves the canonical source snapshot for that version
+3. CDNgine either proxies reconstruction from the source repository, returns a tightly scoped lazy-read handle for trusted internal clients, or, only when justified, materializes a delivery export depending on policy and deployment posture
 
 That means **published delivery** and **original-source delivery** are different concerns:
 
 - published delivery optimizes for CDN-friendly hot reads
 - original-source delivery optimizes for exact canonical reconstruction, policy control, and provenance
+- the original is stored once in the canonical repository by default; a second delivery copy is optional rather than automatic
 
-Xet is for:
+There is also an important transfer distinction:
+
+- a **generic browser download** of the original is usually just a normal byte stream from a proxy or export path
+- a **trusted internal client** can use a lazy chunk-backed read path and hot cache to avoid rehydrating the full asset on every read
+- published derivatives still rely on CDN caching, immutable artifact keys, and selective materialization rather than source-plane transfer semantics
+
+The canonical source plane is for:
 
 - canonical originals
 - deduplicated source storage across revisions and related binaries
 - replay
 - provenance
+- storage-efficient retention of very large iterative assets such as Unity packages, `.spp` files, PSD/EXR sources, video masters, and archives
 
 The derived store plus CDN are for:
 
@@ -121,25 +138,27 @@ The derived store plus CDN are for:
 
 This split is intentional:
 
-- **Xet** answers: "what exact canonical source file should replay use, and which stored chunks already exist?"
-- the **derived store** answers: "what exact published artifact should the client receive right now?"
+- the **canonical source repository** answers: "what exact immutable source version should replay use, and which chunks are already stored?"
+- the **derived store** answers: "what exact browser-facing artifact should the client receive right now?"
 
 If the client needs the canonical original, the service should expose that through an explicit **original-source delivery** contract rather than pretending the public delivery CDN path and the canonical source path are the same thing.
 
-If every published derivative had to be delivered from Xet, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
+If every published derivative had to be delivered from the source repository, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
 
-Likewise, if every public upload had to speak Xet semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized canonical content system. The cleaner pattern is usually:
+Likewise, if every public upload had to speak source-repository semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized canonical content system. The cleaner pattern is usually:
 
 - simple upload target for ingress
-- canonicalization into Xet after ingest finalization
-- replay and derivation from Xet
+- snapshotting into the canonical repository after ingest finalization
+- replay and derivation from the canonical repository
+- selective lazy materialization for hot internal reads
 
-The stronger Xet posture is not "use Xet less." It is "use Xet for the things Xet is actually good at":
+The stronger source-plane posture is not "store everything in the CDN." It is "use the right layer for the right job":
 
-- content-defined chunking and chunk-level deduplication over S3-backed storage
-- canonical file identity for replay and provenance
-- smart reconstruction of source files into worker scratch space
-- storage-efficient repeated revisions of large binaries such as Unity packages, FBX files, texture archives, and video masters
+- **Kopia-style repositories** for deduplicated snapshot history and rolling-hash chunking
+- **SeaweedFS** for tiered blob placement, cloud tier movement, and S3-compatible storage access
+- **JuiceFS** where POSIX mounts or shared workspace semantics matter for tools and artists
+- **Nydus-style lazy reads** for package-like or rebuildable hot paths
+- **ORAS** for immutable artifact graphs, manifests, and bundle publication
 
 ## Service stack direction
 
@@ -158,7 +177,10 @@ The current service-level direction is:
 | image delivery and transform | imgproxy + libvips |
 | video processing | FFmpeg |
 | document normalization | Gotenberg |
-| canonical raw source | Xet over S3-backed storage |
+| canonical raw source | Kopia-style repository over SeaweedFS-backed S3 namespace |
+| hot read acceleration | Nydus-style lazy materialization plus optional Alluxio cache |
+| artifact graph and bundle registry | ORAS over OCI registry |
+| branch/publish semantics when needed | lakeFS |
 | derived delivery origin | S3-compatible object storage |
 
 This is an **opinionated default profile**, not a claim that every adopter must use the exact same infrastructure provider.
@@ -167,7 +189,8 @@ This is an **opinionated default profile**, not a claim that every adopter must 
 
 CDNgine is intentionally opinionated about the things that matter most:
 
-- **Xet is fixed** as the canonical deduplicated source plane
+- **deduplicated canonical source history** is required
+- **lazy or selective materialization** is required for hot internal reads
 - **deterministic derivative keys** are required
 - **Temporal-style durable orchestration semantics** are required
 - **public API behavior** should remain stable even if host/runtime choices differ
@@ -194,7 +217,7 @@ The architecture is generic on purpose. It is meant to support workloads such as
 
 If you only remember one thing, remember this:
 
-**clients upload originals through the ingest service, CDNgine canonicalizes them into Xet over S3-backed storage, workers reconstruct from Xet, and clients download published outputs from the CDN-backed derived store.**
+**clients upload originals through the ingest service, CDNgine snapshots them into a deduplicated canonical source repository on a tiered substrate, workers materialize only the bytes they need, and clients download published outputs from the CDN-backed derived store.**
 
 ## What is in this repository
 
@@ -203,7 +226,7 @@ This repository currently contains the **design and implementation guidance** fo
 - reference architecture
 - service architecture
 - state-machine, persistence, and dispatch contracts
-- canonicalization and Xet source-of-truth rules
+- canonical source, tiering, and materialization rules
 - public, platform-admin, and operator API surface guidance
 - problem-type and compatibility guidance
 - technology profile and upstream package guidance
@@ -236,7 +259,7 @@ Key entry points:
   - [Service Architecture](./docs/service-architecture.md)
   - [State Machines](./docs/state-machines.md)
   - [Persistence Model](./docs/persistence-model.md)
-  - [Canonicalization And Xet Contract](./docs/canonicalization-and-xet-contract.md)
+  - [Canonical Source And Tiering Contract](./docs/canonical-source-and-tiering-contract.md)
   - [Technology Profile](./docs/technology-profile.md)
   - [Package And Repository Reference](./docs/package-reference.md)
 - **Reference**

@@ -114,8 +114,8 @@ Represents one immutable uploaded source version.
 
 Should include:
 
-- Xet scope or bucket identity
-- Xet file ID or equivalent reconstruction identity
+- canonical repository identity
+- snapshot or manifest identity for reconstruction
 - canonical logical source path
 - source filename and detected content type
 - ingest-target reference

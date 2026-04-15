@@ -8,9 +8,10 @@ The intended first vertical slice includes:
 2. Redis
 3. Temporal
 4. tusd
-5. one S3-compatible store for staging and derived artifacts
-6. one canonicalization path into Xet
-7. one deterministic publication path
+5. SeaweedFS or MinIO as the default S3-compatible substrate for staging and derived artifacts
+6. one canonical source repository path using Kopia over the storage substrate
+7. one ORAS-backed deterministic artifact-publication path
+8. one optional Nydus or lazy-read path for package-like hot reads
 
 The governing docs are:
 

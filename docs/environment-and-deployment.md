@@ -26,12 +26,15 @@ The opinionated first production profile is:
 - PostgreSQL control-plane database
 - Redis for cache and short-lived coordination
 - Temporal for durable orchestration
-- Xet over S3-backed storage for canonical source assets
+- Kopia-style canonical source repository over SeaweedFS-backed storage
+- optional JuiceFS workspaces where POSIX access is required
+- optional Nydus or Alluxio hot-read layer close to workers
+- ORAS-backed artifact graph
 - S3-compatible derived store for published artifacts
 - CDN in front of derived artifacts
 - specialized worker pools split by workload profile
 
-The important storage rule is: source assets may live physically in S3-compatible storage, but application code should address them through Xet identities rather than raw canonical object keys.
+The important storage rule is: source assets may live physically in the tiered substrate, but application code should address them through canonical repository identities rather than raw canonical object keys.
 
 ## 3. Workload-separated worker pools
 
@@ -99,16 +102,19 @@ Expected properties:
 
 Owns:
 
-- Xet-backed canonical source storage for originals
+- canonical source repository for originals
+- tiered storage substrate for byte placement
+- optional lazy-read or hot-cache layer for package-like internal reads
+- ORAS artifact graph for immutable bundle references
 - derived store for published variants
 - CDN for hot delivery traffic
 
 Expected properties:
 
-- independent scaling of canonical and derived storage
+- independent scaling of canonical, hot-cache, and derived storage
 - clear private-origin access rules
 - retention policies separated by store role
-- local Xet caches on worker nodes where repeated reconstructions justify them
+- worker-local or distributed caches only where repeated reconstructions justify them
 
 ## 5. Regionality and latency posture
 
@@ -138,7 +144,7 @@ Adopters may keep:
 
 They should not change the platform semantics around:
 
-- canonical raw provenance and deduplicated source storage in Xet
+- canonical raw provenance and deduplicated source history
 - deterministic derivative keys
 - durable workflow ownership
 - registry-driven manifests and recipe bindings
@@ -168,7 +174,8 @@ At minimum:
 - PostgreSQL health and connection pressure
 - Redis latency and saturation
 - Temporal queue backlog and worker availability
-- Xet canonicalization latency, reconstruction health, and availability
+- source snapshot latency, reconstruction health, and availability
+- hot-cache effectiveness and lazy-read miss amplification where those layers are enabled
 - derived-store error rate
 - CDN error rate and cache-hit ratio
 
@@ -177,5 +184,7 @@ At minimum:
 - [Temporal documentation](https://docs.temporal.io/)
 - [Redis documentation](https://redis.io/docs/latest/)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
-- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
-- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Kopia features](https://kopia.io/docs/features/)
+- [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
+- [JuiceFS architecture](https://juicefs.com/docs/community/architecture)
+- [Nydus](https://nydus.dev/)

@@ -9,6 +9,7 @@ The point is not only to list inputs and outputs, but to make the ownership and 
 | Input source | Entry point | Primary outputs |
 | --- | --- | --- |
 | API client | public asset and metadata APIs | upload session, status, manifests, signed delivery references |
+| API client | original-source delivery authorization API | source-download handle, proxy path, or export URL |
 | platform owner | platform-admin APIs | namespace and capability governance actions |
 | internal service | private service-authenticated APIs | platform-owned asset operations and orchestration commands |
 | operator | operator APIs and admin surfaces | replay, purge, quarantine, diagnostics |
@@ -18,9 +19,11 @@ The point is not only to list inputs and outputs, but to make the ownership and 
 
 The platform emits:
 
-- raw asset scope, file-ID, digest, and canonical-path references in Xet
+- canonical source repository snapshot, digest, and canonical-path references
 - ingest-object references before canonicalization
+- artifact-graph references for immutable bundles and manifests where applicable
 - derivative objects in the derived store
+- source-download handles or proxy/export paths for canonical originals
 - manifests for complex asset classes
 - workflow and audit state in the registry
 - signed delivery URLs or delivery paths

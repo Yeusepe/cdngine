@@ -26,7 +26,7 @@ Initial service-level posture:
 - workflow dispatch path: 99.9%
 - delivery authorization path: 99.9%
 
-Published derivatives behind the CDN should exceed control-plane availability during steady-state delivery because hot reads should not depend on Xet or the synchronous API path.
+Published derivatives behind the CDN should exceed control-plane availability during steady-state delivery because hot reads should not depend on the canonical source repository or the synchronous API path.
 
 ## 3. Backlog and saturation thresholds
 
@@ -39,7 +39,7 @@ Published derivatives behind the CDN should exceed control-plane availability du
 | worker CPU saturation | investigate when sustained above 80% |
 | worker memory saturation | investigate when sustained above 80% |
 | derived-store write failures | page when publication is blocked |
-| Xet canonicalization failure rate | page when canonical ingest is blocked |
+| canonical source snapshot failure rate | page when canonical ingest is blocked |
 
 ## 4. Recovery expectations
 
@@ -55,7 +55,7 @@ Operators should be able to:
 1. keep worker pools separated by workload class
 2. size worker pools by schedule-to-start and not only CPU averages
 3. keep long waits and operator approval states out of scarce execution slots where the orchestration engine supports that posture
-4. monitor Xet caches separately from canonicalization throughput
+4. monitor hot-cache behavior separately from source snapshot throughput
 
 ## 6. Read more
 

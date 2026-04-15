@@ -15,11 +15,14 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
-| raw versioned source | Xet | chunk-deduplicated canonical asset storage and replay provenance over S3-backed storage |
+| canonical source repository | Kopia-style repository | chunk-deduplicated canonical asset history and replay provenance |
+| tiered storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | explicit byte placement and shared-workspace options |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
 | metadata/query indexing | PostgreSQL GIN over JSONB | indexable structured metadata without inventing a custom metadata engine |
 | cache and coordination | Redis | mature cache, lock, and ephemeral coordination primitives |
 | durable workflows | Temporal | retries, replay, timers, testing, and execution history |
+| lazy internal hot reads | Nydus-style lazy representation plus optional Alluxio | on-demand chunk reads and hot caches for package-like assets |
+| artifact graph and immutable bundles | ORAS | OCI-native artifact references and bundle publication |
 | image processing and delivery | imgproxy + libvips | high-performance image processing without building a transform server |
 | video and image-to-video | FFmpeg | broad codec support, hardware acceleration, deep ecosystem |
 | document conversion | Gotenberg | Chromium + LibreOffice + PDF tooling behind an API |
@@ -41,7 +44,13 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | imgproxy | `imgproxy/imgproxy` | image server and delivery model |
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
-| Xet | `huggingface/xet-core` | chunking, deduplication, reconstruction, and Xet-aware client integrations |
+| Kopia | `kopia/kopia` | snapshot repository layout, deduplication, and source-history management |
+| SeaweedFS | `seaweedfs/seaweedfs` | tiered storage, S3-compatible substrate, and placement controls |
+| JuiceFS | `juicedata/juicefs` | object-backed POSIX workspace semantics |
+| Nydus | `dragonflyoss/nydus` | lazy chunk-addressed reads and on-demand materialization |
+| Alluxio | `Alluxio/alluxio` | distributed hot cache in front of persistent stores |
+| ORAS | `oras-project/oras` | OCI artifact publication and immutable bundle references |
+| DedupBench | `UWASL/dedup-bench` | benchmarking chunking algorithms on the real corpus |
 | Inngest | `inngest/inngest` | durable step-oriented workflow posture |
 | Trigger.dev | `triggerdotdev/trigger.dev` | run UX, queues, and long-running developer ergonomics |
 | DBOS | `dbos-inc/dbos-transact-ts` | PostgreSQL-centered durable execution ideas |
@@ -154,21 +163,30 @@ Use it fully:
 - use object storage backends in production
 - configure equal R2 multipart part sizes when Cloudflare R2 is the backing store
 
-### 3.7 Xet
+### 3.7 Canonical source repository and substrate
 
 Use for:
 
 - canonical asset storage after ingest finalization
-- content-defined chunking and chunk-level deduplication
+- rolling-hash chunking and deduplicated snapshot history
 - canonical file reconstruction for replay and processing
 - storage-efficient repeated revisions of binary-heavy source assets
 
 Use it deliberately:
 
-- keep public clients on the simpler ingest target and canonicalize into Xet after verification
-- persist Xet file IDs, logical paths, and content digests in the registry
-- treat S3 as the physical substrate while Xet remains the canonical addressing layer
-- use local Xet caches on worker hosts when repeated source reconstruction justifies them
+- keep public clients on the simpler ingest target and snapshot into the source repository after verification
+- persist snapshot identities, logical paths, and content digests in the registry
+- treat SeaweedFS or JuiceFS as the physical substrate while the source repository remains the canonical addressing layer
+- use lazy-read or hot-cache layers only where repeated source reconstruction justifies them
+
+### 3.7.1 ORAS
+
+Use for:
+
+- immutable artifact bundles
+- cross-service artifact references
+- manifest-adjacent metadata packages
+- OCI-native publication semantics
 
 ## 4. Image stack
 

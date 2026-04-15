@@ -4,7 +4,7 @@ This document records the external systems and standards that meaningfully shape
 
 The goal is not to copy their products. The goal is to extract the operating patterns that reduce architectural stress for CDNgine's actual problem:
 
-- binary-heavy canonical assets in Xet over S3-compatible storage
+- binary-heavy canonical assets in a deduplicated source repository over a tiered storage substrate
 - a registry and control plane
 - durable processing and replay
 - derived-object publication
@@ -166,6 +166,62 @@ What matters for CDNgine:
 Adopted rule:
 
 - retention, purge, and replay remain first-class operator flows with durable control-plane records
+
+### 2.5 Kopia, restic, and Borg
+
+Study focus:
+
+- immutable snapshot identity
+- rolling-hash chunking
+- pack and index formats
+- repository maintenance and pruning
+
+What matters for CDNgine:
+
+- canonical source history should be repository-native, deduplicated, and replayable
+- large iterative binaries benefit from chunk reuse across revisions
+- source retention and repository maintenance need to be explicit operations
+
+Adopted rule:
+
+- the canonical source plane should behave like a snapshot repository, not like a flat bucket of unrelated objects
+
+### 2.6 SeaweedFS and JuiceFS
+
+Study focus:
+
+- tiered storage
+- object-backed workspaces
+- S3-compatible access
+- operational placement controls
+
+What matters for CDNgine:
+
+- source and derived bytes need explicit hot, warm, and cold placement
+- some adopters will need shared POSIX workspaces for tools or processors
+- storage placement should be a platform capability, not an implementation accident
+
+Adopted rule:
+
+- CDNgine should document a real tiered-storage substrate rather than pretending one undifferentiated bucket is enough
+
+### 2.7 Nydus, Alluxio, and ORAS
+
+Study focus:
+
+- lazy chunk-addressed reads
+- distributed hot caches
+- immutable artifact graphs
+
+What matters for CDNgine:
+
+- hot internal reads should not always require full rehydration of huge assets
+- artifact bundles and manifests need immutable references without inventing custom registry semantics
+- caches must stay support state rather than becoming hidden business truth
+
+Adopted rule:
+
+- CDNgine should separate canonical source history, hot-read acceleration, and artifact publication into explicit layers
 
 ### 2.4 Unkey
 

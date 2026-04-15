@@ -50,16 +50,16 @@ The upload contract is intentionally split into two stages:
 3. the API returns a short-lived **ingest-managed upload target**
 4. the client uploads the raw binary to that ingest target, normally **tusd** backed by object storage
 5. the client calls upload completion, or an authenticated completion callback is received
-6. the ingest service verifies the uploaded object, validates metadata and checksums, and canonicalizes the staged object into **Xet** over S3-backed storage
+6. the ingest service verifies the uploaded object, validates metadata and checksums, and snapshots the staged object into the **canonical source repository** on the tiered storage substrate
 7. the service records canonicalization success and emits a durable workflow-dispatch intent
 8. a workflow starter launches the Temporal workflow for that asset version
 
 The important distinction is:
 
 - the **ingest target** owns resumable upload ergonomics
-- **Xet** owns deduplicated canonical source storage after successful finalization
+- the **canonical source repository** owns deduplicated canonical source storage after successful finalization
 
-Clients do **not** upload directly to Xet by default.
+Clients do **not** upload directly to the source repository by default.
 
 ## 4. Recommended service ownership
 
@@ -67,7 +67,7 @@ Recommended service areas:
 
 | Service | Responsibility |
 | --- | --- |
-| `ingest` | upload sessions, upload completion, ingest-target verification, and canonicalization into Xet |
+| `ingest` | upload sessions, upload completion, ingest-target verification, and source snapshotting |
 | `registry` | asset, version, derivative, manifest, idempotency, and audit state |
 | `delivery` | signed URLs, manifest retrieval, derivative lookup |
 | `capability-admin` | capability registration, recipe validation, namespace policy resolution |
@@ -102,7 +102,7 @@ The request path may authorize delivery access, but it should not become the str
 
 The most important control-plane boundary in the system is:
 
-`upload complete` -> `canonical source stored in Xet` -> `workflow dispatched`
+`upload complete` -> `canonical source stored in repository` -> `workflow dispatched`
 
 That boundary must be designed explicitly.
 
@@ -137,7 +137,7 @@ The registry transaction for completion should:
 1. verify the upload session and idempotency record
 2. transition the version from `uploaded` to `canonicalizing`
 3. record verified ingest metadata
-4. persist the Xet canonical file identity when canonicalization succeeds
+4. persist the canonical source identity when snapshotting succeeds
 5. insert a workflow-dispatch outbox record
 
 Only after the outbox record exists should workflow dispatch be attempted.
@@ -179,19 +179,19 @@ This projection should capture:
 
 That keeps workflow UX closer to the stronger operator models seen in systems such as Trigger.dev, Inngest, DBOS, and Restate instead of forcing operators to reconstruct state from raw execution history alone.
 
-### 6.3.1 Xet canonical identity
+### 6.3.1 Canonical source identity
 
 The canonical source pointer should not be an opaque blob reference alone.
 
 Persist at minimum:
 
-- Xet scope, bucket, or logical content-domain identity
-- Xet file ID or equivalent reconstruction identity
+- canonical repository identity
+- snapshot, manifest, or equivalent reconstruction identity
 - canonical logical path
 - strong content digest such as SHA-256
 - source size and detected media metadata when relevant
 
-That gives replay, operator diagnostics, and provenance review a stable source identity that matches Xet's chunked reconstruction model.
+That gives replay, operator diagnostics, and provenance review a stable source identity that matches the repository's chunked reconstruction model.
 
 ### 6.4 Optimistic concurrency
 
@@ -250,8 +250,8 @@ Original-source delivery is separate from published derivative delivery.
 Preferred behavior:
 
 - the API exposes an explicit source-download authorization operation for canonical asset versions
-- the service resolves the request from the version's canonical Xet identity
-- the service may satisfy the read through proxied reconstruction, a tightly scoped Xet-backed read handle, or a materialized export depending on policy
+- the service resolves the request from the version's canonical source identity
+- the service may satisfy the read through proxied reconstruction, a tightly scoped lazy-read handle for trusted internal clients, or, only when repeated delivery behavior justifies it, a materialized export
 - source-download authorization may be stricter than derivative authorization
 - quarantined or policy-blocked versions must not silently fall back to a raw storage read
 
@@ -315,21 +315,21 @@ tus and tusd should be treated as a first-class ingest subsystem, not a generic 
 - production should use a cloud/object-storage backend, not local disk or NFS-style shared folders
 - when targeting Cloudflare R2, `-s3-min-part-size` and `-s3-part-size` should be set to the same value
 
-### 7.5 Xet
+### 7.5 Canonical source stack
 
-Xet should be used as the canonical deduplicated content plane, not merely as a raw-file sink.
+The canonical source stack should be used as the deduplicated content plane, not merely as a raw-file sink.
 
 Use it well by:
 
-- making Xet scope topology explicit, typically per service namespace or other high-isolation boundary
-- persisting Xet file IDs, canonical logical paths, and content digests in the registry
-- using `xet-core` or a compatible Xet-aware service for canonicalization and reconstruction
-- taking advantage of chunk-level deduplication for repeated revisions of Unity packages, Substance files, FBX assets, textures, and video masters
-- using local Xet caches on worker hosts where repeated reads justify them
-- keeping replay-critical source-side evidence in the same canonical Xet scope when that evidence must travel with the source
-- keeping raw S3 object keys behind the Xet layer rather than treating them as public or control-plane identities
+- making repository or namespace topology explicit, typically per service namespace or other high-isolation boundary
+- persisting snapshot identities, canonical logical paths, and content digests in the registry
+- using a repository-aware service for snapshotting and reconstruction
+- taking advantage of deduplicated chunk history for repeated revisions of Unity packages, Substance files, FBX assets, textures, and video masters
+- using lazy-read or hot-cache layers on worker hosts where repeated reads justify them
+- keeping replay-critical source-side evidence in the same canonical source boundary when that evidence must travel with the source
+- keeping raw object keys behind the source layer rather than treating them as public or control-plane identities
 
-Keep these responsibilities out of Xet:
+Keep these responsibilities out of the source stack:
 
 - hot-path derivative delivery
 - mutable workflow state

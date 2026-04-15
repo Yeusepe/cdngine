@@ -20,7 +20,7 @@ That makes both provenance and delivery harder to operate cleanly.
 
 ## Decision
 
-Keep Xet as the canonical deduplicated source plane and keep derived delivery artifacts in a separate S3-compatible store.
+Keep the canonical source repository as the deduplicated source plane and keep derived delivery artifacts in a separate S3-compatible store.
 
 ## Alternatives considered
 
@@ -28,13 +28,13 @@ Keep Xet as the canonical deduplicated source plane and keep derived delivery ar
 
 Rejected because it couples canonical provenance to hot delivery and makes replay, retention, and CDN behavior harder to reason about.
 
-### Store every derivative back into Xet
+### Store every derivative back into the source repository
 
 Rejected as the default because derivatives are regenerable delivery outputs, not the canonical upload history the system should replay from.
 
 ## Consequences
 
-- replay starts from Xet
-- CDN delivery reads come from the derived store, not Xet
+- replay starts from the source repository
+- CDN delivery reads come from the derived store, not the source repository
 - registry records must link source versions to deterministic derivative keys
 - retention policy can differ between raw and derived storage

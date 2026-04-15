@@ -205,7 +205,7 @@ The repository now carries a checked-in TypeScript SDK package at `packages/sdk/
 
 - generated public OpenAPI types in `packages/sdk/src/generated/public-api.ts`
 - a `CDNginePublicClient` wrapper in `packages/sdk/src/public-client.ts`
-- grouped helper entry points such as `client.assets.uploadAndWait(...)` and fluent version handles such as `client.asset(assetId).version(versionId)...`
+- grouped helper entry points such as `client.assets.uploadFileAndWait(...)`, `client.assets.get(...)`, and fluent version handles such as `client.asset(assetId).version(versionId)...`
 - quickstart usage in `packages/sdk/README.md`
 - a current-state walkthrough in `docs/public-api-and-sdk-tutorial.md`
 
@@ -231,7 +231,7 @@ SDK releases should ship with:
 
 The workflow docs should not exist only as prose. Multi-step examples should stay aligned to Arazzo and the generated SDK entry points.
 
-The repository now includes a step-by-step current-state tutorial in `docs/public-api-and-sdk-tutorial.md`. That document is deliberately explicit about the current limits of the checked-in TypeScript SDK, including the fact that tus byte upload still happens outside the client wrapper.
+The repository now includes a step-by-step current-state tutorial in `docs/public-api-and-sdk-tutorial.md`. That document is deliberately explicit about the current limits of the checked-in TypeScript SDK while still treating the SDK, not raw HTTP, as the primary integration path for normal application code.
 
 ## 10.1 Upstream systems are not the public SDK contract
 

@@ -15,8 +15,10 @@ Checked-in contract and SDK package for the public CDNgine API.
 
 The checked-in client wraps the public control-plane calls for:
 
+- logical-asset reads
 - upload-session creation
 - upload-session completion
+- full file and byte upload orchestration
 - version reads and polling
 - derivative listing
 - manifest fetch
@@ -26,122 +28,64 @@ The checked-in client wraps the public control-plane calls for:
 Be realistic about the current limits:
 
 1. this package is a private workspace package today, not a published npm package
-2. it does **not** upload file bytes to the returned tus target for you
-3. it does **not** currently wrap `GET /v1/assets/{assetId}`
 
 ## Real upload flow
 
 ```ts
-import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
 import { createCDNgineClient } from '@cdngine/sdk';
 
 const filePath = './hero-banner.png';
 const fileBuffer = await readFile(filePath);
-const fileSize = (await stat(filePath)).size;
-const fileSha256 = createHash('sha256').update(fileBuffer).digest('hex');
-const objectKey = 'staging/media-platform/tenant-acme/hero-banner.png';
 
 const client = createCDNgineClient({
   baseUrl: 'https://api.cdngine.local',
   getAccessToken: () => process.env.CDNGINE_TOKEN
 });
 
-const session = await client.createUploadSession({
-  idempotencyKey: `create-${fileSha256}`,
-  body: {
-    serviceNamespaceId: 'media-platform',
-    tenantId: 'tenant-acme',
-    assetOwner: 'customer:acme',
-    source: {
-      filename: 'hero-banner.png',
-      contentType: 'image/png'
-    },
-    upload: {
-      objectKey,
-      byteLength: fileSize,
-      checksum: {
-        algorithm: 'sha256',
-        value: fileSha256
-      }
-    }
-  }
-});
-
-await fetch(session.uploadTarget.url, {
-  method: session.uploadTarget.method,
-  headers: {
-    'Tus-Resumable': '1.0.0',
-    'Upload-Offset': '0',
-    'Content-Type': 'application/offset+octet-stream'
-  },
-  body: fileBuffer
-});
-
-const completion = await client.completeUploadSession({
-  uploadSessionId: session.uploadSessionId,
-  idempotencyKey: `complete-${session.uploadSessionId}`,
-  body: {
-    stagedObject: {
-      objectKey,
-      byteLength: fileSize,
-      checksum: {
-        algorithm: 'sha256',
-        value: fileSha256
-      }
-    }
-  }
-});
-
-const version = await client
-  .asset(completion.assetId)
-  .version(completion.versionId)
-  .wait({
+const uploaded = await client.assets.uploadFileAndWait({
+  assetOwner: 'customer:acme',
+  contentType: 'image/png',
+  file: fileBuffer,
+  filename: 'hero-banner.png',
+  idempotencyKey: 'hero-banner-v1',
+  serviceNamespaceId: 'media-platform',
+  tenantId: 'tenant-acme',
+  wait: {
     untilStates: ['published']
-  });
+  }
+});
 
 const delivery = await client
-  .asset(completion.assetId)
-  .version(completion.versionId)
+  .asset(uploaded.assetId)
+  .version(uploaded.versionId)
   .delivery('public-images')
   .authorize({
-    idempotencyKey: `delivery-${completion.versionId}`,
+    idempotencyKey: `delivery-${uploaded.versionId}`,
     body: {
       responseFormat: 'url',
       variant: 'webp-master'
     }
   });
 
-console.log(version.lifecycleState, delivery.url);
+console.log(uploaded.version.lifecycleState, delivery.url);
 ```
 
-## Important note about `assets.upload(...)` and `assets.uploadAndWait(...)`
+## Low-level upload helpers still exist
 
-Those helpers currently orchestrate:
+`assets.upload(...)` and `assets.uploadAndWait(...)` are still available, but they are now the lower-level path for pre-staged or custom-ingest flows.
 
-1. `createUploadSession(...)`
-2. `completeUploadSession(...)`
-3. optional `waitForVersion(...)`
+For normal application code, prefer:
 
-They do **not** push the binary to the returned tus upload URL. Use them only when the staging step is already handled elsewhere, such as:
+- `client.assets.uploadFile(...)`
+- `client.assets.uploadFileAndWait(...)`
 
-- tests
-- demos
-- pre-staged ingest environments
-- a higher-level wrapper that already uploaded the bytes
+Use the lower-level helpers only when another layer already uploaded the bytes or when you are deliberately controlling the staging flow yourself.
 
 ## Step-by-step tutorial
 
-For a realistic tutorial that covers:
-
-- raw HTTP usage
-- the real Better Auth bearer-token requirement
-- the tus upload step
-- the current TypeScript client surface
-- current gaps such as missing `getAsset(...)`
-
-read [Public API And TypeScript SDK Tutorial](../../docs/public-api-and-sdk-tutorial.md).
+For the SDK-first tutorial plus the raw HTTP reference flow, read [Public API And TypeScript SDK Tutorial](../../docs/public-api-and-sdk-tutorial.md).
 
 ## Governing docs
 

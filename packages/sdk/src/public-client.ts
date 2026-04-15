@@ -55,6 +55,8 @@ type CompleteUploadSessionRequest =
   paths['/v1/upload-sessions/{uploadSessionId}/complete']['post']['requestBody']['content']['application/json'];
 type CompleteUploadSessionResponse =
   paths['/v1/upload-sessions/{uploadSessionId}/complete']['post']['responses']['202']['content']['application/json'];
+type GetAssetResponse =
+  paths['/v1/assets/{assetId}']['get']['responses']['200']['content']['application/json'];
 type GetAssetVersionResponse =
   paths['/v1/assets/{assetId}/versions/{versionId}']['get']['responses']['200']['content']['application/json'];
 type ListDerivativesResponse =
@@ -119,6 +121,27 @@ export interface UploadAssetResult {
   versionId: string;
 }
 
+export interface UploadFileInput {
+  assetId?: string;
+  assetOwner: string;
+  contentType?: string;
+  file: Blob | ArrayBuffer | ArrayBufferView;
+  filename?: string;
+  idempotencyKey?: string;
+  objectKey?: string;
+  onUploadProgress?: (progress: number) => void;
+  serviceNamespaceId: string;
+  tenantId?: string;
+}
+
+export interface UploadFileResult extends UploadAssetResult {
+  checksum: {
+    algorithm: 'sha256';
+    value: string;
+  };
+  objectKey: string;
+}
+
 export interface UploadAssetAndWaitInput extends UploadAssetInput {
   wait?: WaitForVersionOptions;
 }
@@ -127,8 +150,122 @@ export interface UploadAssetAndWaitResult extends UploadAssetResult {
   version: GetAssetVersionResponse;
 }
 
+export interface UploadFileAndWaitInput extends UploadFileInput {
+  wait?: WaitForVersionOptions;
+}
+
+export interface UploadFileAndWaitResult extends UploadFileResult {
+  version: GetAssetVersionResponse;
+}
+
+type UploadBinaryPayload = Blob | ArrayBuffer | Uint8Array;
+
 function buildUrl(baseUrl: string, pathname: string) {
   return new URL(pathname.replace(/^\//, ''), `${baseUrl.replace(/\/+$/, '')}/`).toString();
+}
+
+function bufferToHex(buffer: ArrayBuffer) {
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function getNamedBlobFilename(input: Blob | ArrayBuffer | ArrayBufferView) {
+  if (!(input instanceof Blob)) {
+    return undefined;
+  }
+
+  const candidate = input as Blob & { name?: string };
+  return typeof candidate.name === 'string' && candidate.name.length > 0 ? candidate.name : undefined;
+}
+
+function sanitizeFilename(filename: string) {
+  return filename
+    .trim()
+    .replace(/[\\/]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-');
+}
+
+function getDefaultObjectKey(input: {
+  filename: string;
+  serviceNamespaceId: string;
+  tenantId?: string;
+}) {
+  const scopePath = input.tenantId
+    ? `${input.serviceNamespaceId}/${input.tenantId}`
+    : `${input.serviceNamespaceId}/global`;
+
+  return `staging/${scopePath}/${crypto.randomUUID()}-${sanitizeFilename(input.filename)}`;
+}
+
+function getUploadIdempotencyKeys(baseIdempotencyKey?: string) {
+  const base = baseIdempotencyKey ?? `sdk-upload-${crypto.randomUUID()}`;
+
+  return {
+    completeIdempotencyKey: `${base}:complete`,
+    createIdempotencyKey: `${base}:create`
+  };
+}
+
+async function normalizeUploadPayload(
+  input: Blob | ArrayBuffer | ArrayBufferView
+): Promise<{
+  body: UploadBinaryPayload;
+  byteLength: number;
+  bytes: ArrayBuffer;
+}> {
+  if (input instanceof Blob) {
+    return {
+      body: input,
+      byteLength: input.size,
+      bytes: await input.arrayBuffer()
+    };
+  }
+
+  if (input instanceof ArrayBuffer) {
+    return {
+      body: input,
+      byteLength: input.byteLength,
+      bytes: input
+    };
+  }
+
+  const view = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  const bytes = view.slice().buffer;
+
+  return {
+    body: view,
+    byteLength: input.byteLength,
+    bytes
+  };
+}
+
+type XmlHttpRequestProgressEvent = {
+  lengthComputable: boolean;
+  loaded: number;
+  total: number;
+};
+
+type XmlHttpRequestLike = {
+  abort(): void;
+  onerror: (() => void) | null;
+  onload: (() => void) | null;
+  open(method: string, url: string): void;
+  send(body: UploadBinaryPayload): void;
+  setRequestHeader(name: string, value: string): void;
+  status: number;
+  upload: {
+    onprogress: ((event: XmlHttpRequestProgressEvent) => void) | null;
+  };
+};
+
+function getXmlHttpRequestConstructor():
+  | (new () => XmlHttpRequestLike)
+  | undefined {
+  const candidate = (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest;
+
+  return typeof candidate === 'function'
+    ? (candidate as new () => XmlHttpRequestLike)
+    : undefined;
 }
 
 function sleep(ms: number, signal?: AbortSignal) {
@@ -155,8 +292,11 @@ export class CDNginePublicClient {
   private readonly getAccessToken: (() => string | Promise<string> | undefined) | undefined;
   readonly assets: {
     byId: (assetId: string) => CDNgineAssetClient;
+    get: (assetId: string) => Promise<GetAssetResponse>;
     upload: (input: UploadAssetInput) => Promise<UploadAssetResult>;
     uploadAndWait: (input: UploadAssetAndWaitInput) => Promise<UploadAssetAndWaitResult>;
+    uploadFile: (input: UploadFileInput) => Promise<UploadFileResult>;
+    uploadFileAndWait: (input: UploadFileAndWaitInput) => Promise<UploadFileAndWaitResult>;
     version: (assetId: string, versionId: string) => CDNgineAssetVersionClient;
     waitForVersion: (
       assetId: string,
@@ -197,8 +337,11 @@ export class CDNginePublicClient {
 
     this.assets = {
       byId: (assetId) => this.asset(assetId),
+      get: (assetId) => this.getAsset(assetId),
       upload: (input) => this.uploadAsset(input),
       uploadAndWait: (input) => this.uploadAssetAndWait(input),
+      uploadFile: (input) => this.uploadFile(input),
+      uploadFileAndWait: (input) => this.uploadFileAndWait(input),
       version: (assetId, versionId) => new CDNgineAssetVersionClient(this, assetId, versionId),
       waitForVersion: (assetId, versionId, waitOptions) =>
         this.waitForVersion(assetId, versionId, waitOptions)
@@ -263,6 +406,13 @@ export class CDNginePublicClient {
       },
       method: 'POST',
       pathname: '/v1/upload-sessions'
+    });
+  }
+
+  async getAsset(assetId: string): Promise<GetAssetResponse> {
+    return this.requestJson<GetAssetResponse>({
+      method: 'GET',
+      pathname: `/v1/assets/${assetId}`
     });
   }
 
@@ -348,6 +498,162 @@ export class CDNginePublicClient {
     };
   }
 
+  async uploadFile(input: UploadFileInput): Promise<UploadFileResult> {
+    const normalizedPayload = await normalizeUploadPayload(input.file);
+    const filename = input.filename ?? getNamedBlobFilename(input.file);
+
+    if (!filename) {
+      throw new Error(
+        'filename is required when uploadFile() receives bytes that do not carry a file name.'
+      );
+    }
+
+    const checksum = {
+      algorithm: 'sha256' as const,
+      value: bufferToHex(await crypto.subtle.digest('SHA-256', normalizedPayload.bytes))
+    };
+    const contentType =
+      input.contentType ??
+      (input.file instanceof Blob && input.file.type.length > 0
+        ? input.file.type
+        : 'application/octet-stream');
+    const objectKey =
+      input.objectKey ??
+      getDefaultObjectKey({
+        filename,
+        serviceNamespaceId: input.serviceNamespaceId,
+        ...(input.tenantId ? { tenantId: input.tenantId } : {})
+      });
+    const idempotencyKeys = getUploadIdempotencyKeys(input.idempotencyKey);
+    const session = await this.createUploadSession({
+      body: {
+        ...(input.assetId ? { assetId: input.assetId } : {}),
+        assetOwner: input.assetOwner,
+        serviceNamespaceId: input.serviceNamespaceId,
+        ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+        source: {
+          contentType,
+          filename
+        },
+        upload: {
+          byteLength: normalizedPayload.byteLength,
+          checksum,
+          objectKey
+        }
+      },
+      idempotencyKey: idempotencyKeys.createIdempotencyKey
+    });
+
+    await this.uploadToTarget({
+      body: normalizedPayload.body,
+      ...(input.onUploadProgress ? { onUploadProgress: input.onUploadProgress } : {}),
+      uploadTarget: session.uploadTarget
+    });
+
+    const completion = await this.completeUploadSession({
+      body: {
+        stagedObject: {
+          byteLength: normalizedPayload.byteLength,
+          checksum,
+          objectKey
+        }
+      },
+      idempotencyKey: idempotencyKeys.completeIdempotencyKey,
+      uploadSessionId: session.uploadSessionId
+    });
+
+    return {
+      assetId: completion.assetId,
+      checksum,
+      completion,
+      objectKey,
+      session,
+      uploadSessionId: session.uploadSessionId,
+      versionId: completion.versionId
+    };
+  }
+
+  async uploadFileAndWait(input: UploadFileAndWaitInput): Promise<UploadFileAndWaitResult> {
+    const upload = await this.uploadFile(input);
+    const version = await this.waitForVersion(upload.assetId, upload.versionId, input.wait);
+
+    return {
+      ...upload,
+      version
+    };
+  }
+
+  private async uploadToTarget(input: {
+    body: UploadBinaryPayload;
+    onUploadProgress?: (progress: number) => void;
+    uploadTarget: CreateUploadSessionResponse['uploadTarget'];
+  }) {
+    if (input.uploadTarget.protocol !== 'tus') {
+      throw new Error(
+        `Unsupported upload target protocol "${input.uploadTarget.protocol}".`
+      );
+    }
+
+    const xhrConstructor = input.onUploadProgress ? getXmlHttpRequestConstructor() : undefined;
+
+    if (xhrConstructor) {
+      await new Promise<void>((resolve, reject) => {
+        const request = new xhrConstructor();
+
+        request.open(input.uploadTarget.method, input.uploadTarget.url);
+        request.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+        request.setRequestHeader('Tus-Resumable', '1.0.0');
+        request.setRequestHeader('Upload-Offset', '0');
+        request.upload.onprogress = (event) => {
+          if (!event.lengthComputable) {
+            return;
+          }
+
+          input.onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
+        };
+        request.onload = () => {
+          if (request.status >= 200 && request.status < 300) {
+            input.onUploadProgress?.(100);
+            resolve();
+            return;
+          }
+
+          reject(
+            new Error(
+              `Upload target rejected the staged upload with status ${request.status}.`
+            )
+          );
+        };
+        request.onerror = () => {
+          reject(new Error('Upload target request failed.'));
+        };
+        request.send(input.body);
+      });
+
+      return;
+    }
+
+    input.onUploadProgress?.(0);
+
+    const response = await this.fetchImpl(input.uploadTarget.url, {
+      body: input.body,
+      headers: {
+        'Content-Type': 'application/offset+octet-stream',
+        'Tus-Resumable': '1.0.0',
+        'Upload-Offset': '0'
+      },
+      method: input.uploadTarget.method
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Upload target rejected the staged upload with status ${response.status}.`
+      );
+    }
+
+    input.onUploadProgress?.(100);
+  }
+
   private async requestJson<TResponse>(input: {
     body?: JsonValue;
     headers?: Record<string, string>;
@@ -395,6 +701,10 @@ export class CDNgineAssetClient {
     private readonly client: CDNginePublicClient,
     private readonly assetId: string
   ) {}
+
+  get(): Promise<GetAssetResponse> {
+    return this.client.getAsset(this.assetId);
+  }
 
   version(versionId: string) {
     return new CDNgineAssetVersionClient(this.client, this.assetId, versionId);
@@ -462,6 +772,7 @@ export type {
   CompleteUploadSessionResponse,
   CreateUploadSessionRequest,
   CreateUploadSessionResponse,
+  GetAssetResponse,
   GetAssetVersionResponse,
   GetManifestResponse,
   ListDerivativesResponse

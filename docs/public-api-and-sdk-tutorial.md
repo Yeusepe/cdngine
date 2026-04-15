@@ -2,9 +2,9 @@
 
 This file documents:
 
-1. the real public HTTP flow exposed by the checked-in contract
-2. the real TypeScript client surface in `@cdngine/sdk`
-3. the places where you still need your own host app, auth flow, or tus upload call
+1. the **SDK-first** integration path for normal application code
+2. the real public HTTP flow as a wire-level reference
+3. the places where you still need your own host app and auth flow
 
 ## Governing docs
 
@@ -31,16 +31,16 @@ The current repository gives you these pieces:
 | Public Hono app | Implemented in `@cdngine/api` and exercised in tests, but **not** shipped as a standalone `npm run api:start` server yet |
 | Auth posture | Public routes require a **Better Auth bearer token**; the repo does **not** yet ship a public sign-in tutorial flow or token-issuing API surface |
 | TypeScript SDK | Implemented in the private workspace package `@cdngine/sdk`; it is a checked-in repo package, **not** a published npm package yet |
-| SDK upload behavior | The SDK wraps the **control-plane** calls, but it does **not** upload file bytes to the returned tus target for you |
-| Asset lookup coverage | The HTTP API implements `GET /v1/assets/{assetId}`, but the checked-in TypeScript client does **not** currently wrap that endpoint |
+| SDK upload behavior | The SDK now owns create-session, staged upload, completion, and optional wait through `client.assets.uploadFile(...)` and `client.assets.uploadFileAndWait(...)` |
+| Asset lookup coverage | The SDK now wraps both `GET /v1/assets/{assetId}` and `GET /v1/assets/{assetId}/versions/{versionId}` |
 
 That means the realistic integration posture today is:
 
 1. your host app mounts the public API
 2. your host app issues Better Auth bearer tokens
-3. your client creates an upload session
-4. your client uploads bytes to the returned tus target
-5. your client completes the session and then reads version, manifest, delivery, or source endpoints
+3. your app code uses the SDK as the primary integration surface
+4. the SDK handles upload session creation, staged upload, completion, and polling for you
+5. raw HTTP stays available as a reference and fallback surface, not the default developer path
 
 ## Before you start
 
@@ -51,6 +51,10 @@ You need these values regardless of whether you call the API directly or use the
 - `serviceNamespaceId`: the CDNgine service namespace you are allowed to use
 - `tenantId`: required when your namespace is tenant-scoped
 - `assetOwner`: the caller-facing owner string used for policy
+- a file, blob, or byte buffer to upload
+
+If you are dropping to raw HTTP instead of the SDK, you also need:
+
 - `objectKey`: the staging object key your upload will use
 - `byteLength` and `sha256` checksum for the file you are uploading
 
@@ -61,6 +65,8 @@ If you are using the repository as-is for local exploration, keep these constrai
 3. the public API is currently exercised through tests, demo generation, and host-app embedding rather than through a checked-in standalone server binary
 
 ## Step by step: raw HTTP API
+
+Use this only when you explicitly want wire-level control, need to debug the public contract, or are building another SDK.
 
 The examples below use Bash and `curl` because that makes the wire contract explicit. The same sequence applies from any language.
 
@@ -138,7 +144,7 @@ curl -sS -X PATCH "$UPLOAD_URL" \
   --data-binary @"$FILE"
 ```
 
-Today, this tus upload step is **outside** the checked-in TypeScript client. You must do it yourself with a tus client or an HTTP call like the one above.
+This manual tus step exists only because this section is showing the raw HTTP contract directly. In normal application code, prefer `client.assets.uploadFile(...)` or `client.assets.uploadFileAndWait(...)`, which perform this upload step for you.
 
 ### 4. Complete the upload session
 
@@ -274,10 +280,11 @@ Treat `retryable: true` as the signal that a retry or later poll may succeed.
 
 The current TypeScript client is the workspace package `@cdngine/sdk`.
 
-### 1. Know what the SDK does and does not wrap
+### 1. Know what the SDK wraps today
 
 The checked-in client currently wraps these public flows:
 
+- `getAsset(...)`
 - `createUploadSession(...)`
 - `completeUploadSession(...)`
 - `getAssetVersion(...)`
@@ -286,14 +293,14 @@ The checked-in client currently wraps these public flows:
 - `getManifest(...)`
 - `authorizeDelivery(...)`
 - `authorizeSourceDownload(...)`
+- `uploadFile(...)`
+- `uploadFileAndWait(...)`
 - grouped helpers such as `client.assets.*`
 - fluent version helpers such as `client.asset(assetId).version(versionId)...`
 
-It does **not** currently:
+Current repo-level limits:
 
 - publish to npm as a public package
-- upload the binary to the tus target for you
-- wrap `GET /v1/assets/{assetId}`
 
 ### 2. Create the client
 
@@ -310,19 +317,15 @@ const client = createCDNgineClient({
 
 ### 3. Real file-upload flow with the SDK
 
-This is the realistic end-to-end flow for a file on disk today.
+This is the primary end-to-end flow for a file on disk today.
 
 ```ts
-import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
 import { CDNgineClientError, createCDNgineClient } from '@cdngine/sdk';
 
 const filePath = './hero-banner.png';
 const fileBuffer = await readFile(filePath);
-const fileSize = (await stat(filePath)).size;
-const fileSha256 = createHash('sha256').update(fileBuffer).digest('hex');
-const objectKey = 'staging/media-platform/tenant-acme/hero-banner.png';
 
 const client = createCDNgineClient({
   baseUrl: 'https://api.cdngine.local',
@@ -330,80 +333,42 @@ const client = createCDNgineClient({
 });
 
 try {
-  const session = await client.createUploadSession({
-    idempotencyKey: `create-${fileSha256}`,
-    body: {
-      serviceNamespaceId: 'media-platform',
-      tenantId: 'tenant-acme',
-      assetOwner: 'customer:acme',
-      source: {
-        filename: 'hero-banner.png',
-        contentType: 'image/png'
-      },
-      upload: {
-        objectKey,
-        byteLength: fileSize,
-        checksum: {
-          algorithm: 'sha256',
-          value: fileSha256
-        }
-      }
-    }
-  });
-
-  await fetch(session.uploadTarget.url, {
-    method: session.uploadTarget.method,
-    headers: {
-      'Tus-Resumable': '1.0.0',
-      'Upload-Offset': '0',
-      'Content-Type': 'application/offset+octet-stream'
-    },
-    body: fileBuffer
-  });
-
-  const completion = await client.completeUploadSession({
-    uploadSessionId: session.uploadSessionId,
-    idempotencyKey: `complete-${session.uploadSessionId}`,
-    body: {
-      stagedObject: {
-        objectKey,
-        byteLength: fileSize,
-        checksum: {
-          algorithm: 'sha256',
-          value: fileSha256
-        }
-      }
-    }
-  });
-
-  const version = await client
-    .asset(completion.assetId)
-    .version(completion.versionId)
-    .wait({
+  const uploaded = await client.assets.uploadFileAndWait({
+    assetOwner: 'customer:acme',
+    contentType: 'image/png',
+    file: fileBuffer,
+    filename: 'hero-banner.png',
+    idempotencyKey: 'hero-banner-v1',
+    serviceNamespaceId: 'media-platform',
+    tenantId: 'tenant-acme',
+    wait: {
       timeoutMs: 30_000,
       intervalMs: 1_000,
       untilStates: ['published']
-    });
+    }
+  });
 
-  const versionClient = client.asset(completion.assetId).version(completion.versionId);
+  const asset = await client.assets.get(uploaded.assetId);
+  const versionClient = client.asset(uploaded.assetId).version(uploaded.versionId);
   const derivatives = await versionClient.listDerivatives();
   const manifest = await versionClient.manifest('image-default').get();
   const delivery = await versionClient.delivery('public-images').authorize({
-    idempotencyKey: `delivery-${completion.versionId}`,
+    idempotencyKey: `delivery-${uploaded.versionId}`,
     body: {
       variant: 'webp-master',
       responseFormat: 'url'
     }
   });
   const source = await versionClient.authorizeSourceDownload({
-    idempotencyKey: `source-${completion.versionId}`,
+    idempotencyKey: `source-${uploaded.versionId}`,
     body: {
       preferredDisposition: 'attachment'
     }
   });
 
   console.log({
-    lifecycleState: version.lifecycleState,
+    asset,
+    uploaded,
     derivatives,
     manifest,
     delivery,
@@ -423,8 +388,10 @@ try {
 Once you have the identifiers, the fluent path is the cleanest current read surface:
 
 ```ts
+const asset = await client.assets.get(assetId);
 const version = client.asset(assetId).version(versionId);
 
+const latestVersion = asset.latestVersion;
 const current = await version.get();
 const derivatives = await version.listDerivatives();
 const manifest = await version.manifest('image-default').get();
@@ -443,30 +410,19 @@ const source = await version.authorizeSourceDownload({
 });
 ```
 
-### 5. Be careful with `assets.upload(...)` and `assets.uploadAndWait(...)`
+### 5. Prefer `assets.uploadFile(...)` and `assets.uploadFileAndWait(...)`
 
-These helpers are real, but they are **not** full local-file upload helpers.
+These are now the primary upload entry points for normal SDK users.
 
-They do this:
+They own:
 
-1. call `createUploadSession(...)`
-2. immediately call `completeUploadSession(...)`
-3. optionally poll `waitForVersion(...)`
+1. upload-session creation
+2. checksum and byte-length derivation
+3. staged upload to the returned tus target
+4. upload completion
+5. optional wait-for-publication polling
 
-They do **not**:
-
-1. PATCH the file to the returned tus target
-2. manage resumable upload offsets
-3. verify that your local file was staged
-
-So these helpers are currently best for:
-
-- tests
-- demos
-- pre-staged ingest environments
-- wrappers that already handled the tus upload step elsewhere
-
-If you are starting with a file on disk or in browser memory, use `createUploadSession(...)`, upload the bytes to `session.uploadTarget.url`, and only then call `completeUploadSession(...)`.
+You should still use the lower-level `assets.upload(...)` and `assets.uploadAndWait(...)` only when your bytes are already staged or when another layer already handled the upload-target interaction.
 
 ### 6. Use typed error handling
 
@@ -488,17 +444,14 @@ try {
 
 ### 7. Wire a React upload button to the SDK
 
-If your app already has an upload UI component, wire it to the SDK in two layers:
+If your app already has an upload UI component, wire it straight to `client.assets.uploadFileAndWait(...)`.
 
-1. use `createUploadSession(...)` and `completeUploadSession(...)` for the CDNgine control-plane calls
-2. upload the actual file bytes to `session.uploadTarget.url` with a tus-compatible browser upload call
+The SDK now owns the multi-step upload flow, so your component only needs to:
 
-The example below uses the exact component shape you asked for and keeps the implementation realistic:
-
-- it stores the original `File` in state so retry works
-- it uses `XMLHttpRequest` for progress because browser `fetch(...)` does not expose upload progress events
-- it uses one tus `PATCH` request for the staged upload step
-- it waits for the version to reach `published` before marking the file done
+1. keep the `File` in state so retry works
+2. pass the file to the SDK
+3. update UI state from `onUploadProgress`
+4. record the returned `assetId`, `versionId`, and lifecycle result
 
 ```tsx
 "use client";
@@ -508,10 +461,7 @@ import {
   CDNgineClientError,
   createCDNgineClient,
 } from "@cdngine/sdk";
-import {
-  FileUpload,
-  getReadableFileSize,
-} from "@/components/application/file-upload/file-upload-base";
+import { FileUpload } from "@/components/application/file-upload/file-upload-base";
 
 type UploadedFile = {
   id: string;
@@ -562,126 +512,6 @@ const SERVICE_NAMESPACE_ID = "media-platform";
 const TENANT_ID = "tenant-acme";
 const ASSET_OWNER = "customer:acme";
 
-const toHex = (buffer: ArrayBuffer) =>
-  Array.from(new Uint8Array(buffer), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-
-const sha256File = async (file: File) => {
-  const bytes = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return toHex(digest);
-};
-
-const uploadToTusTarget = (
-  uploadUrl: string,
-  uploadMethod: string,
-  file: File,
-  onProgress: (progress: number) => void
-) =>
-  new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open(uploadMethod, uploadUrl);
-    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
-    xhr.setRequestHeader("Upload-Offset", "0");
-    xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      onProgress(Math.round((event.loaded / event.total) * 100));
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(100);
-        resolve();
-        return;
-      }
-
-      reject(
-        new Error(
-          `Staged upload failed with status ${xhr.status} for ${file.name} (${getReadableFileSize(file.size)}).`
-        )
-      );
-    };
-
-    xhr.onerror = () => {
-      reject(
-        new Error(
-          `Network failure while uploading ${file.name} (${getReadableFileSize(file.size)}).`
-        )
-      );
-    };
-
-    xhr.send(file);
-  });
-
-const uploadFile = async (
-  file: File,
-  onProgress: (progress: number) => void
-) => {
-  const checksum = await sha256File(file);
-  const objectKey = `staging/${SERVICE_NAMESPACE_ID}/${TENANT_ID}/${crypto.randomUUID()}-${file.name}`;
-
-  const session = await client.createUploadSession({
-    idempotencyKey: `create-${checksum}`,
-    body: {
-      serviceNamespaceId: SERVICE_NAMESPACE_ID,
-      tenantId: TENANT_ID,
-      assetOwner: ASSET_OWNER,
-      source: {
-        filename: file.name,
-        contentType: file.type || "application/octet-stream",
-      },
-      upload: {
-        objectKey,
-        byteLength: file.size,
-        checksum: {
-          algorithm: "sha256",
-          value: checksum,
-        },
-      },
-    },
-  });
-
-  await uploadToTusTarget(
-    session.uploadTarget.url,
-    session.uploadTarget.method,
-    file,
-    onProgress
-  );
-
-  const completion = await client.completeUploadSession({
-    uploadSessionId: session.uploadSessionId,
-    idempotencyKey: `complete-${session.uploadSessionId}`,
-    body: {
-      stagedObject: {
-        objectKey,
-        byteLength: file.size,
-        checksum: {
-          algorithm: "sha256",
-          value: checksum,
-        },
-      },
-    },
-  });
-
-  const version = await client
-    .asset(completion.assetId)
-    .version(completion.versionId)
-    .wait({
-      intervalMs: 1000,
-      timeoutMs: 60000,
-      untilStates: ["published"],
-    });
-
-  return {
-    assetId: completion.assetId,
-    versionId: completion.versionId,
-    lifecycleState: version.lifecycleState,
-  };
-};
-
 export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
   const [uploadedFiles, setUploadedFiles] =
     useState<UploadedFile[]>(placeholderFiles);
@@ -703,15 +533,30 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
         return;
       }
 
-      void uploadFile(file.sourceFile, (progress) => {
-        setUploadedFiles((prev) =>
-          prev.map((uploadedFile) =>
-            uploadedFile.id === file.id
-              ? { ...uploadedFile, progress, failed: false, error: undefined }
-              : uploadedFile
-          )
-        );
-      })
+      void client.assets
+        .uploadFileAndWait({
+          assetOwner: ASSET_OWNER,
+          contentType: file.sourceFile.type || "application/octet-stream",
+          file: file.sourceFile,
+          filename: file.sourceFile.name,
+          idempotencyKey: `upload-${file.id}`,
+          onUploadProgress: (progress) => {
+            setUploadedFiles((prev) =>
+              prev.map((uploadedFile) =>
+                uploadedFile.id === file.id
+                  ? { ...uploadedFile, progress, failed: false, error: undefined }
+                  : uploadedFile
+              )
+            );
+          },
+          serviceNamespaceId: SERVICE_NAMESPACE_ID,
+          tenantId: TENANT_ID,
+          wait: {
+            intervalMs: 1000,
+            timeoutMs: 60000,
+            untilStates: ["published"],
+          },
+        })
         .then((result) => {
           setUploadedFiles((prev) =>
             prev.map((uploadedFile) =>
@@ -722,7 +567,7 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
                     failed: false,
                     assetId: result.assetId,
                     versionId: result.versionId,
-                    lifecycleState: result.lifecycleState,
+                    lifecycleState: result.version.lifecycleState,
                   }
                 : uploadedFile
             )
@@ -775,15 +620,30 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
       )
     );
 
-    void uploadFile(file.sourceFile, (progress) => {
-      setUploadedFiles((prev) =>
-        prev.map((uploadedFile) =>
-          uploadedFile.id === id
-            ? { ...uploadedFile, progress, failed: false, error: undefined }
-            : uploadedFile
-        )
-      );
-    })
+    void client.assets
+      .uploadFileAndWait({
+        assetOwner: ASSET_OWNER,
+        contentType: file.sourceFile.type || "application/octet-stream",
+        file: file.sourceFile,
+        filename: file.sourceFile.name,
+        idempotencyKey: `upload-${file.id}`,
+        onUploadProgress: (progress) => {
+          setUploadedFiles((prev) =>
+            prev.map((uploadedFile) =>
+              uploadedFile.id === id
+                ? { ...uploadedFile, progress, failed: false, error: undefined }
+                : uploadedFile
+            )
+          );
+        },
+        serviceNamespaceId: SERVICE_NAMESPACE_ID,
+        tenantId: TENANT_ID,
+        wait: {
+          intervalMs: 1000,
+          timeoutMs: 60000,
+          untilStates: ["published"],
+        },
+      })
       .then((result) => {
         setUploadedFiles((prev) =>
           prev.map((uploadedFile) =>
@@ -794,7 +654,7 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
                   failed: false,
                   assetId: result.assetId,
                   versionId: result.versionId,
-                  lifecycleState: result.lifecycleState,
+                  lifecycleState: result.version.lifecycleState,
                 }
               : uploadedFile
           )
@@ -852,17 +712,13 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
 };
 ```
 
-For a production-ready browser uploader, keep the same `createUploadSession(...)` and `completeUploadSession(...)` calls but replace the single `XMLHttpRequest` `PATCH` with a real tus client such as `tus-js-client` if you need pause, resume, chunking, or persisted offsets.
-
 ## Current gaps to plan around
 
 If you are integrating against the repository today, assume these gaps are still yours to handle:
 
 1. mounting the public API into a real host application
 2. issuing Better Auth bearer tokens to callers
-3. uploading file bytes to tus targets
-4. publishing or vendoring the TypeScript SDK outside this monorepo
-5. wrapping `GET /v1/assets/{assetId}` in the TypeScript client if your application wants logical-asset reads
+3. publishing or vendoring the TypeScript SDK outside this monorepo
 
 ## Read next
 

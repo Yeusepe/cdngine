@@ -29,7 +29,7 @@ test('demo scenario generator produces multiple objects with authenticated uploa
   assert.match(scenario.examples.api.code, /curl -X POST "\$API_BASE_URL\/v1\/upload-sessions"/);
   assert.match(scenario.examples.api.code, /replace-with-better-auth-bearer-token/);
   assert.match(scenario.examples.sdk.code, /createCDNgineClient/);
-  assert.match(scenario.examples.sdk.code, /assets\.uploadAndWait/);
+  assert.match(scenario.examples.sdk.code, /assets\.uploadFileAndWait/);
   assert.match(scenario.examples.sdk.code, /\.delivery\("/);
   assert.doesNotMatch(scenario.examples.api.code, /x-cdngine-allowed/);
   assert.doesNotMatch(scenario.examples.sdk.code, /getHeaders/);

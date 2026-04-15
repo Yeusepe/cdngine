@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 
 import { requireRequestedScope } from '../api-app.js';
 import type { ApiEnv } from '../api-types.js';
@@ -81,7 +81,7 @@ function mapPublicReadError(error: unknown): never {
 }
 
 async function requireScopedVersion(
-  context: Hono<ApiEnv>['Context'],
+  context: Context<ApiEnv>,
   dependencies: DeliveryRouteDependencies,
   assetId: string,
   versionId: string

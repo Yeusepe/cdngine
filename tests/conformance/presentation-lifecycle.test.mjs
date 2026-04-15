@@ -34,6 +34,11 @@ import {
 import {
   runPresentationPublicationWorkflow
 } from '../../packages/workflows/dist/index.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionPublicActor
+} from '../auth-fixture.mjs';
 
 class FakeStagingBlobStore {
   constructor(descriptors = {}) {
@@ -77,15 +82,6 @@ class FakeDerivedObjectStore {
   }
 }
 
-function createHeaders(overrides = {}) {
-  return {
-    authorization: 'Bearer user_123',
-    'content-type': 'application/json',
-    'x-cdngine-allowed-namespaces': 'media-platform',
-    ...overrides
-  };
-}
-
 function createIdGenerator() {
   const counters = new Map();
 
@@ -97,12 +93,15 @@ function createIdGenerator() {
 }
 
 test('presentation lifecycle conformance covers workflow selection, deterministic publication, and public manifest resolution', async () => {
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth);
   const now = () => new Date('2026-01-15T18:50:00.000Z');
   const uploadStore = new InMemoryUploadSessionIssuanceStore({
     generateId: createIdGenerator(),
     now
   });
   const uploadApp = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         now,
@@ -134,7 +133,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
 
   const issueResponse = await uploadApp.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createHeaders({
+    headers: createJsonBearerHeaders(publicActor.token, {
       'idempotency-key': 'issue-001'
     }),
     body: JSON.stringify({
@@ -160,7 +159,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
     `http://localhost/v1/upload-sessions/${issued.uploadSessionId}/complete`,
     {
       method: 'POST',
-      headers: createHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'complete-001'
       }),
       body: JSON.stringify({
@@ -252,6 +251,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
   );
 
   const publicApp = createApiApp({
+    auth,
     registerPublicRoutes(publicRouteApp) {
       registerDeliveryRoutes(publicRouteApp, {
         now,
@@ -303,7 +303,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
   const versionResponse = await publicApp.request(
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}`,
     {
-      headers: createHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'version-001'
       })
     }
@@ -311,7 +311,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
   const manifestResponse = await publicApp.request(
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}/manifests/presentation-default`,
     {
-      headers: createHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'manifest-001'
       })
     }
@@ -320,7 +320,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}/deliveries/presentations/authorize`,
     {
       method: 'POST',
-      headers: createHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'delivery-001'
       }),
       body: JSON.stringify({

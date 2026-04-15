@@ -6,31 +6,17 @@
  * - docs/security-model.md
  * External references:
  * - https://hono.dev/docs
+ * - https://www.better-auth.com/docs/plugins/bearer
  * - https://owasp.org/www-project-application-security-verification-standard/
  * Tests:
  * - apps/api/test/api-app.test.ts
  */
 
+import type { RequestActorAuthenticator } from '@cdngine/auth';
 import type { MiddlewareHandler } from 'hono';
 
 import type { ApiEnv, ApiSurface, AuthenticatedActor, RequestedScope } from './api-types.js';
 import { ProblemDetailError, problemTypes } from './problem-details.js';
-
-function parseCsvHeader(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function parseBearerToken(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const [scheme, token] = value.split(/\s+/, 2);
-  return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
-}
 
 function ensureSurfaceRole(surface: ApiSurface, actor: AuthenticatedActor) {
   if (surface === 'platform-admin' && !actor.roles.some((role) => role === 'platform-admin' || role === 'operator')) {
@@ -54,11 +40,14 @@ function ensureSurfaceRole(surface: ApiSurface, actor: AuthenticatedActor) {
   }
 }
 
-export function authenticationMiddleware(surface: ApiSurface): MiddlewareHandler<ApiEnv> {
+export function authenticationMiddleware(
+  surface: ApiSurface,
+  authenticator?: RequestActorAuthenticator
+): MiddlewareHandler<ApiEnv> {
   return async (context, next) => {
-    const subject = parseBearerToken(context.req.header('authorization'));
+    const actor = await authenticator?.authenticateHeaders(context.req.raw.headers);
 
-    if (!subject) {
+    if (!actor) {
       throw new ProblemDetailError({
         type: problemTypes.unauthorized,
         title: 'Unauthorized',
@@ -67,13 +56,6 @@ export function authenticationMiddleware(surface: ApiSurface): MiddlewareHandler
         retryable: false
       });
     }
-
-    const actor: AuthenticatedActor = {
-      subject,
-      roles: parseCsvHeader(context.req.header('x-cdngine-roles')),
-      allowedServiceNamespaces: parseCsvHeader(context.req.header('x-cdngine-allowed-namespaces')),
-      allowedTenantIds: parseCsvHeader(context.req.header('x-cdngine-allowed-tenants'))
-    };
 
     ensureSurfaceRole(surface, actor);
     context.set('actor', actor);

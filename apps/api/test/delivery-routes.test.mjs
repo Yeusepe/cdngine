@@ -18,26 +18,33 @@ import {
 import {
   registerDeliveryRoutes
 } from '../dist/public/delivery-routes.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionPublicActor
+} from '../../../tests/auth-fixture.mjs';
 
-function createAuthedHeaders(overrides = {}) {
+async function createPublicApp(store, principalOverrides = {}) {
+  const auth = createAuthFixture();
+  const actor = await provisionPublicActor(auth, principalOverrides);
+
   return {
-    authorization: 'Bearer user_123',
-    'content-type': 'application/json',
-    'idempotency-key': 'idem_123',
-    'x-cdngine-allowed-namespaces': 'media-platform',
-    ...overrides
-  };
-}
-
-function createPublicApp(store) {
-  return createApiApp({
-    registerPublicRoutes(publicApp) {
-      registerDeliveryRoutes(publicApp, {
-        now: () => new Date('2026-01-15T18:45:00.000Z'),
-        store
+    app: createApiApp({
+      auth,
+      registerPublicRoutes(publicApp) {
+        registerDeliveryRoutes(publicApp, {
+          now: () => new Date('2026-01-15T18:45:00.000Z'),
+          store
+        });
+      }
+    }),
+    headers(overrides = {}) {
+      return createJsonBearerHeaders(actor.token, {
+        'idempotency-key': 'idem_123',
+        ...overrides
       });
     }
-  });
+  };
 }
 
 test('public delivery routes expose published versions, derivatives, manifests, and authorization handles', async () => {
@@ -102,24 +109,24 @@ test('public delivery routes expose published versions, derivatives, manifests, 
       }
     ]
   });
-  const app = createPublicApp(store);
+  const { app, headers } = await createPublicApp(store);
 
   const versionResponse = await app.request('http://localhost/v1/assets/ast_001/versions/ver_001', {
-    headers: createAuthedHeaders()
+    headers: headers()
   });
   const derivativesResponse = await app.request(
     'http://localhost/v1/assets/ast_001/versions/ver_001/derivatives',
-    { headers: createAuthedHeaders() }
+    { headers: headers() }
   );
   const manifestResponse = await app.request(
     'http://localhost/v1/assets/ast_001/versions/ver_001/manifests/image-default',
-    { headers: createAuthedHeaders() }
+    { headers: headers() }
   );
   const deliveryAuthResponse = await app.request(
     'http://localhost/v1/assets/ast_001/versions/ver_001/deliveries/public-images/authorize',
     {
       method: 'POST',
-      headers: createAuthedHeaders(),
+      headers: headers(),
       body: JSON.stringify({
         responseFormat: 'url',
         variant: 'webp-1600'
@@ -130,7 +137,7 @@ test('public delivery routes expose published versions, derivatives, manifests, 
     'http://localhost/v1/assets/ast_001/versions/ver_001/source/authorize',
     {
       method: 'POST',
-      headers: createAuthedHeaders(),
+      headers: headers(),
       body: JSON.stringify({
         preferredDisposition: 'attachment'
       })
@@ -183,11 +190,11 @@ test('delivery routes reject unpublished versions as not ready', async () => {
       }
     ]
   });
-  const app = createPublicApp(store);
+  const { app, headers } = await createPublicApp(store);
 
   const response = await app.request(
     'http://localhost/v1/assets/ast_001/versions/ver_001/derivatives',
-    { headers: createAuthedHeaders() }
+    { headers: headers() }
   );
   const payload = await response.json();
 
@@ -269,14 +276,14 @@ test('public version links and manifest reads support presentation workloads', a
       }
     ]
   });
-  const app = createPublicApp(store);
+  const { app, headers } = await createPublicApp(store);
 
   const versionResponse = await app.request('http://localhost/v1/assets/ast_002/versions/ver_010', {
-    headers: createAuthedHeaders()
+    headers: headers()
   });
   const manifestResponse = await app.request(
     'http://localhost/v1/assets/ast_002/versions/ver_010/manifests/presentation-default',
-    { headers: createAuthedHeaders() }
+    { headers: headers() }
   );
   const versionPayload = await versionResponse.json();
   const manifestPayload = await manifestResponse.json();
@@ -310,12 +317,14 @@ test('delivery routes deny callers outside the version tenant scope', async () =
       }
     ]
   });
-  const app = createPublicApp(store);
+  const { app, headers } = await createPublicApp(store, {
+    allowedTenantIds: ['tenant-beta'],
+    email: 'tenant-beta-viewer@cdngine.test',
+    subject: 'tenant-beta-user'
+  });
 
   const response = await app.request('http://localhost/v1/assets/ast_003/versions/ver_003', {
-    headers: createAuthedHeaders({
-      'x-cdngine-allowed-tenants': 'tenant-beta'
-    })
+    headers: headers()
   });
   const payload = await response.json();
 

@@ -22,6 +22,26 @@ test('demo scenario generator produces multiple objects with authenticated uploa
 
   assert.equal(scenario.tenants.length, 2);
   assert.ok(scenario.generatedObjects.length >= 3);
+  assert.equal(scenario.environment.storage.configurationSource, 'auto-created-defaults');
+  assert.equal(scenario.environment.apiBaseUrl, 'https://api.cdngine.local');
+  assert.equal(scenario.environment.storage.buckets.ingest, 'cdngine-demo-ingest');
+  assert.equal(scenario.environment.storage.buckets.derived, 'cdngine-demo-derived');
+  assert.match(scenario.examples.api.code, /curl -X POST "\$API_BASE_URL\/v1\/upload-sessions"/);
+  assert.match(scenario.examples.sdk.code, /new CDNginePublicClient/);
+  assert.match(scenario.examples.sdk.code, /createUploadSession/);
+  assert.match(scenario.examples.sdk.code, /authorizeDelivery/);
+  assert.equal(scenario.simulation.storageProfiles.length, 2);
+  assert.ok(
+    scenario.simulation.storageProfiles.some((profile) => profile.profileId === 'standard-tiering')
+  );
+  assert.ok(
+    scenario.simulation.storageProfiles.some((profile) => profile.profileId === 'instant-cold-demo')
+  );
+  assert.ok(
+    scenario.simulation.architectureComponents.some(
+      (component) => component.componentId === 'cold-origin-tier'
+    )
+  );
   assert.ok(scenario.generatedObjects.some((item) => item.tenantId === 'tenant-acme'));
   assert.ok(scenario.generatedObjects.some((item) => item.tenantId === 'tenant-beta'));
   assert.ok(
@@ -32,4 +52,9 @@ test('demo scenario generator produces multiple objects with authenticated uploa
   );
   assert.equal(scenario.crossTenantDenial.status, 403);
   assert.equal(scenario.crossTenantDenial.type, 'https://docs.cdngine.dev/problems/scope-not-allowed');
+  assert.ok(
+    scenario.simulation.storageProfiles.every((profile) =>
+      profile.traces.some((trace) => trace.traceType === 'cold-delivery')
+    )
+  );
 });

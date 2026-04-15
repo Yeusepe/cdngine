@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test"
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [
@@ -30,5 +30,8 @@
       "https://owasp.org/www-project-application-security-verification-standard/",
       "https://opentelemetry.io/docs/languages/js/"
     ]
+  },
+  "dependencies": {
+    "better-auth": "^1.6.4"
   }
 }

@@ -22,6 +22,11 @@ import { z } from 'zod';
 import { createApiApp, requireRequestedScope } from '../dist/api-app.js';
 import { getRequestLogContext } from '../dist/request-context.js';
 import { validateJsonBody } from '../dist/validation.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionPublicActor
+} from '../../../tests/auth-fixture.mjs';
 
 test('health endpoint is unprotected and returns a request id', async () => {
   const app = createApiApp();
@@ -54,7 +59,10 @@ test('public surface requires bearer authentication and returns RFC 9457 problem
 });
 
 test('operator surface rejects callers without operator role', async () => {
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth);
   const app = createApiApp({
+    auth,
     registerOperatorRoutes(operatorApp) {
       operatorApp.get('/diagnostics', (context) =>
         context.json({
@@ -65,10 +73,7 @@ test('operator surface rejects callers without operator role', async () => {
   });
 
   const response = await app.request('http://localhost/v1/operator/diagnostics', {
-    headers: {
-      authorization: 'Bearer user_123',
-      'x-cdngine-roles': 'public-user'
-    }
+    headers: createJsonBearerHeaders(publicActor.token)
   });
   const payload = await response.json();
 
@@ -77,7 +82,12 @@ test('operator surface rejects callers without operator role', async () => {
 });
 
 test('validation middleware and scope enforcement share the same problem posture', async () => {
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth, {
+    allowedServiceNamespaces: ['creative-services']
+  });
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       publicApp.post(
         '/upload-sessions',
@@ -110,10 +120,7 @@ test('validation middleware and scope enforcement share the same problem posture
 
   const invalidResponse = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: {
-      authorization: 'Bearer user_123',
-      'content-type': 'application/json'
-    },
+    headers: createJsonBearerHeaders(publicActor.token),
     body: JSON.stringify({})
   });
   const invalidPayload = await invalidResponse.json();
@@ -123,11 +130,7 @@ test('validation middleware and scope enforcement share the same problem posture
 
   const forbiddenResponse = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: {
-      authorization: 'Bearer user_123',
-      'content-type': 'application/json',
-      'x-cdngine-allowed-namespaces': 'creative-services'
-    },
+    headers: createJsonBearerHeaders(publicActor.token),
     body: JSON.stringify({
       serviceNamespaceId: 'media-platform'
     })
@@ -139,7 +142,10 @@ test('validation middleware and scope enforcement share the same problem posture
 });
 
 test('request timeouts become retryable problem responses', async () => {
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth);
   const app = createApiApp({
+    auth,
     requestTimeoutMs: 5,
     registerPublicRoutes(publicApp) {
       publicApp.get('/slow', async (context) => {
@@ -152,9 +158,7 @@ test('request timeouts become retryable problem responses', async () => {
   });
 
   const response = await app.request('http://localhost/v1/slow', {
-    headers: {
-      authorization: 'Bearer user_123'
-    }
+    headers: createJsonBearerHeaders(publicActor.token)
   });
   const payload = await response.json();
 

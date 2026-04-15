@@ -18,21 +18,31 @@ import {
 import {
   registerOperatorRoutes
 } from '../dist/operator/operator-routes.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionOperatorActor
+} from '../../../tests/auth-fixture.mjs';
 
-function createOperatorHeaders(overrides = {}) {
-  return {
-    authorization: 'Bearer operator_123',
-    'x-cdngine-roles': 'operator',
-    ...overrides
-  };
-}
-
-function createOperatorApp(store) {
-  return createApiApp({
-    registerOperatorRoutes(operatorApp) {
-      registerOperatorRoutes(operatorApp, { store });
-    }
+async function createOperatorApp(store) {
+  const auth = createAuthFixture();
+  const defaultOperator = await provisionOperatorActor(auth);
+  const secondaryOperator = await provisionOperatorActor(auth, {
+    email: 'operator-2@cdngine.test',
+    name: 'Operator User Two',
+    subject: 'operator_456'
   });
+
+  return {
+    app: createApiApp({
+      auth,
+      registerOperatorRoutes(operatorApp) {
+        registerOperatorRoutes(operatorApp, { store });
+      }
+    }),
+    defaultOperator,
+    secondaryOperator
+  };
 }
 
 test('readyz returns a readiness payload', async () => {
@@ -66,35 +76,33 @@ test('operator routes accept reprocess, quarantine, release, and diagnostics flo
       }
     ]
   });
-  const app = createOperatorApp(store);
+  const { app, defaultOperator, secondaryOperator } = await createOperatorApp(store);
 
   const reprocessResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/reprocess',
     {
       method: 'POST',
-      headers: createOperatorHeaders()
+      headers: createJsonBearerHeaders(defaultOperator.token)
     }
   );
   const quarantineResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/quarantine',
     {
       method: 'POST',
-      headers: createOperatorHeaders({
-        authorization: 'Bearer operator_456'
-      })
+      headers: createJsonBearerHeaders(secondaryOperator.token)
     }
   );
   const releaseResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_002/versions/ver_002/release',
     {
       method: 'POST',
-      headers: createOperatorHeaders()
+      headers: createJsonBearerHeaders(defaultOperator.token)
     }
   );
   const diagnosticsResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/diagnostics',
     {
-      headers: createOperatorHeaders()
+      headers: createJsonBearerHeaders(defaultOperator.token)
     }
   );
 
@@ -145,13 +153,13 @@ test('operator routes reject invalid state transitions with audited problem deta
       }
     ]
   });
-  const app = createOperatorApp(store);
+  const { app, defaultOperator } = await createOperatorApp(store);
 
   const response = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/release',
     {
       method: 'POST',
-      headers: createOperatorHeaders()
+      headers: createJsonBearerHeaders(defaultOperator.token)
     }
   );
   const payload = await response.json();

@@ -16,6 +16,7 @@
  */
 
 import { Hono } from 'hono';
+import type { RequestActorAuthenticator } from '@cdngine/auth';
 
 import { assertAuthorizedScope, authenticationMiddleware } from './auth.js';
 import type { ApiEnv, ApiSurface, SurfaceRouteRegistrar } from './api-types.js';
@@ -23,16 +24,21 @@ import { createProblemResponse, mapUnknownErrorToProblem, problemTypes } from '.
 import { requestContextMiddleware } from './request-context.js';
 
 export interface CreateApiAppOptions {
+  auth?: RequestActorAuthenticator;
   registerOperatorRoutes?: SurfaceRouteRegistrar;
   registerPlatformAdminRoutes?: SurfaceRouteRegistrar;
   registerPublicRoutes?: SurfaceRouteRegistrar;
   requestTimeoutMs?: number;
 }
 
-function createSurfaceApp(surface: ApiSurface, registerRoutes?: SurfaceRouteRegistrar) {
+function createSurfaceApp(
+  surface: ApiSurface,
+  registerRoutes?: SurfaceRouteRegistrar,
+  authenticator?: RequestActorAuthenticator
+) {
   const surfaceApp = new Hono<ApiEnv>();
 
-  surfaceApp.use('*', authenticationMiddleware(surface));
+  surfaceApp.use('*', authenticationMiddleware(surface, authenticator));
   registerRoutes?.(surfaceApp);
   surfaceApp.notFound((context) =>
     createProblemResponse(context, {
@@ -66,9 +72,12 @@ export function createApiApp(options: CreateApiAppOptions = {}) {
     })
   );
 
-  app.route('/v1', createSurfaceApp('public', options.registerPublicRoutes));
-  app.route('/v1/platform', createSurfaceApp('platform-admin', options.registerPlatformAdminRoutes));
-  app.route('/v1/operator', createSurfaceApp('operator', options.registerOperatorRoutes));
+  app.route('/v1', createSurfaceApp('public', options.registerPublicRoutes, options.auth));
+  app.route(
+    '/v1/platform',
+    createSurfaceApp('platform-admin', options.registerPlatformAdminRoutes, options.auth)
+  );
+  app.route('/v1/operator', createSurfaceApp('operator', options.registerOperatorRoutes, options.auth));
 
   app.notFound((context) =>
     createProblemResponse(context, {

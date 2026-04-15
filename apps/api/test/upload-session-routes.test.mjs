@@ -23,6 +23,11 @@ import {
 import {
   InMemoryUploadSessionIssuanceStore
 } from '../dist/upload-session-service.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionPublicActor
+} from '../../../tests/auth-fixture.mjs';
 
 class FakeStagingBlobStore {
   constructor(objects = {}) {
@@ -90,13 +95,18 @@ class FakeSourceRepository {
   }
 }
 
-function createAuthedHeaders(overrides = {}) {
+async function createUploadAuth(overrides = {}) {
+  const auth = createAuthFixture();
+  const actor = await provisionPublicActor(auth, overrides);
+
   return {
-    authorization: 'Bearer user_123',
-    'content-type': 'application/json',
-    'idempotency-key': 'idem_123',
-    'x-cdngine-allowed-namespaces': 'media-platform',
-    ...overrides
+    auth,
+    headers(extraHeaders = {}) {
+      return createJsonBearerHeaders(actor.token, {
+        'idempotency-key': 'idem_123',
+        ...extraHeaders
+      });
+    }
   };
 }
 
@@ -110,8 +120,10 @@ test('upload-session issuance creates a new logical asset when no asset id is su
       }[prefix];
     }
   });
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -123,7 +135,7 @@ test('upload-session issuance creates a new logical asset when no asset id is su
 
   const response = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders(),
+    headers: headers(),
     body: JSON.stringify({
       serviceNamespaceId: 'media-platform',
       assetOwner: 'customer:acme',
@@ -161,8 +173,10 @@ test('same idempotency key and same request replay the original upload session',
       }[prefix];
     }
   });
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -174,7 +188,7 @@ test('same idempotency key and same request replay the original upload session',
 
   const request = {
     method: 'POST',
-    headers: createAuthedHeaders(),
+    headers: headers(),
     body: JSON.stringify({
       serviceNamespaceId: 'media-platform',
       assetOwner: 'customer:acme',
@@ -205,8 +219,10 @@ test('same idempotency key and same request replay the original upload session',
 
 test('same idempotency key with a different semantic request returns a conflict', async () => {
   const store = new InMemoryUploadSessionIssuanceStore();
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -218,7 +234,7 @@ test('same idempotency key with a different semantic request returns a conflict'
 
   await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders(),
+    headers: headers(),
     body: JSON.stringify({
       serviceNamespaceId: 'media-platform',
       assetOwner: 'customer:acme',
@@ -239,7 +255,7 @@ test('same idempotency key with a different semantic request returns a conflict'
 
   const response = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders(),
+    headers: headers(),
     body: JSON.stringify({
       serviceNamespaceId: 'media-platform',
       assetOwner: 'customer:acme',
@@ -280,8 +296,10 @@ test('supplying an existing asset id creates a new immutable revision', async ()
       return next;
     }
   });
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -293,7 +311,7 @@ test('supplying an existing asset id creates a new immutable revision', async ()
 
   const firstResponse = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_first'
     }),
     body: JSON.stringify({
@@ -317,7 +335,7 @@ test('supplying an existing asset id creates a new immutable revision', async ()
 
   const secondResponse = await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_second'
     }),
     body: JSON.stringify({
@@ -375,8 +393,10 @@ test('upload-session completion snapshots staged bytes and exposes a pending wor
     }
   });
   const sourceRepository = new FakeSourceRepository();
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -389,7 +409,7 @@ test('upload-session completion snapshots staged bytes and exposes a pending wor
 
   await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_create'
     }),
     body: JSON.stringify({
@@ -412,7 +432,7 @@ test('upload-session completion snapshots staged bytes and exposes a pending wor
 
   const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_complete'
     }),
     body: JSON.stringify({
@@ -482,7 +502,9 @@ test('same completion idempotency key and same request replay the original workf
     }
   });
   const sourceRepository = new FakeSourceRepository();
+  const { auth, headers } = await createUploadAuth();
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -495,7 +517,7 @@ test('same completion idempotency key and same request replay the original workf
 
   await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_create'
     }),
     body: JSON.stringify({
@@ -518,7 +540,7 @@ test('same completion idempotency key and same request replay the original workf
 
   const request = {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_complete'
     }),
     body: JSON.stringify({
@@ -560,7 +582,9 @@ test('completion returns a retryable conflict when staged bytes are not durable 
     },
     now: () => new Date('2026-01-15T18:00:00Z')
   });
+  const { auth, headers } = await createUploadAuth();
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -572,7 +596,7 @@ test('completion returns a retryable conflict when staged bytes are not durable 
 
   await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_create'
     }),
     body: JSON.stringify({
@@ -595,7 +619,7 @@ test('completion returns a retryable conflict when staged bytes are not durable 
 
   const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_complete'
     }),
     body: JSON.stringify({
@@ -655,8 +679,10 @@ test('upload-session completion resolves the presentation workflow template from
     logicalPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
     snapshotId: 'snap_deck'
   });
+  const { auth, headers } = await createUploadAuth();
 
   const app = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         store,
@@ -668,7 +694,7 @@ test('upload-session completion resolves the presentation workflow template from
 
   await app.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_create'
     }),
     body: JSON.stringify({
@@ -691,7 +717,7 @@ test('upload-session completion resolves the presentation workflow template from
 
   const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
     method: 'POST',
-    headers: createAuthedHeaders({
+    headers: headers({
       'idempotency-key': 'idem_complete'
     }),
     body: JSON.stringify({

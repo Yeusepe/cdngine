@@ -4,6 +4,11 @@
     "rootDir": "src",
     "outDir": "dist"
   },
+  "references": [
+    {
+      "path": "../../packages/auth"
+    }
+  ],
   "include": [
     "src/**/*.ts"
   ]

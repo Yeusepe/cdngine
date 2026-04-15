@@ -8,7 +8,7 @@
  * - https://spec.openapis.org/oas/latest.html
  * - https://www.rfc-editor.org/rfc/rfc9457.html
  * Tests:
- * - packages/contracts/test/public-client.test.mjs
+ * - packages/sdk/test/public-client.test.mjs
  */
 
 import type { paths } from './generated/public-api.js';

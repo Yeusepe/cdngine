@@ -11,7 +11,7 @@ const targets = [
   'apps\\workers\\dist',
   'packages\\auth\\dist',
   'packages\\capabilities\\dist',
-  'packages\\contracts\\dist',
+  'packages\\sdk\\dist',
   'packages\\manifests\\dist',
   'packages\\observability\\dist',
   'packages\\registry\\dist',

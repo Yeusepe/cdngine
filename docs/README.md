@@ -25,6 +25,7 @@ Use this page first instead of treating `docs/` as one flat list.
 
 ## Reference
 
+- [Public API And TypeScript SDK Tutorial](./public-api-and-sdk-tutorial.md)
 - [API Surface](./api-surface.md)
 - [API Style Guide](./api-style-guide.md)
 - [Problem Types](./problem-types.md)

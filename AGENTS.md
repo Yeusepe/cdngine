@@ -219,7 +219,7 @@ Use this structure as the repository grows:
 | `apps/api/**` | file header + package README + API docs |
 | `apps/workers/**` | file header + workflow/capability docs |
 | `apps/operator/**` | file header + runbook/threat-model references |
-| `packages/contracts/**` | schema comments + API/SDK docs |
+| `packages/sdk/**` | schema comments + API/SDK docs |
 | `packages/registry/**` | file header + domain-model and Prisma references |
 | `packages/storage/**` | file header + architecture/technology-profile references |
 | `packages/workflows/**` | file header + workflow-extensibility and Temporal references |

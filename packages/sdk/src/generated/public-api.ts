@@ -8,7 +8,7 @@
  * - https://spec.openapis.org/oas/latest.html
  * - https://openapi-ts.dev/
  * Tests:
- * - packages/contracts/test/public-client.test.mjs
+ * - packages/sdk/test/public-client.test.mjs
  */
 
 export interface paths {

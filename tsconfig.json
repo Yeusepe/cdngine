@@ -20,7 +20,7 @@
       "path": "./packages/capabilities"
     },
     {
-      "path": "./packages/contracts"
+      "path": "./packages/sdk"
     },
     {
       "path": "./packages/manifests"

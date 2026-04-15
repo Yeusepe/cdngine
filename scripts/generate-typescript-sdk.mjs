@@ -7,7 +7,7 @@ import openapiTS, { astToString } from 'openapi-typescript';
 const checkMode = process.argv.includes('--check');
 const rootDir = resolve(import.meta.dirname, '..');
 const inputPath = join(rootDir, 'contracts', 'dist', 'openapi', 'public.openapi.yaml');
-const outputPath = join(rootDir, 'packages', 'contracts', 'src', 'generated', 'public-api.ts');
+const outputPath = join(rootDir, 'packages', 'sdk', 'src', 'generated', 'public-api.ts');
 const header = `/**
  * Purpose: Generated TypeScript contract types for the public CDNgine API surface.
  * Governing docs:
@@ -18,7 +18,7 @@ const header = `/**
  * - https://spec.openapis.org/oas/latest.html
  * - https://openapi-ts.dev/
  * Tests:
- * - packages/contracts/test/public-client.test.mjs
+ * - packages/sdk/test/public-client.test.mjs
  */
 
 `;

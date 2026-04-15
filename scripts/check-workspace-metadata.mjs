@@ -18,7 +18,7 @@ const workspaceRelativePaths = [
   'apps/workers',
   'packages/auth',
   'packages/capabilities',
-  'packages/contracts',
+  'packages/sdk',
   'packages/manifests',
   'packages/observability',
   'packages/registry',

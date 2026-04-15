@@ -209,6 +209,7 @@ Those remain internal implementation dependencies behind CDNgine-owned routes an
 
 ## 12. Read more
 
+- [Public API And TypeScript SDK Tutorial](./public-api-and-sdk-tutorial.md)
 - [API Style Guide](./api-style-guide.md)
 - [SDK Strategy](./sdk-strategy.md)
 - [Service Architecture](./service-architecture.md)

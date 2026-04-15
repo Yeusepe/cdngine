@@ -201,12 +201,13 @@ The preferred posture is:
 
 ### 9.1 Current repository posture
 
-The repository now carries a checked-in TypeScript contract package at `packages/contracts/` with:
+The repository now carries a checked-in TypeScript SDK package at `packages/sdk/` with:
 
-- generated public OpenAPI types in `packages/contracts/src/generated/public-api.ts`
-- a `CDNginePublicClient` wrapper in `packages/contracts/src/public-client.ts`
+- generated public OpenAPI types in `packages/sdk/src/generated/public-api.ts`
+- a `CDNginePublicClient` wrapper in `packages/sdk/src/public-client.ts`
 - grouped helper entry points such as `client.assets.uploadAndWait(...)` and fluent version handles such as `client.asset(assetId).version(versionId)...`
-- quickstart usage in `packages/contracts/README.md`
+- quickstart usage in `packages/sdk/README.md`
+- a current-state walkthrough in `docs/public-api-and-sdk-tutorial.md`
 
 The intended maintenance flow is:
 
@@ -229,6 +230,8 @@ SDK releases should ship with:
 - examples of typed error handling
 
 The workflow docs should not exist only as prose. Multi-step examples should stay aligned to Arazzo and the generated SDK entry points.
+
+The repository now includes a step-by-step current-state tutorial in `docs/public-api-and-sdk-tutorial.md`. That document is deliberately explicit about the current limits of the checked-in TypeScript SDK, including the fact that tus byte upload still happens outside the client wrapper.
 
 ## 10.1 Upstream systems are not the public SDK contract
 

@@ -5,7 +5,7 @@
  * - docs/spec-governance.md
  * - docs/api-surface.md
  * Tests:
- * - packages/contracts/test/public-client.test.mjs
+ * - packages/sdk/test/public-client.test.mjs
  */
 
 import test from 'node:test';

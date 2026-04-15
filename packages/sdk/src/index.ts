@@ -1,5 +1,5 @@
 /**
- * Purpose: Exposes the contracts package entrypoint for code-near schema helpers and contract-build support.
+ * Purpose: Exposes the SDK package entrypoint for the public CDNgine client and generated API types.
  * Governing docs:
  * - docs/api-style-guide.md
  * - docs/spec-governance.md
@@ -11,6 +11,6 @@
  * - tests/conformance/README.md
  */
 
-export const contractsPackageName = '@cdngine/contracts';
+export const sdkPackageName = '@cdngine/sdk';
 export * from './generated/public-api.js';
 export * from './public-client.js';

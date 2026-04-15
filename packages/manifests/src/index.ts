@@ -14,3 +14,4 @@
 export const manifestsPackageName = '@cdngine/manifests';
 export * from './deterministic-derivative-keys.js';
 export * from './image-manifest.js';
+export * from './presentation-manifest.js';

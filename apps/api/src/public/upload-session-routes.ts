@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 
+import { resolveDefaultWorkflowTemplateForSource } from '@cdngine/capabilities';
 import type { SourceRepository, StagingBlobStore } from '@cdngine/storage';
 
 import type { ApiEnv } from '../api-types.js';
@@ -49,6 +50,16 @@ export interface UploadSessionRouteDependencies {
   store: UploadSessionIssuanceStore & UploadSessionCompletionStore;
   uploadTargetTtlMs?: number;
   workflowTemplate?: string;
+  workflowTemplateResolver?: (input: {
+    assetId: string;
+    assetOwner: string;
+    contentType: string;
+    filename: string;
+    serviceNamespaceId: string;
+    tenantId?: string;
+    uploadSessionId: string;
+    versionId: string;
+  }) => string | null | undefined;
 }
 
 const uploadSessionRequestSchema = z.object({
@@ -284,27 +295,40 @@ export function registerUploadSessionRoutes(
           detail: 'Canonical source repository dependency is not configured for upload completion.',
           retryable: true
         });
-      }
+        }
 
-      try {
-        const completed = await dependencies.store.completeUploadSession(
-          {
-            callerScopeKey: buildCallerScopeKey(context),
-            idempotencyKey,
+        const resolvedWorkflowTemplate =
+          dependencies.workflowTemplate ??
+          dependencies.workflowTemplateResolver?.({
+            assetId: uploadSession.assetId,
+            assetOwner: uploadSession.assetOwner,
+            contentType: uploadSession.contentType,
+            filename: uploadSession.filename,
+            serviceNamespaceId: uploadSession.serviceNamespaceId,
+            ...(uploadSession.tenantId ? { tenantId: uploadSession.tenantId } : {}),
+            uploadSessionId: uploadSession.uploadSessionId,
+            versionId: uploadSession.versionId
+          }) ??
+          resolveDefaultWorkflowTemplateForSource(uploadSession.contentType)?.workflowTemplateId ??
+          'asset-derivation-v1';
+
+        try {
+          const completed = await dependencies.store.completeUploadSession(
+            {
+              callerScopeKey: buildCallerScopeKey(context),
+              idempotencyKey,
             normalizedRequestHash: normalizeCompletionRequestHash(requestBody),
-            stagedObject: {
-              byteLength: BigInt(requestBody.stagedObject.byteLength),
-              checksum: requestBody.stagedObject.checksum,
-              descriptor: stagedDescriptor,
-              objectKey: requestBody.stagedObject.objectKey
+              stagedObject: {
+                byteLength: BigInt(requestBody.stagedObject.byteLength),
+                checksum: requestBody.stagedObject.checksum,
+                descriptor: stagedDescriptor,
+                objectKey: requestBody.stagedObject.objectKey
+              },
+              uploadSessionId,
+              workflowTemplate: resolvedWorkflowTemplate
             },
-            uploadSessionId,
-            ...(dependencies.workflowTemplate
-              ? { workflowTemplate: dependencies.workflowTemplate }
-              : {})
-          },
-          async (canonicalizationRequest) =>
-            dependencies.sourceRepository!.snapshotFromPath({
+            async (canonicalizationRequest) =>
+              dependencies.sourceRepository!.snapshotFromPath({
               assetVersionId: canonicalizationRequest.versionId,
               localPath: buildStagingSnapshotSourcePath(canonicalizationRequest.stagedObject.descriptor),
               sourceFilename: canonicalizationRequest.filename,

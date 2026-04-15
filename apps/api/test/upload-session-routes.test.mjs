@@ -615,3 +615,102 @@ test('completion returns a retryable conflict when staged bytes are not durable 
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/upload-not-finished');
   assert.equal(payload.retryable, true);
 });
+
+test('upload-session completion resolves the presentation workflow template from source content type when no explicit template is pinned', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 4096n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    }
+  });
+  const sourceRepository = new FakeSourceRepository({
+    canonicalSourceId: 'src_deck',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    ],
+    logicalPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
+    snapshotId: 'snap_deck'
+  });
+
+  const app = createApiApp({
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'event-deck.pdf',
+        contentType: 'application/pdf'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.deepEqual(payload.workflowDispatch, {
+    dispatchId: 'wd_001',
+    state: 'pending',
+    workflowKey: 'media-platform:ast_001:ver_001:presentation-normalization-v1'
+  });
+});

@@ -18,7 +18,7 @@ export interface DeterministicDerivativeKeyInput {
   versionId: string;
 }
 
-export interface ImageManifestObjectKeyInput {
+export interface ManifestObjectKeyInput {
   assetId: string;
   manifestType: string;
   serviceNamespaceId: string;
@@ -29,6 +29,10 @@ export function buildDeterministicDerivativeKey(input: DeterministicDerivativeKe
   return `deriv/${input.serviceNamespaceId}/${input.assetId}/${input.versionId}/${input.recipeId}/${input.variantKey}`;
 }
 
-export function buildImageManifestObjectKey(input: ImageManifestObjectKeyInput): string {
+export function buildManifestObjectKey(input: ManifestObjectKeyInput): string {
   return `manifests/${input.serviceNamespaceId}/${input.assetId}/${input.versionId}/${input.manifestType}.json`;
+}
+
+export function buildImageManifestObjectKey(input: ManifestObjectKeyInput): string {
+  return buildManifestObjectKey(input);
 }

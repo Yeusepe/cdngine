@@ -107,7 +107,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
         links: {
           self: `/v1/assets/${version.assetId}/versions/${version.versionId}`,
           derivatives: `/v1/assets/${version.assetId}/versions/${version.versionId}/derivatives`,
-          manifest: `/v1/assets/${version.assetId}/versions/${version.versionId}/manifests/image-default`
+          manifest: `/v1/assets/${version.assetId}/versions/${version.versionId}/manifests/${version.defaultManifestType ?? 'image-default'}`
         }
       });
     } catch (error) {

@@ -19,6 +19,7 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | ingest-foundation | doing | upload sessions, canonical source snapshotting over a bucket-or-prefix-backed source repository, and idempotent completion behave correctly across single-node or multi-node plus one-bucket or multi-bucket topologies |
 | image-mvp | done | the platform can validate, derive, publish, and deliver deterministic image outputs through one client-facing authorization flow even when internal resolution paths differ across the supported topology matrix |
 | deployment-profile-foundation | done | one-bucket and multi-bucket runtime profiles plus readiness requirements are expressed as typed config and checked-in deployment examples instead of only prose |
+| sdk-foundation | done | the bundled public contract generates checked-in TypeScript client artifacts, freshness checks, and consumer-facing quickstart docs |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |
 | presentation-mvp | planned | the platform can normalize presentations and publish slide-oriented manifests and derivatives |
 | operator-foundation | done | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |

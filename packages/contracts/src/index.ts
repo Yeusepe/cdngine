@@ -12,3 +12,5 @@
  */
 
 export const contractsPackageName = '@cdngine/contracts';
+export * from './generated/public-api.js';
+export * from './public-client.js';

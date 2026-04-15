@@ -11,27 +11,12 @@
  * - packages/capabilities/test/image-capability.test.mjs
  */
 
-export interface CapabilityRegistration {
-  capabilityId: string;
-  extensions: readonly string[];
-  keyTemplate: string;
-  mimeTypes: readonly string[];
-  recipes: readonly string[];
-  resourceProfile: string;
-  retryPolicy: string;
-  schemaVersion: string;
-  validators: readonly string[];
-}
+import type {
+  CapabilityRegistration,
+  ProcessorRegistration
+} from './capability-registration.js';
 
-export interface ProcessorRegistration {
-  capabilities: readonly string[];
-  observabilityLabels: Readonly<Record<string, string>>;
-  processorId: string;
-  recipes: readonly string[];
-  retryPolicy: string;
-  runtimeProfile: string;
-  timeoutPolicy: string;
-}
+export type { CapabilityRegistration, ProcessorRegistration } from './capability-registration.js';
 
 export interface ImageRecipeBinding {
   capabilityId: string;

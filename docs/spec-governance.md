@@ -64,6 +64,11 @@ Before a contract change is considered ready:
 4. README and docs links still point to the current contract paths
 5. supported SDK outputs are regenerated when the public surface changed
 
+The current TypeScript SDK gate is:
+
+- `npm run sdk:generate` to refresh checked-in client artifacts
+- `npm run sdk:check` to verify the generated SDK is still aligned with the bundled public OpenAPI description
+
 ## 6. Ownership
 
 | Surface | Default owner |

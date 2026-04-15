@@ -20,7 +20,9 @@
     "contracts:lint": "redocly lint --config redocly.yaml",
     "contracts:check": "npm run contracts:lint && npm run contracts:bundle && npm run contracts:examples",
     "docs:check": "node scripts/check-workspace-metadata.mjs && node scripts/check-source-reference-headers.mjs",
-    "lint": "npm run docs:check && npm run contracts:check && npm run lint --workspaces --if-present",
+    "sdk:generate": "npm run contracts:bundle && node scripts/generate-typescript-sdk.mjs",
+    "sdk:check": "npm run contracts:bundle && node scripts/generate-typescript-sdk.mjs --check",
+    "lint": "npm run docs:check && npm run contracts:check && npm run sdk:check && npm run lint --workspaces --if-present",
     "test": "npm run docs:check && npm run test --workspaces --if-present",
     "typecheck": "tsc -b tsconfig.json --pretty false",
     "verify": "npm run lint && npm run typecheck && npm run test"
@@ -29,6 +31,7 @@
     "@redocly/cli": "^2.28.0",
     "@types/node": "^24.6.0",
     "ajv": "^8.18.0",
+    "openapi-typescript": "^7.10.1",
     "typescript": "^5.9.3"
   }
 }

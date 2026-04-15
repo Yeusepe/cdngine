@@ -194,3 +194,98 @@ test('delivery routes reject unpublished versions as not ready', async () => {
   assert.equal(response.status, 409);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/version-not-ready');
 });
+
+test('public version links and manifest reads support presentation workloads', async () => {
+  const store = new InMemoryPublicVersionReadStore({
+    versions: [
+      {
+        assetId: 'ast_002',
+        assetOwner: 'customer:acme',
+        defaultManifestType: 'presentation-default',
+        deliveries: [
+          {
+            assetId: 'ast_002',
+            byteLength: 1024n,
+            contentType: 'application/pdf',
+            deliveryScopeId: 'presentations',
+            deterministicKey: 'deriv/media-platform/ast_002/ver_010/normalized-pdf/normalized-pdf',
+            derivativeId: 'drv_010',
+            recipeId: 'normalized-pdf',
+            storageKey: 'derived/presentations/ast_002/ver_010/normalized-pdf.pdf',
+            variant: 'normalized-pdf',
+            versionId: 'ver_010'
+          },
+          {
+            assetId: 'ast_002',
+            byteLength: 256n,
+            contentType: 'image/webp',
+            deliveryScopeId: 'presentations',
+            deterministicKey: 'deriv/media-platform/ast_002/ver_010/slide-images/slide-001',
+            derivativeId: 'drv_011',
+            recipeId: 'slide-images',
+            storageKey: 'derived/presentations/ast_002/ver_010/slide-001.webp',
+            variant: 'slide-001',
+            versionId: 'ver_010'
+          }
+        ],
+        lifecycleState: 'published',
+        manifests: [
+          {
+            assetId: 'ast_002',
+            deliveryScopeId: 'presentations',
+            manifestPayload: {
+              assetId: 'ast_002',
+              manifestType: 'presentation-default',
+              normalizedDocument: {
+                contentType: 'application/pdf',
+                deterministicKey: 'deriv/media-platform/ast_002/ver_010/normalized-pdf/normalized-pdf',
+                variantKey: 'normalized-pdf'
+              },
+              schemaVersion: '1.0.0',
+              slides: [
+                {
+                  contentType: 'image/webp',
+                  deterministicKey: 'deriv/media-platform/ast_002/ver_010/slide-images/slide-001',
+                  pageNumber: 1,
+                  variantKey: 'slide-001'
+                }
+              ],
+              versionId: 'ver_010'
+            },
+            manifestType: 'presentation-default',
+            objectKey: 'manifests/media-platform/ast_002/ver_010/presentation-default.json',
+            versionId: 'ver_010'
+          }
+        ],
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 4096n,
+          contentType: 'application/pdf',
+          filename: 'event-deck.pdf'
+        },
+        versionId: 'ver_010',
+        versionNumber: 1,
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const app = createPublicApp(store);
+
+  const versionResponse = await app.request('http://localhost/v1/assets/ast_002/versions/ver_010', {
+    headers: createAuthedHeaders()
+  });
+  const manifestResponse = await app.request(
+    'http://localhost/v1/assets/ast_002/versions/ver_010/manifests/presentation-default',
+    { headers: createAuthedHeaders() }
+  );
+  const versionPayload = await versionResponse.json();
+  const manifestPayload = await manifestResponse.json();
+
+  assert.equal(versionResponse.status, 200);
+  assert.equal(
+    versionPayload.links.manifest,
+    '/v1/assets/ast_002/versions/ver_010/manifests/presentation-default'
+  );
+  assert.equal(manifestResponse.status, 200);
+  assert.equal(manifestPayload.manifestType, 'presentation-default');
+});

@@ -199,6 +199,23 @@ The preferred posture is:
 - application-specific generated types where local registrations affect the client surface
 - examples that look like normal application code, not protocol assembly
 
+### 9.1 Current repository posture
+
+The repository now carries a checked-in TypeScript contract package at `packages/contracts/` with:
+
+- generated public OpenAPI types in `packages/contracts/src/generated/public-api.ts`
+- a `CDNginePublicClient` wrapper in `packages/contracts/src/public-client.ts`
+- quickstart usage in `packages/contracts/README.md`
+
+The intended maintenance flow is:
+
+1. update the public OpenAPI contract
+2. run `npm run sdk:generate`
+3. commit the regenerated client artifacts
+4. let `npm run sdk:check` prevent drift during repository verification
+
+That keeps the TypeScript SDK tied to the bundled public contract instead of hand-maintained wrappers drifting away from the real surface.
+
 ## 10. Documentation strategy
 
 SDK releases should ship with:

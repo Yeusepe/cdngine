@@ -30,6 +30,7 @@ export type PublicLifecycleState =
 export interface PublicAssetVersionRecord {
   assetId: string;
   assetOwner: string;
+  defaultManifestType?: string;
   lifecycleState: PublicLifecycleState;
   serviceNamespaceId: string;
   source: {
@@ -132,6 +133,7 @@ function cloneVersion(record: PublicAssetVersionRecord): PublicAssetVersionRecor
   return {
     assetId: record.assetId,
     assetOwner: record.assetOwner,
+    ...(record.defaultManifestType ? { defaultManifestType: record.defaultManifestType } : {}),
     lifecycleState: record.lifecycleState,
     serviceNamespaceId: record.serviceNamespaceId,
     source: {
@@ -189,10 +191,10 @@ export class InMemoryPublicVersionReadStore implements PublicVersionReadStore {
       }
 
       if (version.sourceAuthorization) {
-        this.sourceAuthorizations.set(key, {
-          authorizationMode: version.sourceAuthorization.authorizationMode,
-          expiresAt: new Date(version.sourceAuthorization.expiresAt),
-          resolvedOrigin: version.sourceAuthorization.resolvedOrigin,
+          this.sourceAuthorizations.set(key, {
+            authorizationMode: version.sourceAuthorization.authorizationMode,
+            expiresAt: new Date(version.sourceAuthorization.expiresAt),
+            resolvedOrigin: version.sourceAuthorization.resolvedOrigin,
           ...(version.sourceAuthorization.tenantId ? { tenantId: version.sourceAuthorization.tenantId } : {}),
           url: version.sourceAuthorization.url
         });

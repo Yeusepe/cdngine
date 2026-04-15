@@ -15,5 +15,6 @@
 
 export const registryPackageName = '@cdngine/registry';
 export * from './image-publication-store.js';
+export * from './presentation-publication-store.js';
 export * from './schema-metadata.js';
 export * from './workflow-dispatch-store.js';

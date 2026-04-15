@@ -27,6 +27,7 @@ The initial public API should expose these groups:
 | upload-sessions | ingest-target issuance and completion |
 | assets | logical asset identity and lookup |
 | versions | canonical uploaded versions and processing state |
+| source-downloads | authorization for reading the canonical original source version |
 | derivatives | processed delivery artifacts for a specific version |
 | manifests | manifest-first retrieval for complex assets |
 | deliveries | delivery authorization and scope-aware URL resolution |
@@ -61,6 +62,7 @@ The operator surface should expose:
 - `POST /v1/upload-sessions/{uploadSessionId}/complete`
 - `GET /v1/assets/{assetId}`
 - `GET /v1/assets/{assetId}/versions/{versionId}`
+- `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize`
 - `GET /v1/assets/{assetId}/versions/{versionId}/derivatives`
 - `GET /v1/assets/{assetId}/versions/{versionId}/manifests/{manifestType}`
 - `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize`
@@ -89,6 +91,7 @@ The public API should guarantee:
 - typed errors
 - predictable auth requirements
 - stable ownership fields
+- explicit original-source delivery posture
 - explicit delivery-scope and authorization-mode modeling
 - version-aware derivative and manifest lookup
 - stable operation names and tags for generated SDK method grouping
@@ -121,6 +124,7 @@ Preferred behavior:
 
 - completion returns accepted work and a status handle when processing is deferred
 - asset and version resources expose lifecycle state explicitly
+- source-download authorization exposes whether the caller receives a proxy URL, a tightly scoped Xet-backed read, or a materialized export
 - derivatives and manifests appear only after publication
 - delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, or public path
 - operator actions expose workflow or operation identifiers that can be audited later
@@ -131,7 +135,7 @@ The repository should eventually publish:
 
 1. OpenAPI for the public HTTP surface
 2. separate OpenAPI artifacts for platform-admin and operator surfaces
-3. Arazzo workflows for public multi-step flows such as upload, completion, polling, and manifest retrieval
+3. Arazzo workflows for public multi-step flows such as upload, completion, polling, manifest retrieval, and source-download authorization
 4. AsyncAPI where external event subscriptions are part of the contract
 5. machine-readable examples for major manifest types
 6. generated SDK documentation aligned only with the public surface unless a narrower admin SDK is explicitly supported
@@ -143,6 +147,7 @@ The public API should be easy to wrap into a high-level SDK shape such as:
 - `assets.upload`
 - `assets.get`
 - `assets.waitForVersion`
+- `versions.authorizeSourceDownload`
 - `derivatives.list`
 - `manifests.get`
 - `deliveries.authorize`

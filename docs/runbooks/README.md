@@ -27,9 +27,9 @@ Every runbook should answer:
 5. what should never be done during the incident
 6. how to confirm recovery
 
-## 3. Expected future runbook files
+## 3. Current runbook files
 
-Recommended files:
+Current files:
 
 - `workflow-backlog.md`
 - `processor-outage.md`

@@ -541,6 +541,23 @@ The platform should still avoid:
 - routing hot derivative delivery through Xet
 - forcing every public browser upload to speak Xet semantics directly
 
+### 10.4 Original-source delivery
+
+The architecture distinguishes:
+
+1. **published delivery** of derivatives through the derived store and CDN
+2. **original-source delivery** of the canonical uploaded asset
+
+Original-source delivery should start from the canonical Xet identity for the version.
+
+The client-facing delivery mode may be:
+
+- proxied reconstruction from Xet
+- a tightly scoped Xet-backed read path
+- a materialized export into the delivery plane
+
+The important point is that the source asset still remains canonical in Xet even when the service chooses to expose it through a controlled export or proxy path.
+
 ## 11. Multi-service registration model
 
 The platform supports multiple internal domains by requiring code-defined registration for:

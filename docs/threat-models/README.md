@@ -26,9 +26,9 @@ Every threat model should identify:
 5. detective controls
 6. operator response expectations
 
-## 3. Expected future threat-model files
+## 3. Current threat-model files
 
-Recommended files:
+Current files:
 
 - `upload-authorization.md`
 - `private-delivery.md`

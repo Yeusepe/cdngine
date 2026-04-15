@@ -123,13 +123,14 @@ Should include:
 - canonicalization state
 - validation state
 - source checksum or equivalent integrity marker
+- source-download policy or visibility posture where it differs from derivative delivery
 - optional canonicalization and deduplication metrics for observability
 
 Once a version reaches `canonical`, the source identity must be immutable.
 
 ### 4.5 `DeliveryScope`
 
-Represents the delivery boundary through which an organization or audience accesses published artifacts.
+Represents the delivery boundary through which an organization or audience accesses published artifacts and, where policy allows, materialized source exports.
 
 Should include:
 
@@ -141,7 +142,7 @@ Should include:
 - cache profile
 - stream-bundle policy where applicable
 
-This keeps organization-specific URLs, private bundle access, and cache behavior modeled explicitly.
+This keeps organization-specific URLs, private bundle access, cache behavior, and materialized source-export posture modeled explicitly.
 
 ### 4.6 `Derivative`
 

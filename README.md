@@ -90,6 +90,17 @@ The delivery path is different from the ingest path:
 
 The important point is: **clients do not normally download published derivatives from Xet.**
 
+When a client needs the **original source asset itself**, that is a separate flow:
+
+1. the client asks the API to authorize original-source delivery for a version
+2. CDNgine resolves the canonical Xet identity for that version
+3. CDNgine either proxies reconstruction from Xet, returns a tightly scoped Xet-backed read handle, or materializes a delivery export depending on policy and deployment posture
+
+That means **published delivery** and **original-source delivery** are different concerns:
+
+- published delivery optimizes for CDN-friendly hot reads
+- original-source delivery optimizes for exact canonical reconstruction, policy control, and provenance
+
 Xet is for:
 
 - canonical originals
@@ -112,6 +123,8 @@ This split is intentional:
 
 - **Xet** answers: "what exact canonical source file should replay use, and which stored chunks already exist?"
 - the **derived store** answers: "what exact published artifact should the client receive right now?"
+
+If the client needs the canonical original, the service should expose that through an explicit **original-source delivery** contract rather than pretending the public delivery CDN path and the canonical source path are the same thing.
 
 If every published derivative had to be delivered from Xet, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
 
@@ -189,11 +202,16 @@ This repository currently contains the **design and implementation guidance** fo
 
 - reference architecture
 - service architecture
+- state-machine, persistence, and dispatch contracts
+- canonicalization and Xet source-of-truth rules
 - public, platform-admin, and operator API surface guidance
+- problem-type and compatibility guidance
 - technology profile and upstream package guidance
 - API and SDK guidance
+- contract-governance and conformance guidance
 - pipeline, workflow, and service registration models
 - observability, security, deployment, and resilience expectations
+- SLOs, runbooks, and threat-model guidance
 - SDK, code-generation, and polyglot FFI strategy
 - ADRs, contributor guidance, and implementation traceability docs
 
@@ -216,17 +234,23 @@ Key entry points:
 - **Platform**
   - [Architecture](./docs/architecture.md)
   - [Service Architecture](./docs/service-architecture.md)
+  - [State Machines](./docs/state-machines.md)
+  - [Persistence Model](./docs/persistence-model.md)
+  - [Canonicalization And Xet Contract](./docs/canonicalization-and-xet-contract.md)
   - [Technology Profile](./docs/technology-profile.md)
   - [Package And Repository Reference](./docs/package-reference.md)
 - **Reference**
   - [API Surface](./docs/api-surface.md)
   - [API Style Guide](./docs/api-style-guide.md)
+  - [Problem Types](./docs/problem-types.md)
   - [SDK Strategy](./docs/sdk-strategy.md)
+  - [Spec Governance](./docs/spec-governance.md)
   - [Pipeline Capability Model](./docs/pipeline-capability-model.md)
   - [Workflow Extensibility](./docs/workflow-extensibility.md)
 - **Operations**
   - [Environment And Deployment](./docs/environment-and-deployment.md)
   - [Observability](./docs/observability.md)
+  - [SLO And Capacity](./docs/slo-and-capacity.md)
   - [Security Model](./docs/security-model.md)
   - [Resilience And Scale Validation](./docs/resilience-and-scale-validation.md)
 

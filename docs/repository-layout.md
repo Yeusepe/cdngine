@@ -7,6 +7,11 @@ The goal is to keep ownership obvious, contracts explicit, and cross-cutting con
 ## 1. Proposed top-level shape
 
 ```text
+contracts/
+  openapi/
+  asyncapi/
+  arazzo/
+  examples/
 apps/
   api/
   workers/
@@ -24,12 +29,16 @@ packages/
 docs/
 deploy/
 tests/
+  conformance/
+  fixtures/
+    assets/
 ```
 
 ## 2. Why this shape
 
 The repository should separate:
 
+- published contract artifacts
 - deployable applications
 - reusable domain packages
 - test harnesses and scenario fixtures
@@ -72,7 +81,7 @@ Recommended package ownership:
 
 | Package | Responsibility |
 | --- | --- |
-| `contracts` | schemas, OpenAPI/AsyncAPI models, manifest types |
+| `contracts` | code-near schema helpers, generators, and contract-build support |
 | `registry` | SQL models, queries, migrations, idempotency state |
 | `storage` | Xet canonicalization and reconstruction adapters, derived-store adapters, signing helpers |
 | `workflows` | Temporal workflow definitions and activity contracts |
@@ -82,6 +91,8 @@ Recommended package ownership:
 | `auth` | authn/authz helpers, claims handling, policy checks |
 | `testing` | fixtures, workflow harnesses, integration helpers |
 
+The top-level `contracts/` directory is where published OpenAPI, AsyncAPI, Arazzo, and example artifacts should live.
+
 ## 5. Rules
 
 1. keep SQL out of HTTP route files
@@ -89,6 +100,7 @@ Recommended package ownership:
 3. keep storage adapters explicit and testable
 4. keep contracts versioned and visible
 5. keep test fixtures and harnesses reusable
+6. keep published contract artifacts separate from code-only helpers
 
 ## 6. Anti-patterns to avoid
 
@@ -98,6 +110,7 @@ Avoid:
 - catch-all `utils` for business logic
 - route handlers directly calling shell tools or storage SDKs
 - undocumented cross-package imports
+- hiding released contract artifacts inside implementation packages only
 
 ## 7. Relationship to docs
 

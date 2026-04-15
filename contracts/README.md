@@ -1,0 +1,17 @@
+# Contracts
+
+This directory is the home for machine-readable contract artifacts.
+
+Expected families:
+
+- `openapi/` for public, platform-admin, and operator HTTP contracts
+- `asyncapi/` for externally relevant events
+- `arazzo/` for multi-step workflows
+- `examples/` for request, response, manifest, and event examples
+
+The governing docs are:
+
+- `docs/api-surface.md`
+- `docs/api-style-guide.md`
+- `docs/sdk-strategy.md`
+- `docs/spec-governance.md`

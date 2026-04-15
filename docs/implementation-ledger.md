@@ -8,13 +8,14 @@ It exists to stop the architecture from floating free of execution. The ledger s
 
 | Slice | Status | What it should prove |
 | --- | --- | --- |
-| docs-foundation | doing | architecture, service model, surface separation, ingest contract, and platform semantics are documented coherently |
-| contracts-and-schemas | planned | public API, manifests, capability schemas, event shapes, and SDK workflow artifacts become machine-readable |
+| docs-foundation | doing | architecture, service model, surface separation, ingest contract, lifecycle state, persistence, compatibility, and platform semantics are documented coherently |
+| control-plane-contracts | doing | lifecycle transitions, persistence writes, idempotency, dispatch, canonicalization, and workflow operator interaction are specified precisely enough to implement safely |
+| contracts-and-schemas | doing | public API, manifests, capability schemas, event shapes, SDK workflow artifacts, and contract-governance scaffolding have a concrete repository home |
 | ingest-foundation | planned | upload sessions, Xet canonicalization over S3-backed storage, and idempotent completion behave correctly |
 | image-mvp | planned | the platform can validate, derive, publish, and deliver deterministic image outputs |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |
 | presentation-mvp | planned | the platform can normalize presentations and publish slide-oriented manifests and derivatives |
-| operator-foundation | planned | replay, quarantine, diagnostics, and audit surfaces are usable |
+| operator-foundation | doing | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
 
 ## 2. Rules for updating the ledger
 

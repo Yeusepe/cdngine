@@ -20,6 +20,13 @@ It should be possible to point from a major architectural promise to the docs, t
 | scoping is enforced programmatically rather than by naming convention | service-architecture docs, scoped repository tests, and security-model rules |
 | Xet is used as the canonical deduplicated content plane rather than as raw S3 keys | Xet topology docs, file-identity persistence, replay tests, and operator diagnostics |
 | SDKs feel code-first rather than like thin REST wrappers | OpenAPI and Arazzo artifacts, generated SDK outputs, and end-to-end upload examples |
+| lifecycle transitions are explicit and operator-visible | state-machine docs, API lifecycle fields, and workflow or repository tests |
+| persistence boundaries are atomic and diagnosable | persistence docs, idempotency-dispatch docs, transaction tests, and audit evidence |
+| running workflows are controlled through durable message contracts | Temporal message-contract docs, operator API docs, and workflow interaction tests |
+| contract evolution is rollout-safe | compatibility docs, replay evidence, generated SDK updates, and migration notes |
+| public failures share a stable vocabulary | problem-type docs, OpenAPI examples, and SDK error handling examples |
+| contract artifacts are governed instead of ad hoc | spec-governance docs, lint outputs, example validation, and breaking-change review evidence |
+| operational targets are explicit | SLO docs, dashboards, alerts, and runbooks |
 
 ## 2. Evidence categories
 
@@ -30,6 +37,7 @@ The main evidence categories are:
 - executable tests
 - operational dashboards and alerts
 - runbooks and threat models
+- conformance fixtures and scenarios
 - implementation ledger entries
 
 ## 3. How to use this document

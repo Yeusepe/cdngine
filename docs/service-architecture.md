@@ -243,6 +243,18 @@ Preferred service behavior:
 - authenticated control-plane reads may still return `403` when the denial itself is useful
 - manifests should return delivery-scope and authorization-mode metadata clearly enough that SDKs do not guess
 
+### 6.6.1 Original-source delivery
+
+Original-source delivery is separate from published derivative delivery.
+
+Preferred behavior:
+
+- the API exposes an explicit source-download authorization operation for canonical asset versions
+- the service resolves the request from the version's canonical Xet identity
+- the service may satisfy the read through proxied reconstruction, a tightly scoped Xet-backed read handle, or a materialized export depending on policy
+- source-download authorization may be stricter than derivative authorization
+- quarantined or policy-blocked versions must not silently fall back to a raw storage read
+
 ## 6.7 Delivery scope resolution
 
 Delivery URL shape should be a modeled service concern.

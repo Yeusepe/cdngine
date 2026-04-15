@@ -59,7 +59,7 @@ Use this map to decide which docs govern which code.
 | --- | --- |
 | API routes, request/response models, auth boundaries | `docs/service-architecture.md`, `docs/api-surface.md`, `docs/api-style-guide.md`, `docs/security-model.md` |
 | upload flows, ingest, resumable uploads, canonical commit logic | `README.md`, `docs/architecture.md`, `docs/service-architecture.md`, `docs/technology-profile.md`, `docs/security-model.md` |
-| Oxen integration, storage adapters, derived-store publication | `docs/architecture.md`, `docs/technology-profile.md`, `docs/repository-layout.md`, `docs/resilience-and-scale-validation.md` |
+| Xet integration, storage adapters, derived-store publication | `docs/architecture.md`, `docs/technology-profile.md`, `docs/repository-layout.md`, `docs/resilience-and-scale-validation.md` |
 | Prisma schema, migrations, registry data model | `docs/domain-model.md`, `docs/service-registration-model.md`, `docs/repository-layout.md`, `docs/testing-strategy.md` |
 | Temporal workflows, activities, replay, compensation | `docs/architecture.md`, `docs/workflow-extensibility.md`, `docs/testing-strategy.md`, `docs/resilience-and-scale-validation.md` |
 | manifests, derivative records, deterministic keys | `docs/architecture.md`, `docs/domain-model.md`, `docs/pipeline-capability-model.md`, `docs/traceability.md`, `docs/adr/0003-deterministic-derivative-keys.md` |
@@ -79,7 +79,7 @@ Examples:
 - **Prisma** for schema, client, and migrations
 - **Temporal** for workflow semantics and testing
 - **tus / tusd** for resumable ingest
-- **Oxen** for canonical versioned raw storage
+- **Xet** for canonical versioned raw storage
 - **imgproxy / libvips** for image transformation and delivery
 - **Gotenberg** for document conversion
 - **FFmpeg** for video and media operations
@@ -147,7 +147,7 @@ The testing expectations are governed by `docs/testing-strategy.md`.
 High-risk areas that must have explicit tests include:
 
 - upload completion idempotency
-- replay from Oxen
+- replay from Xet
 - deterministic derivative keys
 - manifest publication integrity
 - signed delivery behavior

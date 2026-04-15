@@ -17,7 +17,7 @@
     },
     "versionState": {
       "type": "string",
-      "enum": ["canonicalizing", "canonical", "processing"]
+      "enum": ["canonical", "processing"]
     },
     "workflowDispatch": {
       "type": "object",
@@ -29,7 +29,14 @@
         },
         "state": {
           "type": "string",
-          "enum": ["pending", "started", "failed"]
+          "enum": [
+            "pending",
+            "starting",
+            "started",
+            "duplicate",
+            "failed_retryable",
+            "failed_terminal"
+          ]
         },
         "workflowKey": {
           "type": "string"

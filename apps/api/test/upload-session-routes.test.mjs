@@ -1,5 +1,5 @@
 /**
- * Purpose: Verifies that upload-session issuance creates immutable revisions, converges retries through idempotency, and rejects conflicting reuse.
+ * Purpose: Verifies that upload-session issuance and completion create immutable revisions, converge retries through idempotency, and preserve the staged-to-canonical handoff contract.
  * Governing docs:
  * - docs/service-architecture.md
  * - docs/api-surface.md
@@ -25,6 +25,19 @@ import {
 } from '../dist/upload-session-service.js';
 
 class FakeStagingBlobStore {
+  constructor(objects = {}) {
+    this.objects = new Map(
+      Object.entries(objects).map(([objectKey, descriptor]) => [
+        objectKey,
+        {
+          bucket: 'cdngine-ingest',
+          key: `ingest/${objectKey}`,
+          ...descriptor
+        }
+      ])
+    );
+  }
+
   async createUploadTarget(input) {
     return {
       method: 'PATCH',
@@ -36,8 +49,44 @@ class FakeStagingBlobStore {
 
   async deleteObject() {}
 
-  async headObject() {
-    return null;
+  async headObject(objectKey) {
+    return this.objects.get(objectKey) ?? null;
+  }
+}
+
+class FakeSourceRepository {
+  constructor(snapshotResult) {
+    this.snapshotResult =
+      snapshotResult ?? {
+        canonicalSourceId: 'src_001',
+        snapshotId: 'snap_001',
+        logicalPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
+        digests: [
+          {
+            algorithm: 'sha256',
+            value: 'abc123'
+          }
+        ],
+        substrateHints: {
+          repositoryTool: 'kopia'
+        }
+      };
+    this.snapshotCalls = [];
+  }
+
+  async snapshotFromPath(input) {
+    this.snapshotCalls.push(input);
+    return this.snapshotResult;
+  }
+
+  async listSnapshots() {
+    return [];
+  }
+
+  async restoreToPath(input) {
+    return {
+      restoredPath: input.destinationPath
+    };
   }
 }
 
@@ -295,4 +344,274 @@ test('supplying an existing asset id creates a new immutable revision', async ()
   assert.equal(secondPayload.assetId, firstPayload.assetId);
   assert.equal(secondPayload.versionId, 'ver_002');
   assert.equal(secondPayload.isDuplicate, false);
+});
+
+test('upload-session completion snapshots staged bytes and exposes a pending workflow dispatch', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const sourceRepository = new FakeSourceRepository();
+
+  const app = createApiApp({
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore,
+        workflowTemplate: 'image-derivation-v1'
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(payload.uploadSessionId, 'upl_001');
+  assert.equal(payload.assetId, 'ast_001');
+  assert.equal(payload.versionId, 'ver_001');
+  assert.equal(payload.versionState, 'canonical');
+  assert.deepEqual(payload.workflowDispatch, {
+    dispatchId: 'wd_001',
+    state: 'pending',
+    workflowKey: 'media-platform:ast_001:ver_001:image-derivation-v1'
+  });
+  assert.equal(sourceRepository.snapshotCalls.length, 1);
+  assert.deepEqual(sourceRepository.snapshotCalls[0], {
+    assetVersionId: 'ver_001',
+    localPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
+    sourceFilename: 'hero-banner.png',
+    metadata: {
+      assetId: 'ast_001',
+      assetOwner: 'customer:acme',
+      serviceNamespaceId: 'media-platform',
+      uploadSessionId: 'upl_001',
+      versionNumber: '1'
+    }
+  });
+});
+
+test('same completion idempotency key and same request replay the original workflow dispatch', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const sourceRepository = new FakeSourceRepository();
+  const app = createApiApp({
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore,
+        workflowTemplate: 'image-derivation-v1'
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const request = {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  };
+
+  await app.request('http://localhost/v1/upload-sessions/upl_001/complete', request);
+  const replayResponse = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', request);
+  const replayPayload = await replayResponse.json();
+
+  assert.equal(replayResponse.status, 202);
+  assert.equal(replayPayload.workflowDispatch.dispatchId, 'wd_001');
+  assert.equal(sourceRepository.snapshotCalls.length, 1);
+});
+
+test('completion returns a retryable conflict when staged bytes are not durable yet', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const app = createApiApp({
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository: new FakeSourceRepository(),
+        stagingBlobStore: new FakeStagingBlobStore()
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: createAuthedHeaders({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.type, 'https://docs.cdngine.dev/problems/upload-not-finished');
+  assert.equal(payload.retryable, true);
 });

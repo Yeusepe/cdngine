@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test"
+    "test": "npm run build -w @cdngine/capabilities && npm run build -w @cdngine/manifests && npm run build -w @cdngine/registry && npm run build -w @cdngine/storage && npm run build && node --test test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [
@@ -29,5 +29,12 @@
       "https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning",
       "https://docs.temporal.io/develop/safe-deployments"
     ]
+  },
+  "dependencies": {
+    "@cdngine/capabilities": "^0.1.0",
+    "@cdngine/manifests": "^0.1.0",
+    "@cdngine/registry": "^0.1.0",
+    "@cdngine/storage": "^0.1.0",
+    "@temporalio/client": "^1.13.1"
   }
 }

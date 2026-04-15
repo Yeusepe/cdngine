@@ -12,3 +12,4 @@
  */
 
 export const capabilitiesPackageName = '@cdngine/capabilities';
+export * from './image-capability.js';

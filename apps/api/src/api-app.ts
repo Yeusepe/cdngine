@@ -59,6 +59,13 @@ export function createApiApp(options: CreateApiAppOptions = {}) {
     })
   );
 
+  app.get('/readyz', (context) =>
+    context.json({
+      status: 'ready',
+      requestId: context.get('requestId')
+    })
+  );
+
   app.route('/v1', createSurfaceApp('public', options.registerPublicRoutes));
   app.route('/v1/platform', createSurfaceApp('platform-admin', options.registerPlatformAdminRoutes));
   app.route('/v1/operator', createSurfaceApp('operator', options.registerOperatorRoutes));

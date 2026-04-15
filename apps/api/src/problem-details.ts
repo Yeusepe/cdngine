@@ -15,12 +15,19 @@ import type { Context } from 'hono';
 import type { ApiEnv } from './api-types.js';
 
 export const problemTypes = {
+  checksumMismatch: 'https://docs.cdngine.dev/problems/checksum-mismatch',
   forbidden: 'https://docs.cdngine.dev/problems/forbidden',
+  idempotencyKeyConflict: 'https://docs.cdngine.dev/problems/idempotency-key-conflict',
   internalError: 'https://docs.cdngine.dev/problems/internal-error',
+  invalidStateTransition: 'https://docs.cdngine.dev/problems/invalid-state-transition',
   invalidRequest: 'https://docs.cdngine.dev/problems/invalid-request',
   notFound: 'https://docs.cdngine.dev/problems/not-found',
+  operatorActionRejected: 'https://docs.cdngine.dev/problems/operator-action-rejected',
   scopeNotAllowed: 'https://docs.cdngine.dev/problems/scope-not-allowed',
   unauthorized: 'https://docs.cdngine.dev/problems/unauthorized',
+  uploadNotFinished: 'https://docs.cdngine.dev/problems/upload-not-finished',
+  uploadSessionExpired: 'https://docs.cdngine.dev/problems/upload-session-expired',
+  versionNotReady: 'https://docs.cdngine.dev/problems/version-not-ready',
   upstreamDependencyFailed: 'https://docs.cdngine.dev/problems/upstream-dependency-failed'
 } as const;
 

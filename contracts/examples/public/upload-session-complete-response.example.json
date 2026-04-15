@@ -2,11 +2,11 @@
   "uploadSessionId": "upl_01JQ9YF8QJCPY9G7B8N1F3K6Z1",
   "assetId": "ast_existing_123",
   "versionId": "ver_01JQ9YG2PGM4H7QPQY5C8D6BBN",
-  "versionState": "canonicalizing",
+  "versionState": "canonical",
   "workflowDispatch": {
     "dispatchId": "wd_01JQ9YPAQ5P1M1AR3JGY1X7A4W",
     "state": "pending",
-    "workflowKey": "media-platform:ast_existing_123:ver_01JQ9YG2PGM4H7QPQY5C8D6BBN:image-default"
+    "workflowKey": "media-platform:ast_existing_123:ver_01JQ9YG2PGM4H7QPQY5C8D6BBN:image-derivation-v1"
   },
   "links": {
     "version": "/v1/assets/ast_existing_123/versions/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN"

@@ -12,3 +12,8 @@
  */
 
 export const workflowsPackageName = '@cdngine/workflows';
+export * from './dispatch-runtime.js';
+export * from './image-publication-workflow.js';
+export * from './temporal-workflow-client.js';
+export * from './workflow-registry.js';
+export * from './workflow-templates.js';

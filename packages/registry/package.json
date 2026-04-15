@@ -9,7 +9,7 @@
     "build": "npm run prisma:validate && tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
-    "test": "npm run prisma:validate && node --test"
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [

@@ -18,7 +18,11 @@
 export const apiAppName = '@cdngine/api';
 export * from './api-app.js';
 export * from './auth.js';
+export * from './operator/operator-routes.js';
+export * from './operator/operator-service.js';
 export * from './problem-details.js';
+export * from './public/delivery-routes.js';
+export * from './public/delivery-service.js';
 export * from './public/upload-session-routes.js';
 export * from './request-context.js';
 export * from './upload-session-service.js';

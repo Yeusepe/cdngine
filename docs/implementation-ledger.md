@@ -16,11 +16,11 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | api-core-shell | done | the Hono app factory, auth and scope enforcement, timeout and request-correlation middleware, validation, and RFC 9457 problem responses are implemented and tested together |
 | control-plane-contracts | doing | lifecycle transitions, persistence writes, idempotency, dispatch, canonicalization, and workflow operator interaction are specified precisely enough to implement safely |
 | contracts-and-schemas | done | public API, manifests, capability schemas, event shapes, SDK workflow artifacts, and contract-governance scaffolding have a concrete repository home plus executable lint, bundle, and example-validation gates |
-| ingest-foundation | planned | upload sessions, canonical source snapshotting over a bucket-or-prefix-backed source repository, and idempotent completion behave correctly across single-node or multi-node plus one-bucket or multi-bucket topologies |
-| image-mvp | planned | the platform can validate, derive, publish, and deliver deterministic image outputs through one client-facing authorization flow even when internal resolution paths differ across the supported topology matrix |
+| ingest-foundation | doing | upload sessions, canonical source snapshotting over a bucket-or-prefix-backed source repository, and idempotent completion behave correctly across single-node or multi-node plus one-bucket or multi-bucket topologies |
+| image-mvp | done | the platform can validate, derive, publish, and deliver deterministic image outputs through one client-facing authorization flow even when internal resolution paths differ across the supported topology matrix |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |
 | presentation-mvp | planned | the platform can normalize presentations and publish slide-oriented manifests and derivatives |
-| operator-foundation | doing | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
+| operator-foundation | done | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
 
 ## 2. Rules for updating the ledger
 

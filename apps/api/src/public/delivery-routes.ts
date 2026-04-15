@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import type { Hono } from 'hono';
 
+import { requireRequestedScope } from '../api-app.js';
 import type { ApiEnv } from '../api-types.js';
 import { ProblemDetailError, problemTypes } from '../problem-details.js';
 import {
@@ -79,16 +80,33 @@ function mapPublicReadError(error: unknown): never {
   throw error;
 }
 
+async function requireScopedVersion(
+  context: Hono<ApiEnv>['Context'],
+  dependencies: DeliveryRouteDependencies,
+  assetId: string,
+  versionId: string
+) {
+  const version = await dependencies.store.getVersion(assetId, versionId);
+
+  if (!version) {
+    throw new PublicAssetVersionNotFoundError(assetId, versionId);
+  }
+
+  context.set('requestedScope', {
+    serviceNamespaceId: version.serviceNamespaceId,
+    ...(version.tenantId ? { tenantId: version.tenantId } : {})
+  });
+  requireRequestedScope(context);
+
+  return version;
+}
+
 export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: DeliveryRouteDependencies) {
   app.get('/assets/:assetId/versions/:versionId', async (context) => {
     try {
       const assetId = context.req.param('assetId');
       const versionId = context.req.param('versionId');
-      const version = await dependencies.store.getVersion(assetId, versionId);
-
-      if (!version) {
-        throw new PublicAssetVersionNotFoundError(assetId, versionId);
-      }
+      const version = await requireScopedVersion(context, dependencies, assetId, versionId);
 
       return context.json({
         assetId: version.assetId,
@@ -119,6 +137,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
     try {
       const assetId = context.req.param('assetId');
       const versionId = context.req.param('versionId');
+      await requireScopedVersion(context, dependencies, assetId, versionId);
       const derivatives = await dependencies.store.listDerivatives(assetId, versionId);
 
       return context.json({
@@ -143,6 +162,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
       const assetId = context.req.param('assetId');
       const versionId = context.req.param('versionId');
       const manifestType = context.req.param('manifestType');
+      await requireScopedVersion(context, dependencies, assetId, versionId);
       const manifest = await dependencies.store.getManifest(assetId, versionId, manifestType);
 
       if (!manifest) {
@@ -163,6 +183,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
         getIdempotencyKey(context);
         const assetId = context.req.param('assetId');
         const versionId = context.req.param('versionId');
+        await requireScopedVersion(context, dependencies, assetId, versionId);
         const body = context.get('validatedBody') as z.infer<typeof authorizeSourceSchema>;
         const authorization = await dependencies.store.authorizeSource(
           assetId,
@@ -187,6 +208,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
         const assetId = context.req.param('assetId');
         const versionId = context.req.param('versionId');
         const deliveryScopeId = context.req.param('deliveryScopeId');
+        await requireScopedVersion(context, dependencies, assetId, versionId);
         const body = context.get('validatedBody') as z.infer<typeof authorizeDeliverySchema>;
         const authorization = await dependencies.store.authorizeDelivery(
           assetId,

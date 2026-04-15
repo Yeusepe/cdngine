@@ -15,6 +15,7 @@ contracts/
   dist/
 apps/
   api/
+  demo/
   workers/
   operator/
 packages/
@@ -75,6 +76,14 @@ Should own:
 - quarantine
 - diagnostics
 - administrative workflows
+
+### `apps/demo`
+
+Should own:
+
+- demo and showcase UI flows
+- end-user upload and download walkthroughs backed by generated scenario data
+- front-end proof that the public SDK and API surface are coherent for multi-tenant product use cases
 
 ## 4. Package boundaries
 

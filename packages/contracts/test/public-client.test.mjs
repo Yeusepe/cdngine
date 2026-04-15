@@ -163,3 +163,47 @@ test('CDNginePublicClient waitForVersion polls until a terminal lifecycle state 
   assert.equal(version.lifecycleState, 'published');
   assert.equal(attempt, 3);
 });
+
+test('CDNginePublicClient forwards caller scope headers for multi-tenant demos', async () => {
+  const requests = [];
+  const client = new CDNginePublicClient({
+    baseUrl: 'https://api.cdngine.local',
+    fetch: async (url, init) => {
+      requests.push({
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        url
+      });
+
+      return createJsonResponse({
+        assetId: 'ast_003',
+        lifecycleState: 'published',
+        links: {
+          derivatives: '/v1/assets/ast_003/versions/ver_003/derivatives',
+          manifest: '/v1/assets/ast_003/versions/ver_003/manifests/image-default',
+          self: '/v1/assets/ast_003/versions/ver_003'
+        },
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 128,
+          contentType: 'image/png',
+          filename: 'tenant-private.png'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_003',
+        versionNumber: 1,
+        workflowState: 'completed'
+      });
+    },
+    getAccessToken: 'token_123',
+    getHeaders: () => ({
+      'x-cdngine-allowed-namespaces': 'media-platform',
+      'x-cdngine-allowed-tenants': 'tenant-acme'
+    })
+  });
+
+  await client.getAssetVersion('ast_003', 'ver_003');
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].headers['x-cdngine-allowed-namespaces'], 'media-platform');
+  assert.equal(requests[0].headers['x-cdngine-allowed-tenants'], 'tenant-acme');
+});

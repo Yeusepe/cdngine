@@ -35,6 +35,7 @@ export class CDNgineClientError extends Error {
 export interface CDNgineClientOptions {
   baseUrl: string;
   fetch?: typeof globalThis.fetch;
+  getHeaders?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string> | undefined> | undefined);
   getAccessToken?: string | (() => string | Promise<string> | undefined);
 }
 
@@ -117,6 +118,9 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 export class CDNginePublicClient {
   private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly getHeaders:
+    | (() => Record<string, string> | Promise<Record<string, string> | undefined> | undefined)
+    | undefined;
   private readonly getAccessToken: (() => string | Promise<string> | undefined) | undefined;
 
   constructor(private readonly options: CDNgineClientOptions) {
@@ -131,6 +135,13 @@ export class CDNginePublicClient {
     } else if (options.getAccessToken) {
       const accessToken = options.getAccessToken;
       this.getAccessToken = () => accessToken;
+    }
+
+    if (typeof options.getHeaders === 'function') {
+      this.getHeaders = options.getHeaders;
+    } else if (options.getHeaders) {
+      const headers = options.getHeaders;
+      this.getHeaders = () => headers;
     }
   }
 
@@ -254,6 +265,12 @@ export class CDNginePublicClient {
 
     if (accessToken) {
       headers.set('authorization', `Bearer ${accessToken}`);
+    }
+
+    const extraHeaders = await this.getHeaders?.();
+
+    for (const [name, value] of Object.entries(extraHeaders ?? {})) {
+      headers.set(name, value);
     }
 
     const response = await this.fetchImpl(buildUrl(this.options.baseUrl, input.pathname), {

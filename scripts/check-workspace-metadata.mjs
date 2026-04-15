@@ -13,6 +13,7 @@ const requiredPracticeDocs = [
 
 const workspaceRelativePaths = [
   'apps/api',
+  'apps/demo',
   'apps/operator',
   'apps/workers',
   'packages/auth',

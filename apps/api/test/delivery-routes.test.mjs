@@ -289,3 +289,36 @@ test('public version links and manifest reads support presentation workloads', a
   assert.equal(manifestResponse.status, 200);
   assert.equal(manifestPayload.manifestType, 'presentation-default');
 });
+
+test('delivery routes deny callers outside the version tenant scope', async () => {
+  const store = new InMemoryPublicVersionReadStore({
+    versions: [
+      {
+        assetId: 'ast_003',
+        assetOwner: 'customer:acme',
+        lifecycleState: 'published',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 128n,
+          contentType: 'image/png',
+          filename: 'tenant-private.png'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_003',
+        versionNumber: 1,
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const app = createPublicApp(store);
+
+  const response = await app.request('http://localhost/v1/assets/ast_003/versions/ver_003', {
+    headers: createAuthedHeaders({
+      'x-cdngine-allowed-tenants': 'tenant-beta'
+    })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.type, 'https://docs.cdngine.dev/problems/scope-not-allowed');
+});

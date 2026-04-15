@@ -53,14 +53,7 @@ When a new major claim appears in docs, ask:
 
 If none of those answers exist, the claim is underspecified.
 
-## 4. Read more
-
-- [Implementation Ledger](./implementation-ledger.md)
-- [Testing Strategy](./testing-strategy.md)
-- [Observability](./observability.md)
-- [Security Model](./security-model.md)
-
-## 5. Code-to-architecture audit matrix
+## 4. Code-to-architecture audit matrix
 
 This matrix is the current architecture-conformance audit for the implemented codebase. It maps each major code area to its architecture responsibility, governing docs, and the executable evidence that currently backs the implementation.
 
@@ -75,3 +68,10 @@ This matrix is the current architecture-conformance audit for the implemented co
 | `packages/storage/src/*` and `packages/observability/src/*` | keep storage-role normalization, deployment-profile semantics, and readiness requirements outside route handlers | `docs/environment-and-deployment.md`, `docs/upstream-integration-model.md`, `docs/observability.md` | `packages/storage/test/*.mjs`, `packages/observability/test/readiness-profile.test.mjs` | aligned; one-bucket or multi-bucket posture does not change public semantics |
 | `packages/contracts/src/*` and `contracts/openapi/public.openapi.yaml` | keep the public contract synchronized with implemented upload, version, manifest, and authorization behavior | `docs/spec-governance.md`, `docs/sdk-strategy.md`, `docs/api-style-guide.md`, `docs/problem-types.md` | `npm run contracts:check`, `npm run sdk:generate`, `npm run sdk:check`, `packages/contracts/test/public-client.test.mjs` | aligned after widening manifest responses to image or presentation payloads |
 | `tests/conformance/*.test.mjs` | prove the documented lifecycle across API, canonicalization, dispatch, publication, operator action, and public delivery boundaries | `docs/conformance.md`, `docs/testing-strategy.md`, `docs/architecture.md` | `tests/conformance/image-lifecycle.test.mjs`, `tests/conformance/presentation-lifecycle.test.mjs` | aligned; the architecture is now proven across two workloads, not one |
+
+## 5. Read more
+
+- [Implementation Ledger](./implementation-ledger.md)
+- [Testing Strategy](./testing-strategy.md)
+- [Observability](./observability.md)
+- [Security Model](./security-model.md)

@@ -18,7 +18,8 @@ This file documents:
 
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
 - [tus resumable upload protocol](https://tus.io/protocols/resumable-upload)
-- [Better Auth docs](https://www.better-auth.com/docs)
+- [RFC 6750: OAuth 2.0 Bearer Token Usage](https://datatracker.ietf.org/doc/html/rfc6750)
+- [RFC 8725: JWT Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
 
 ## What is actually implemented right now
@@ -29,7 +30,7 @@ The current repository gives you these pieces:
 | --- | --- |
 | Public HTTP contract | Implemented and described in `contracts/openapi/public.openapi.yaml` |
 | Public Hono app | Implemented in `@cdngine/api` and exercised in tests, but **not** shipped as a standalone `npm run api:start` server yet |
-| Auth posture | Public routes require a **Better Auth bearer token**; the repo does **not** yet ship a public sign-in tutorial flow or token-issuing API surface |
+| Auth posture | Public routes require a bearer token accepted by the host application's `@cdngine/auth` integration; the repo's default demo and test adapter uses Better Auth, but the platform contract is vendor-neutral |
 | TypeScript SDK | Implemented in the private workspace package `@cdngine/sdk`; it is a checked-in repo package, **not** a published npm package yet |
 | SDK upload behavior | The SDK now owns create-session, staged upload, completion, and optional wait through `client.assets.uploadFile(...)` and `client.assets.uploadFileAndWait(...)` |
 | Asset lookup coverage | The SDK now wraps both `GET /v1/assets/{assetId}` and `GET /v1/assets/{assetId}/versions/{versionId}` |
@@ -37,7 +38,7 @@ The current repository gives you these pieces:
 That means the realistic integration posture today is:
 
 1. your host app mounts the public API
-2. your host app issues Better Auth bearer tokens
+2. your host app issues or validates bearer tokens through its chosen auth system
 3. your app code uses the SDK as the primary integration surface
 4. the SDK handles upload session creation, staged upload, completion, and polling for you
 5. raw HTTP stays available as a reference and fallback surface, not the default developer path
@@ -47,7 +48,7 @@ That means the realistic integration posture today is:
 You need these values regardless of whether you call the API directly or use the TypeScript client:
 
 - `API_BASE_URL`: the host where your application mounted the CDNgine public API
-- `ACCESS_TOKEN`: a Better Auth bearer token accepted by that host
+- `ACCESS_TOKEN`: a bearer token accepted by that host's CDNgine auth integration
 - `serviceNamespaceId`: the CDNgine service namespace you are allowed to use
 - `tenantId`: required when your namespace is tenant-scoped
 - `assetOwner`: the caller-facing owner string used for policy
@@ -74,7 +75,7 @@ The examples below use Bash and `curl` because that makes the wire contract expl
 
 ```bash
 API_BASE_URL="https://api.cdngine.local"
-ACCESS_TOKEN="replace-with-better-auth-bearer-token"
+ACCESS_TOKEN="replace-with-host-access-token"
 
 SERVICE_NAMESPACE_ID="media-platform"
 TENANT_ID="tenant-acme"
@@ -717,7 +718,7 @@ export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
 If you are integrating against the repository today, assume these gaps are still yours to handle:
 
 1. mounting the public API into a real host application
-2. issuing Better Auth bearer tokens to callers
+2. issuing or validating caller access tokens in the host application
 3. publishing or vendoring the TypeScript SDK outside this monorepo
 
 ## Read next

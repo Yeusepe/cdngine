@@ -50,13 +50,15 @@ This is the preferred posture because standard guidance for modern authorization
 
 RBAC may still be used for coarse operator roles, but RBAC alone is not expressive enough for the shared-platform scoping model.
 
-CDNgine's default authentication subsystem should be **Better Auth** wrapped by `@cdngine/auth`.
+CDNgine's runtime auth contract should be the `@cdngine/auth` bearer-token authenticator boundary.
+
+The repository's default adapter uses **Better Auth**, but Better Auth is **not** the required platform contract. A deployment may use any identity or session system that can validate the caller and map the result into a CDNgine `AuthenticatedActor`.
 
 The minimum supported auth posture is:
 
-- bearer-token authenticated requests
-- server-side session resolution through Better Auth
-- server-side mapping from the resolved session into CDNgine subject, role, namespace, and tenant claims
+- bearer-token authenticated requests following standard `Authorization: Bearer ...` semantics
+- server-side token or session validation through a pluggable authenticator adapter
+- server-side mapping from the validated identity into CDNgine subject, role, namespace, and tenant claims
 
 Authorization scope must come from the authenticated session and server-side policy mapping, not from ad hoc request headers supplied by the caller.
 

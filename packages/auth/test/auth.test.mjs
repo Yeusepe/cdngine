@@ -16,6 +16,8 @@ import assert from 'node:assert/strict';
 
 import {
   buildBearerHeaders,
+  createRequestActorAuthenticator,
+  extractBearerToken,
   createInMemoryCDNgineAuth
 } from '../dist/index.js';
 
@@ -44,6 +46,43 @@ test('createInMemoryCDNgineAuth returns null for invalid bearer tokens', async (
   const actor = await auth.authenticateHeaders(buildBearerHeaders('invalid-token'));
 
   assert.equal(actor, null);
+});
+
+test('createRequestActorAuthenticator lets hosts plug in any bearer-token validator', async () => {
+  const auth = createRequestActorAuthenticator(async (headers) => {
+    const token = extractBearerToken(headers);
+
+    if (token !== 'custom-jwt-token') {
+      return null;
+    }
+
+    return {
+      allowedServiceNamespaces: ['media-platform'],
+      allowedTenantIds: ['tenant-acme'],
+      roles: ['public-user'],
+      subject: 'customer-acme-demo'
+    };
+  });
+
+  const actor = await auth.authenticateHeaders(
+    new Headers({
+      Authorization: 'Bearer custom-jwt-token'
+    })
+  );
+
+  assert.deepEqual(actor, {
+    allowedServiceNamespaces: ['media-platform'],
+    allowedTenantIds: ['tenant-acme'],
+    roles: ['public-user'],
+    subject: 'customer-acme-demo'
+  });
+  assert.equal(await auth.authenticateHeaders(buildBearerHeaders('different-token')), null);
+});
+
+test('extractBearerToken ignores missing or non-bearer authorization values', () => {
+  assert.equal(extractBearerToken(new Headers()), null);
+  assert.equal(extractBearerToken(new Headers({ authorization: 'Basic abc123' })), null);
+  assert.equal(extractBearerToken(new Headers({ authorization: 'bearer token-123' })), 'token-123');
 });
 
 test('provisioned scope updates are reflected on later session reads', async () => {

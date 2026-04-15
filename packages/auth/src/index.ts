@@ -1,10 +1,12 @@
 /**
- * Purpose: Wraps Better Auth into the CDNgine auth subsystem so bearer-token session validation and actor-scope mapping stay consistent across APIs, tests, and demos.
+ * Purpose: Defines CDNgine's pluggable bearer-token auth contract and ships the repository's default Better Auth adapter plus in-memory fixtures for tests and demos.
  * Governing docs:
  * - docs/security-model.md
  * - docs/service-architecture.md
  * - docs/package-reference.md
  * External references:
+ * - https://datatracker.ietf.org/doc/html/rfc6750
+ * - https://datatracker.ietf.org/doc/html/rfc8725
  * - https://www.better-auth.com/docs/concepts/session-management
  * - https://www.better-auth.com/docs/plugins/bearer
  * - https://www.better-auth.com/docs/concepts/database
@@ -40,6 +42,14 @@ export interface ResolvedActorDescriptor extends Partial<AuthenticatedActor> {
 
 export interface RequestActorAuthenticator {
   authenticateHeaders(headers: Headers | Record<string, string>): Promise<AuthenticatedActor | null>;
+}
+
+export type AuthenticateHeadersHandler = (
+  headers: Headers
+) => Promise<AuthenticatedActor | null> | AuthenticatedActor | null;
+
+export interface CreateRequestActorAuthenticatorOptions {
+  authenticateHeaders: AuthenticateHeadersHandler;
 }
 
 export interface CDNgineBetterAuthApi {
@@ -114,6 +124,10 @@ const DEFAULT_TEST_AUTH_SECRET =
   'cdngine-test-auth-secret-cdngine-test-auth-secret-cdngine-test-auth-secret';
 const DEFAULT_TEST_PASSWORD = 'cdngine-demo-password-123';
 
+function toHeaders(headers: Headers | Record<string, string>): Headers {
+  return headers instanceof Headers ? headers : new Headers(headers);
+}
+
 function normalizeStringArray(values: readonly string[] | null | undefined): string[] {
   return [...new Set((values ?? []).map((value) => value.trim()).filter((value) => value.length > 0))];
 }
@@ -134,6 +148,46 @@ export function buildBearerHeaders(token: string, headers: Record<string, string
   return {
     authorization: `Bearer ${token}`,
     ...headers
+  };
+}
+
+export function extractBearerToken(
+  headers: Headers | Record<string, string>,
+  scheme = 'Bearer'
+): string | null {
+  const authorization = toHeaders(headers).get('authorization');
+
+  if (!authorization) {
+    return null;
+  }
+
+  const trimmed = authorization.trim();
+  const separatorIndex = trimmed.indexOf(' ');
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const headerScheme = trimmed.slice(0, separatorIndex);
+  const token = trimmed.slice(separatorIndex + 1).trim();
+
+  if (headerScheme.toLowerCase() !== scheme.toLowerCase() || token.length === 0) {
+    return null;
+  }
+
+  return token;
+}
+
+export function createRequestActorAuthenticator(
+  options: CreateRequestActorAuthenticatorOptions | AuthenticateHeadersHandler
+): RequestActorAuthenticator {
+  const authenticateHeaders =
+    typeof options === 'function' ? options : options.authenticateHeaders;
+
+  return {
+    async authenticateHeaders(headers) {
+      return authenticateHeaders(toHeaders(headers));
+    }
   };
 }
 
@@ -189,7 +243,7 @@ export function createCDNgineAuth(options: CreateCDNgineAuthOptions): CDNgineAut
     auth,
     async authenticateHeaders(headers) {
       const session = (await auth.api.getSession({
-        headers: new Headers(headers)
+        headers: toHeaders(headers)
       })) as CDNgineSessionView | null;
 
       if (!session) {
@@ -218,6 +272,8 @@ export function createCDNgineAuth(options: CreateCDNgineAuthOptions): CDNgineAut
     }
   };
 }
+
+export const createBetterAuthAuthenticator = createCDNgineAuth;
 
 export function createInMemoryCDNgineAuth(
   options: Partial<Omit<CreateCDNgineAuthOptions, 'database' | 'resolveActor'>> = {}
@@ -294,3 +350,5 @@ export function createInMemoryCDNgineAuth(
     }
   };
 }
+
+export const createInMemoryBetterAuthAuthenticator = createInMemoryCDNgineAuth;

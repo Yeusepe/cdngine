@@ -6,7 +6,8 @@
  * - docs/security-model.md
  * External references:
  * - https://hono.dev/docs
- * - https://www.better-auth.com/docs/plugins/bearer
+ * - https://datatracker.ietf.org/doc/html/rfc6750
+ * - https://datatracker.ietf.org/doc/html/rfc8725
  * - https://owasp.org/www-project-application-security-verification-standard/
  * Tests:
  * - apps/api/test/api-app.test.ts

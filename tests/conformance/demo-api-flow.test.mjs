@@ -27,7 +27,7 @@ test('demo scenario generator produces multiple objects with authenticated uploa
   assert.equal(scenario.environment.storage.buckets.ingest, 'cdngine-demo-ingest');
   assert.equal(scenario.environment.storage.buckets.derived, 'cdngine-demo-derived');
   assert.match(scenario.examples.api.code, /curl -X POST "\$API_BASE_URL\/v1\/upload-sessions"/);
-  assert.match(scenario.examples.api.code, /replace-with-better-auth-bearer-token/);
+  assert.match(scenario.examples.api.code, /replace-with-host-access-token/);
   assert.match(scenario.examples.sdk.code, /createCDNgineClient/);
   assert.match(scenario.examples.sdk.code, /assets\.uploadFileAndWait/);
   assert.match(scenario.examples.sdk.code, /\.delivery\("/);

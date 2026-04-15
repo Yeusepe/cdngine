@@ -19,7 +19,7 @@ That is the easiest way to read the stack list below.
 | validation and schema authoring | Zod | strongly typed runtime validation with JSON Schema conversion support |
 | public contract artifacts | OpenAPI 3.1 + JSON Schema + Arazzo | durable wire contracts plus executable workflow descriptions |
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
-| authentication and bearer sessions | Better Auth | composable bearer-token session handling with pluggable adapters and server-side session retrieval |
+| authentication and bearer sessions | `@cdngine/auth` contract + Better Auth default adapter | vendor-neutral bearer-token validation boundary with server-side actor resolution, plus a default Better Auth implementation for this repository |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
 | canonical source repository | Kopia | chunk-deduplicated canonical asset history and replay provenance without custom repository code |
@@ -68,7 +68,7 @@ That is the easiest way to read the stack list below.
 | DataHub | `datahub-project/datahub` | metadata graph and lineage thinking |
 | lakeFS | `treeverse/lakeFS` | optional branch/publish/revert semantics and GC posture when that workflow is needed |
 | Unkey | `unkeyed/unkey` | API control-plane auth and permissions patterns |
-| Better Auth | `better-auth/better-auth` | composable organization-aware auth |
+| Better Auth | `better-auth/better-auth` | default repository adapter for the `@cdngine/auth` contract when a host wants session-driven bearer auth |
 | Medusa | `medusajs/medusa` | modular workflows and provider composition |
 | Cal.com | `calcom/cal.com` | large TypeScript monorepo and multi-tenant package organization |
 | UniFFI | `mozilla/uniffi-rs` | multi-language bindings for a Rust SDK core |

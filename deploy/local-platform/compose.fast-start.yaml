@@ -6,6 +6,7 @@
 # External references:
 # - https://docs.temporal.io/
 # - https://tus.github.io/tusd/storage-backends/aws-s3/
+# - https://docs.aws.amazon.com/cli/latest/userguide/getting-started-docker.html
 # - https://kopia.io/docs/repositories/
 # - https://docs.rustfs.com/installation/docker/
 # Tests:
@@ -108,7 +109,7 @@ services:
       start_period: 40s
 
   rustfs-init:
-    image: amazon/aws-cli:2
+    image: public.ecr.aws/aws-cli/aws-cli:latest
     depends_on:
       rustfs:
         condition: service_healthy

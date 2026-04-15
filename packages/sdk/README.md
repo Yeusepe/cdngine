@@ -44,17 +44,19 @@ const client = createCDNgineClient({
   getAccessToken: () => process.env.CDNGINE_TOKEN
 });
 
-const uploaded = await client.assets.uploadFileAndWait({
+const media = client.withDefaults({
   assetOwner: 'customer:acme',
-  contentType: 'image/png',
-  file: fileBuffer,
-  filename: 'hero-banner.png',
-  idempotencyKey: 'hero-banner-v1',
   serviceNamespaceId: 'media-platform',
   tenantId: 'tenant-acme',
   wait: {
     untilStates: ['published']
   }
+});
+
+const uploaded = await media.upload(fileBuffer, {
+  contentType: 'image/png',
+  filename: 'hero-banner.png',
+  idempotencyKey: 'hero-banner-v1'
 });
 
 const delivery = await client
@@ -72,16 +74,61 @@ const delivery = await client
 console.log(uploaded.version.lifecycleState, delivery.url);
 ```
 
+## Private multi-tenant downloads
+
+If you are selling files to authenticated users, the normal pattern is:
+
+1. your host app authenticates the user and checks the business entitlement
+2. the caller's token resolves to a CDNgine actor with the correct tenant and namespace scope
+3. the SDK asks CDNgine for a short-lived authorized URL
+4. your UI redirects the user to that URL
+
+Derivative download example:
+
+```ts
+const client = createCDNgineClient({
+  baseUrl: 'https://api.cdngine.local',
+  getAccessToken: () => sessionStorage.getItem('access_token') ?? undefined
+});
+
+const downloads = client.withDefaults({
+  serviceNamespaceId: 'media-platform',
+  tenantId: 'tenant-acme'
+});
+
+const url = await downloads.asset('ast_001').version('ver_001').delivery('paid-downloads').url({
+  idempotencyKey: 'download-ver_001-user_123',
+  variant: 'webp-master'
+});
+
+window.location.assign(url);
+```
+
+Original-source download example:
+
+```ts
+const url = await client.asset('ast_001').version('ver_001').source().url({
+  idempotencyKey: 'source-ver_001-user_123',
+  preferredDisposition: 'attachment'
+});
+
+window.location.assign(url);
+```
+
+Use CDNgine's authorize step as the product download boundary. Do not expose the raw origin object URL directly as your customer-facing download link.
+
 ## Low-level upload helpers still exist
 
-`assets.upload(...)` and `assets.uploadAndWait(...)` are still available, but they are now the lower-level path for pre-staged or custom-ingest flows.
+`client.withDefaults(...)` and `client.scope(...)` are the shortest path for normal application code because they let you bind namespace, tenant, owner, and default wait behavior once.
 
-For normal application code, prefer:
+Then prefer:
 
-- `client.assets.uploadFile(...)`
-- `client.assets.uploadFileAndWait(...)`
+- `scopedClient.upload(...)`
+- `scopedClient.uploadFile(...)`
 
-Use the lower-level helpers only when another layer already uploaded the bytes or when you are deliberately controlling the staging flow yourself.
+Under that, `client.assets.uploadFile(...)` and `client.assets.uploadFileAndWait(...)` are still available when you want the explicit all-options object shape.
+
+Use the lower-level `assets.upload(...)` and `assets.uploadAndWait(...)` helpers only when another layer already uploaded the bytes or when you are deliberately controlling the staging flow yourself.
 
 ## Step-by-step tutorial
 

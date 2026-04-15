@@ -238,6 +238,274 @@ test('fluent asset handles read like task-oriented SDK calls', async () => {
   );
 });
 
+test('version download helpers collapse authorization payloads into simple url calls', async () => {
+  const requests = [];
+  const client = createCDNgineClient({
+    baseUrl: 'https://api.cdngine.local',
+    fetch: async (url, init) => {
+      requests.push({
+        body: init?.body ? JSON.parse(init.body) : undefined,
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        method: init?.method,
+        url
+      });
+
+      if (String(url).includes('/source/authorize')) {
+        return createJsonResponse({
+          authorizationMode: 'signed-url',
+          url: 'https://downloads.cdngine.local/originals/ast_001/ver_001'
+        });
+      }
+
+      return createJsonResponse({
+        authorizationMode: 'signed-url',
+        url: 'https://cdn.cdngine.local/paid-downloads/ebook-pdf'
+      });
+    },
+    getAccessToken: 'token_123'
+  });
+
+  const version = client.asset('ast_001').version('ver_001');
+  const deliveryUrl = await version.delivery('paid-downloads').url({
+    idempotencyKey: 'idem-delivery-url',
+    variant: 'ebook-pdf'
+  });
+  const sourceUrl = await version.source().url({
+    idempotencyKey: 'idem-source-url',
+    preferredDisposition: 'attachment'
+  });
+
+  assert.equal(deliveryUrl, 'https://cdn.cdngine.local/paid-downloads/ebook-pdf');
+  assert.equal(sourceUrl, 'https://downloads.cdngine.local/originals/ast_001/ver_001');
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0].body, {
+    responseFormat: 'url',
+    variant: 'ebook-pdf'
+  });
+  assert.equal(requests[0].headers['idempotency-key'], 'idem-delivery-url');
+  assert.deepEqual(requests[1].body, {
+    preferredDisposition: 'attachment'
+  });
+  assert.equal(requests[1].headers['idempotency-key'], 'idem-source-url');
+});
+
+test('withDefaults binds upload scope so common file uploads need very little code', async () => {
+  let attempt = 0;
+  const requests = [];
+  const client = createCDNgineClient({
+    baseUrl: 'https://api.cdngine.local',
+    fetch: async (url, init) => {
+      const request = {
+        body: init?.body,
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        method: init?.method,
+        url: String(url)
+      };
+      requests.push(request);
+
+      if (request.url.endsWith('/v1/upload-sessions')) {
+        return createJsonResponse(
+          {
+            assetId: 'ast_010',
+            isDuplicate: false,
+            links: {
+              complete: '/v1/upload-sessions/upl_010/complete'
+            },
+            status: 'awaiting-upload',
+            uploadSessionId: 'upl_010',
+            uploadTarget: {
+              expiresAt: '2026-01-15T18:00:00.000Z',
+              method: 'PATCH',
+              protocol: 'tus',
+              url: 'https://uploads.cdngine.local/files/upl_010'
+            },
+            versionId: 'ver_010'
+          },
+          201
+        );
+      }
+
+      if (request.url === 'https://uploads.cdngine.local/files/upl_010') {
+        return new Response(null, {
+          status: 204
+        });
+      }
+
+      if (request.url.endsWith('/v1/upload-sessions/upl_010/complete')) {
+        return createJsonResponse(
+          {
+            assetId: 'ast_010',
+            uploadSessionId: 'upl_010',
+            versionId: 'ver_010',
+            versionState: 'canonical',
+            workflowDispatch: {
+              dispatchId: 'wd_010',
+              state: 'pending',
+              workflowKey: 'media-platform:ast_010:ver_010:image-derivation-v1'
+            }
+          },
+          202
+        );
+      }
+
+      attempt += 1;
+
+      return createJsonResponse({
+        assetId: 'ast_010',
+        lifecycleState: attempt >= 2 ? 'published' : 'processing',
+        links: {
+          derivatives: '/v1/assets/ast_010/versions/ver_010/derivatives',
+          manifest: '/v1/assets/ast_010/versions/ver_010/manifests/image-default',
+          self: '/v1/assets/ast_010/versions/ver_010'
+        },
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 3,
+          contentType: 'image/png',
+          filename: 'hero-banner.png'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_010',
+        versionNumber: 1,
+        workflowState: attempt >= 2 ? 'completed' : 'running'
+      });
+    },
+    getAccessToken: 'token_123'
+  });
+
+  const media = client.withDefaults({
+    assetOwner: 'customer:acme',
+    serviceNamespaceId: 'media-platform',
+    tenantId: 'tenant-acme',
+    wait: {
+      intervalMs: 1,
+      timeoutMs: 100,
+      untilStates: ['published']
+    }
+  });
+
+  const result = await media.upload(new Uint8Array([1, 2, 3]), {
+    contentType: 'image/png',
+    filename: 'hero-banner.png',
+    idempotencyKey: 'idem-scoped-upload',
+    objectKey: 'staging/media-platform/tenant-acme/hero-banner.png'
+  });
+
+  assert.equal(result.assetId, 'ast_010');
+  assert.equal(result.version.lifecycleState, 'published');
+  assert.equal(requests[0].headers['idempotency-key'], 'idem-scoped-upload:create');
+  assert.deepEqual(JSON.parse(requests[0].body), {
+    assetOwner: 'customer:acme',
+    serviceNamespaceId: 'media-platform',
+    source: {
+      contentType: 'image/png',
+      filename: 'hero-banner.png'
+    },
+    tenantId: 'tenant-acme',
+    upload: {
+      byteLength: 3,
+      checksum: {
+        algorithm: 'sha256',
+        value: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81'
+      },
+      objectKey: 'staging/media-platform/tenant-acme/hero-banner.png'
+    }
+  });
+});
+
+test('scoped clients can layer defaults and still allow per-call overrides', async () => {
+  const requests = [];
+  const client = createCDNgineClient({
+    baseUrl: 'https://api.cdngine.local',
+    fetch: async (url, init) => {
+      requests.push({
+        body: init?.body,
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        method: init?.method,
+        url: String(url)
+      });
+
+      if (String(url).endsWith('/v1/upload-sessions')) {
+        return createJsonResponse(
+          {
+            assetId: 'ast_011',
+            isDuplicate: false,
+            links: {
+              complete: '/v1/upload-sessions/upl_011/complete'
+            },
+            status: 'awaiting-upload',
+            uploadSessionId: 'upl_011',
+            uploadTarget: {
+              expiresAt: '2026-01-15T18:00:00.000Z',
+              method: 'PATCH',
+              protocol: 'tus',
+              url: 'https://uploads.cdngine.local/files/upl_011'
+            },
+            versionId: 'ver_011'
+          },
+          201
+        );
+      }
+
+      if (String(url) === 'https://uploads.cdngine.local/files/upl_011') {
+        return new Response(null, {
+          status: 204
+        });
+      }
+
+      return createJsonResponse(
+        {
+          assetId: 'ast_011',
+          uploadSessionId: 'upl_011',
+          versionId: 'ver_011',
+          versionState: 'canonical',
+          workflowDispatch: {
+            dispatchId: 'wd_011',
+            state: 'pending',
+            workflowKey: 'media-platform:ast_011:ver_011:image-derivation-v1'
+          }
+        },
+        202
+      );
+    },
+    getAccessToken: 'token_123'
+  });
+
+  const base = client.withDefaults({
+    assetOwner: 'customer:acme',
+    serviceNamespaceId: 'media-platform'
+  });
+  const tenantScoped = base.withDefaults({
+    tenantId: 'tenant-acme'
+  });
+
+  await tenantScoped.uploadFile(new Uint8Array([1, 2, 3]), {
+    assetOwner: 'customer:beta',
+    contentType: 'image/png',
+    filename: 'tenant-private.png',
+    idempotencyKey: 'idem-layered-upload',
+    objectKey: 'staging/media-platform/tenant-acme/tenant-private.png'
+  });
+
+  assert.deepEqual(JSON.parse(requests[0].body), {
+    assetOwner: 'customer:beta',
+    serviceNamespaceId: 'media-platform',
+    source: {
+      contentType: 'image/png',
+      filename: 'tenant-private.png'
+    },
+    tenantId: 'tenant-acme',
+    upload: {
+      byteLength: 3,
+      checksum: {
+        algorithm: 'sha256',
+        value: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81'
+      },
+      objectKey: 'staging/media-platform/tenant-acme/tenant-private.png'
+    }
+  });
+});
+
 test('assets.uploadAndWait orchestrates create, complete, and wait with one call', async () => {
   let attempt = 0;
   const requests = [];

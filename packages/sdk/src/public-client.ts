@@ -39,6 +39,13 @@ export interface CDNgineClientOptions {
   getAccessToken?: string | (() => string | Promise<string> | undefined);
 }
 
+export interface CDNgineClientDefaults {
+  assetOwner?: string;
+  serviceNamespaceId?: string;
+  tenantId?: string;
+  wait?: WaitForVersionOptions;
+}
+
 export interface WaitForVersionOptions {
   intervalMs?: number;
   signal?: AbortSignal;
@@ -108,6 +115,16 @@ export interface AuthorizeSourceDownloadForVersionInput {
   idempotencyKey: string;
 }
 
+export interface DeliveryUrlForVersionInput {
+  idempotencyKey: string;
+  variant: NonNullable<AuthorizeDeliveryRequest['variant']>;
+}
+
+export interface SourceUrlForVersionInput {
+  idempotencyKey: string;
+  preferredDisposition?: AuthorizeSourceRequest['preferredDisposition'];
+}
+
 export interface UploadAssetInput {
   complete: Omit<CompleteUploadSessionInput, 'uploadSessionId'>;
   create: CreateUploadSessionInput;
@@ -158,6 +175,17 @@ export interface UploadFileAndWaitResult extends UploadFileResult {
   version: GetAssetVersionResponse;
 }
 
+export interface ScopedUploadFileOptions
+  extends Omit<UploadFileInput, 'assetOwner' | 'file' | 'serviceNamespaceId' | 'tenantId'> {
+  assetOwner?: string;
+  serviceNamespaceId?: string;
+  tenantId?: string;
+}
+
+export interface ScopedUploadOptions extends Omit<ScopedUploadFileOptions, 'wait'> {
+  wait?: WaitForVersionOptions;
+}
+
 type UploadBinaryPayload = Blob | ArrayBuffer | Uint8Array;
 
 function buildUrl(baseUrl: string, pathname: string) {
@@ -204,6 +232,38 @@ function getUploadIdempotencyKeys(baseIdempotencyKey?: string) {
     completeIdempotencyKey: `${base}:complete`,
     createIdempotencyKey: `${base}:create`
   };
+}
+
+function mergeWaitOptions(
+  defaults?: WaitForVersionOptions,
+  overrides?: WaitForVersionOptions
+): WaitForVersionOptions | undefined {
+  if (!defaults && !overrides) {
+    return undefined;
+  }
+
+  return {
+    ...(defaults ?? {}),
+    ...(overrides ?? {})
+  };
+}
+
+function resolveScopedRequiredValue<T>(
+  value: T | undefined,
+  fallback: T | undefined,
+  fieldName: 'assetOwner' | 'serviceNamespaceId'
+): T {
+  if (value !== undefined) {
+    return value;
+  }
+
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  throw new Error(
+    `${fieldName} is required. Provide it in createCDNgineClient(...).withDefaults(...) or on the individual upload call.`
+  );
 }
 
 async function normalizeUploadPayload(
@@ -359,6 +419,14 @@ export class CDNginePublicClient {
 
   asset(assetId: string) {
     return new CDNgineAssetClient(this, assetId);
+  }
+
+  scope(defaults: CDNgineClientDefaults) {
+    return new CDNgineScopedClient(this, defaults);
+  }
+
+  withDefaults(defaults: CDNgineClientDefaults) {
+    return this.scope(defaults);
   }
 
   async authorizeDelivery(input: AuthorizeDeliveryInput): Promise<AuthorizeDeliveryResponse> {
@@ -696,6 +764,120 @@ export class CDNginePublicClient {
   }
 }
 
+export class CDNgineScopedClient {
+  readonly assets: {
+    byId: (assetId: string) => CDNgineAssetClient;
+    get: (assetId: string) => Promise<GetAssetResponse>;
+    upload: (
+      file: Blob | ArrayBuffer | ArrayBufferView,
+      options?: ScopedUploadOptions
+    ) => Promise<UploadFileAndWaitResult>;
+    uploadFile: (
+      file: Blob | ArrayBuffer | ArrayBufferView,
+      options?: ScopedUploadFileOptions
+    ) => Promise<UploadFileResult>;
+    version: (assetId: string, versionId: string) => CDNgineAssetVersionClient;
+    waitForVersion: (
+      assetId: string,
+      versionId: string,
+      options?: WaitForVersionOptions
+    ) => Promise<GetAssetVersionResponse>;
+  };
+
+  constructor(
+    private readonly client: CDNginePublicClient,
+    readonly defaults: CDNgineClientDefaults
+  ) {
+    this.assets = {
+      byId: (assetId) => this.asset(assetId),
+      get: (assetId) => this.client.getAsset(assetId),
+      upload: (file, options) => this.upload(file, options),
+      uploadFile: (file, options) => this.uploadFile(file, options),
+      version: (assetId, versionId) => new CDNgineAssetVersionClient(this.client, assetId, versionId),
+      waitForVersion: (assetId, versionId, waitOptions) =>
+        this.client.waitForVersion(assetId, versionId, waitOptions)
+    };
+  }
+
+  asset(assetId: string) {
+    return this.client.asset(assetId);
+  }
+
+  scope(defaults: CDNgineClientDefaults) {
+    return this.withDefaults(defaults);
+  }
+
+  withDefaults(defaults: CDNgineClientDefaults) {
+    const mergedDefaults: CDNgineClientDefaults = {
+      ...this.defaults,
+      ...defaults
+    };
+    const wait = mergeWaitOptions(this.defaults.wait, defaults.wait);
+
+    return new CDNgineScopedClient(this.client, {
+      ...mergedDefaults,
+      ...(wait ? { wait } : {})
+    });
+  }
+
+  async upload(
+    file: Blob | ArrayBuffer | ArrayBufferView,
+    options: ScopedUploadOptions = {}
+  ): Promise<UploadFileAndWaitResult> {
+    const input = this.buildUploadInput(file, options);
+
+    return this.client.uploadFileAndWait(input);
+  }
+
+  async uploadFile(
+    file: Blob | ArrayBuffer | ArrayBufferView,
+    options: ScopedUploadFileOptions = {}
+  ): Promise<UploadFileResult> {
+    const input = this.buildUploadFileInput(file, options);
+
+    return this.client.uploadFile(input);
+  }
+
+  private buildUploadFileInput(
+    file: Blob | ArrayBuffer | ArrayBufferView,
+    options: ScopedUploadFileOptions
+  ): UploadFileInput {
+    const assetOwner = resolveScopedRequiredValue(
+      options.assetOwner,
+      this.defaults.assetOwner,
+      'assetOwner'
+    );
+    const serviceNamespaceId = resolveScopedRequiredValue(
+      options.serviceNamespaceId,
+      this.defaults.serviceNamespaceId,
+      'serviceNamespaceId'
+    );
+    const tenantId = options.tenantId ?? this.defaults.tenantId;
+
+    return {
+      ...options,
+      assetOwner,
+      file,
+      serviceNamespaceId,
+      ...(tenantId !== undefined ? { tenantId } : {})
+    };
+  }
+
+  private buildUploadInput(
+    file: Blob | ArrayBuffer | ArrayBufferView,
+    options: ScopedUploadOptions
+  ): UploadFileAndWaitInput {
+    const { wait: waitOverrides, ...uploadOptions } = options;
+    const wait = mergeWaitOptions(this.defaults.wait, waitOverrides);
+    const input = this.buildUploadFileInput(file, uploadOptions);
+
+    return {
+      ...input,
+      ...(wait ? { wait } : {})
+    };
+  }
+}
+
 export class CDNgineAssetClient {
   constructor(
     private readonly client: CDNginePublicClient,
@@ -728,6 +910,25 @@ export class CDNgineAssetVersionClient {
     });
   }
 
+  source() {
+    return {
+      authorize: (input: AuthorizeSourceDownloadForVersionInput) =>
+        this.authorizeSourceDownload(input),
+      url: async (input: SourceUrlForVersionInput) => {
+        const authorization = await this.authorizeSourceDownload({
+          body: {
+            ...(input.preferredDisposition
+              ? { preferredDisposition: input.preferredDisposition }
+              : {})
+          },
+          idempotencyKey: input.idempotencyKey
+        });
+
+        return getAuthorizedUrl(authorization, 'Source download');
+      }
+    };
+  }
+
   delivery(deliveryScopeId: string) {
     return {
       authorize: (input: AuthorizeDeliveryForVersionInput) =>
@@ -736,7 +937,21 @@ export class CDNgineAssetVersionClient {
           assetId: this.assetId,
           deliveryScopeId,
           versionId: this.versionId
-        })
+        }),
+      url: async (input: DeliveryUrlForVersionInput) => {
+        const authorization = await this.client.authorizeDelivery({
+          assetId: this.assetId,
+          body: {
+            responseFormat: 'url',
+            variant: input.variant
+          },
+          deliveryScopeId,
+          idempotencyKey: input.idempotencyKey,
+          versionId: this.versionId
+        });
+
+        return getAuthorizedUrl(authorization, 'Delivery authorization');
+      }
     };
   }
 
@@ -761,6 +976,19 @@ export class CDNgineAssetVersionClient {
 
 export function createCDNgineClient(options: CDNgineClientOptions) {
   return new CDNginePublicClient(options);
+}
+
+function getAuthorizedUrl(
+  authorization: AuthorizeDeliveryResponse | AuthorizeSourceResponse,
+  operationName: string
+) {
+  if (typeof authorization.url !== 'string' || authorization.url.length === 0) {
+    throw new Error(
+      `${operationName} did not return a URL. Use authorize(...) when the delivery mode requires cookies, an internal handle, or another non-URL response.`
+    );
+  }
+
+  return authorization.url;
 }
 
 export type {

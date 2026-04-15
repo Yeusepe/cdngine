@@ -22,27 +22,6 @@ This file documents:
 - [RFC 8725: JWT Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
 
-## What is actually implemented right now
-
-The current repository gives you these pieces:
-
-| Piece | Current reality |
-| --- | --- |
-| Public HTTP contract | Implemented and described in `contracts/openapi/public.openapi.yaml` |
-| Public Hono app | Implemented in `@cdngine/api` and exercised in tests, but **not** shipped as a standalone `npm run api:start` server yet |
-| Auth posture | Public routes require a bearer token accepted by the host application's `@cdngine/auth` integration; the repo's default demo and test adapter uses Better Auth, but the platform contract is vendor-neutral |
-| TypeScript SDK | Implemented in the private workspace package `@cdngine/sdk`; it is a checked-in repo package, **not** a published npm package yet |
-| SDK upload behavior | The SDK now owns create-session, staged upload, completion, and optional wait through `client.assets.uploadFile(...)` and `client.assets.uploadFileAndWait(...)` |
-| Asset lookup coverage | The SDK now wraps both `GET /v1/assets/{assetId}` and `GET /v1/assets/{assetId}/versions/{versionId}` |
-
-That means the realistic integration posture today is:
-
-1. your host app mounts the public API
-2. your host app issues or validates bearer tokens through its chosen auth system
-3. your app code uses the SDK as the primary integration surface
-4. the SDK handles upload session creation, staged upload, completion, and polling for you
-5. raw HTTP stays available as a reference and fallback surface, not the default developer path
-
 ## Before you start
 
 You need these values regardless of whether you call the API directly or use the TypeScript client:
@@ -296,6 +275,8 @@ The checked-in client currently wraps these public flows:
 - `authorizeSourceDownload(...)`
 - `uploadFile(...)`
 - `uploadFileAndWait(...)`
+- `withDefaults(...)`
+- `scope(...)`
 - grouped helpers such as `client.assets.*`
 - fluent version helpers such as `client.asset(assetId).version(versionId)...`
 
@@ -318,7 +299,7 @@ const client = createCDNgineClient({
 
 ### 3. Real file-upload flow with the SDK
 
-This is the primary end-to-end flow for a file on disk today.
+This is the primary end-to-end flow for a file on disk today: bind the repeating scope once, then upload with one call.
 
 ```ts
 import { readFile } from 'node:fs/promises';
@@ -333,20 +314,22 @@ const client = createCDNgineClient({
   getAccessToken: () => process.env.CDNGINE_TOKEN
 });
 
+const media = client.withDefaults({
+  assetOwner: 'customer:acme',
+  serviceNamespaceId: 'media-platform',
+  tenantId: 'tenant-acme',
+  wait: {
+    timeoutMs: 30_000,
+    intervalMs: 1_000,
+    untilStates: ['published']
+  }
+});
+
 try {
-  const uploaded = await client.assets.uploadFileAndWait({
-    assetOwner: 'customer:acme',
+  const uploaded = await media.upload(fileBuffer, {
     contentType: 'image/png',
-    file: fileBuffer,
     filename: 'hero-banner.png',
-    idempotencyKey: 'hero-banner-v1',
-    serviceNamespaceId: 'media-platform',
-    tenantId: 'tenant-acme',
-    wait: {
-      timeoutMs: 30_000,
-      intervalMs: 1_000,
-      untilStates: ['published']
-    }
+    idempotencyKey: 'hero-banner-v1'
   });
 
   const asset = await client.assets.get(uploaded.assetId);
@@ -411,9 +394,133 @@ const source = await version.authorizeSourceDownload({
 });
 ```
 
-### 5. Prefer `assets.uploadFile(...)` and `assets.uploadFileAndWait(...)`
+### 5. Selling private files to authenticated tenant users
 
-These are now the primary upload entry points for normal SDK users.
+For a multi-tenant paid-download flow, split the responsibility like this:
+
+1. your host app authenticates the caller
+2. your host app checks the caller's purchase, subscription, or entitlement
+3. your host app maps the caller into a CDNgine actor with the correct tenant and namespace scope
+4. the SDK asks CDNgine for a short-lived delivery or source authorization result
+5. the browser navigates to the returned URL or uses the returned bundle credentials
+
+The important rule is: **do not store or hand out raw storage URLs as the product download link**. Ask CDNgine to authorize the download at request time.
+
+#### 5.1 Host-side auth mapping
+
+CDNgine enforces namespace and tenant isolation. Your application still owns the business rule that says whether the user bought the file.
+
+That normally looks like this:
+
+```ts
+import { createRequestActorAuthenticator, extractBearerToken } from '@cdngine/auth';
+
+const authenticator = createRequestActorAuthenticator(async (headers) => {
+  const token = extractBearerToken(headers);
+  if (!token) {
+    return null;
+  }
+
+  const session = await verifyYourSession(token);
+  if (!session) {
+    return null;
+  }
+
+  const entitlement = await lookupDownloadEntitlement({
+    tenantId: session.tenantId,
+    userId: session.userId
+  });
+
+  if (!entitlement.canDownloadPaidAssets) {
+    return null;
+  }
+
+  return {
+    subject: session.userId,
+    roles: ['public-user'],
+    allowedServiceNamespaces: ['media-platform'],
+    allowedTenantIds: [session.tenantId]
+  };
+});
+```
+
+That is the right place to answer:
+
+- did the user sign in?
+- which tenant do they belong to?
+- did they buy this product or have an active subscription?
+
+CDNgine then answers:
+
+- does this request stay inside the allowed tenant and namespace?
+- is this delivery scope allowed?
+- what short-lived URL or bundle credential should the caller receive?
+
+#### 5.2 Browser or app code for a private derivative download
+
+```ts
+const client = createCDNgineClient({
+  baseUrl: 'https://api.cdngine.local',
+  getAccessToken: () => sessionStorage.getItem('access_token') ?? undefined
+});
+
+const downloads = client.withDefaults({
+  serviceNamespaceId: 'media-platform',
+  tenantId: 'tenant-acme'
+});
+
+const url = await downloads.asset('ast_001').version('ver_001').delivery('paid-downloads').url({
+  idempotencyKey: `download-ver_001-user_123`,
+  variant: 'webp-master'
+});
+
+window.location.assign(url);
+```
+
+That is the normal flow for selling a transformed or published file to signed-in tenant users.
+
+#### 5.3 If you want the original source file instead
+
+Use the source-authorization endpoint instead of a delivery-scope authorization:
+
+```ts
+const url = await client.asset(assetId).version(versionId).source().url({
+  idempotencyKey: `source-${versionId}-user_123`,
+  preferredDisposition: 'attachment'
+});
+
+window.location.assign(url);
+```
+
+#### 5.4 Failure semantics to expect
+
+- if the caller is not authenticated, the control-plane request should fail with `401`
+- if the caller is authenticated but outside the allowed tenant or namespace, the control-plane request should fail with `403`
+- if the final public delivery path is private, the delivery endpoint itself should usually behave as non-disclosing `404`
+
+That combination is what you want for a real paid-download surface: useful control-plane errors for your app, but non-disclosing public delivery behavior for unauthorized fetches.
+
+### 6. Prefer `withDefaults(...).upload(...)` for the common case
+
+For most apps, the lowest-friction path is:
+
+```ts
+const media = client.withDefaults({
+  assetOwner: 'customer:acme',
+  serviceNamespaceId: 'media-platform',
+  tenantId: 'tenant-acme',
+  wait: {
+    untilStates: ['published']
+  }
+});
+
+const uploaded = await media.upload(file, {
+  filename: 'hero-banner.png',
+  contentType: 'image/png'
+});
+```
+
+Under that, `assets.uploadFile(...)` and `assets.uploadFileAndWait(...)` remain the explicit all-options form.
 
 They own:
 
@@ -425,7 +532,7 @@ They own:
 
 You should still use the lower-level `assets.upload(...)` and `assets.uploadAndWait(...)` only when your bytes are already staged or when another layer already handled the upload-target interaction.
 
-### 6. Use typed error handling
+### 7. Use typed error handling
 
 The SDK throws `CDNgineClientError` when the API returns a problem-detail response.
 
@@ -443,65 +550,23 @@ try {
 }
 ```
 
-### 7. Wire a React upload button to the SDK
+### 8. Wire tiny React buttons first
 
-If your app already has an upload UI component, wire it straight to `client.assets.uploadFileAndWait(...)`.
+The first SDK example should be small enough to copy into an app in a few minutes.
 
-The SDK now owns the multi-step upload flow, so your component only needs to:
+Start with this shape:
 
-1. keep the `File` in state so retry works
-2. pass the file to the SDK
-3. update UI state from `onUploadProgress`
-4. record the returned `assetId`, `versionId`, and lifecycle result
+1. create one client
+2. bind your tenant or upload defaults once
+3. call one SDK method inside the button handler
+
+#### 8.1 Simple upload button
 
 ```tsx
 "use client";
 
 import { useState } from "react";
-import {
-  CDNgineClientError,
-  createCDNgineClient,
-} from "@cdngine/sdk";
-import { FileUpload } from "@/components/application/file-upload/file-upload-base";
-
-type UploadedFile = {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  progress: number;
-  failed?: boolean;
-  assetId?: string;
-  versionId?: string;
-  lifecycleState?: string;
-  sourceFile?: File;
-  error?: string;
-};
-
-const placeholderFiles: UploadedFile[] = [
-  {
-    id: "file-01",
-    name: "Example dashboard screenshot.jpg",
-    type: "image/jpeg",
-    size: 720 * 1024,
-    progress: 50,
-  },
-  {
-    id: "file-02",
-    name: "Tech design requirements_2.pdf",
-    type: "application/pdf",
-    size: 720 * 1024,
-    progress: 100,
-  },
-  {
-    id: "file-03",
-    name: "Tech design requirements.pdf",
-    type: "application/pdf",
-    failed: true,
-    size: 1024 * 1024,
-    progress: 0,
-  },
-];
+import { CDNgineClientError, createCDNgineClient } from "@cdngine/sdk";
 
 const client = createCDNgineClient({
   baseUrl: import.meta.env.VITE_CDNGINE_API_BASE_URL,
@@ -509,209 +574,124 @@ const client = createCDNgineClient({
     window.localStorage.getItem("cdngine_access_token") ?? undefined,
 });
 
-const SERVICE_NAMESPACE_ID = "media-platform";
-const TENANT_ID = "tenant-acme";
-const ASSET_OWNER = "customer:acme";
+const media = client.withDefaults({
+  assetOwner: "customer:acme",
+  serviceNamespaceId: "media-platform",
+  tenantId: "tenant-acme",
+  wait: {
+    untilStates: ["published"],
+  },
+});
 
-export const FileUploadProgressBar = (props: { isDisabled?: boolean }) => {
-  const [uploadedFiles, setUploadedFiles] =
-    useState<UploadedFile[]>(placeholderFiles);
+export function UploadButton() {
+  const [status, setStatus] = useState("Choose a file.");
 
-  const handleDropFiles = (files: FileList) => {
-    const newFilesWithIds: UploadedFile[] = Array.from(files).map((file) => ({
-      id: crypto.randomUUID(),
-      name: file.name,
-      size: file.size,
-      type: file.type || "application/octet-stream",
-      progress: 0,
-      sourceFile: file,
-    }));
+  async function onChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-    setUploadedFiles((prev) => [...newFilesWithIds, ...prev]);
+    try {
+      setStatus("Uploading...");
 
-    newFilesWithIds.forEach((file) => {
-      if (!file.sourceFile) {
-        return;
-      }
-
-      void client.assets
-        .uploadFileAndWait({
-          assetOwner: ASSET_OWNER,
-          contentType: file.sourceFile.type || "application/octet-stream",
-          file: file.sourceFile,
-          filename: file.sourceFile.name,
-          idempotencyKey: `upload-${file.id}`,
-          onUploadProgress: (progress) => {
-            setUploadedFiles((prev) =>
-              prev.map((uploadedFile) =>
-                uploadedFile.id === file.id
-                  ? { ...uploadedFile, progress, failed: false, error: undefined }
-                  : uploadedFile
-              )
-            );
-          },
-          serviceNamespaceId: SERVICE_NAMESPACE_ID,
-          tenantId: TENANT_ID,
-          wait: {
-            intervalMs: 1000,
-            timeoutMs: 60000,
-            untilStates: ["published"],
-          },
-        })
-        .then((result) => {
-          setUploadedFiles((prev) =>
-            prev.map((uploadedFile) =>
-              uploadedFile.id === file.id
-                ? {
-                    ...uploadedFile,
-                    progress: 100,
-                    failed: false,
-                    assetId: result.assetId,
-                    versionId: result.versionId,
-                    lifecycleState: result.version.lifecycleState,
-                  }
-                : uploadedFile
-            )
-          );
-        })
-        .catch((error: unknown) => {
-          const message =
-            error instanceof CDNgineClientError
-              ? error.problem.detail ??
-                error.problem.title ??
-                "CDNgine rejected the upload."
-              : error instanceof Error
-                ? error.message
-                : "Upload failed.";
-
-          setUploadedFiles((prev) =>
-            prev.map((uploadedFile) =>
-              uploadedFile.id === file.id
-                ? {
-                    ...uploadedFile,
-                    failed: true,
-                    progress: 0,
-                    error: message,
-                  }
-                : uploadedFile
-            )
-          );
-        });
-    });
-  };
-
-  const handleDeleteFile = (id: string) => {
-    setUploadedFiles((prev) => prev.filter((file) => file.id !== id));
-  };
-
-  const handleRetryFile = (id: string) => {
-    const file = uploadedFiles.find((uploadedFile) => uploadedFile.id === id);
-    if (!file?.sourceFile) return;
-
-    setUploadedFiles((prev) =>
-      prev.map((uploadedFile) =>
-        uploadedFile.id === id
-          ? {
-              ...uploadedFile,
-              failed: false,
-              error: undefined,
-              progress: 0,
-            }
-          : uploadedFile
-      )
-    );
-
-    void client.assets
-      .uploadFileAndWait({
-        assetOwner: ASSET_OWNER,
-        contentType: file.sourceFile.type || "application/octet-stream",
-        file: file.sourceFile,
-        filename: file.sourceFile.name,
-        idempotencyKey: `upload-${file.id}`,
-        onUploadProgress: (progress) => {
-          setUploadedFiles((prev) =>
-            prev.map((uploadedFile) =>
-              uploadedFile.id === id
-                ? { ...uploadedFile, progress, failed: false, error: undefined }
-                : uploadedFile
-            )
-          );
-        },
-        serviceNamespaceId: SERVICE_NAMESPACE_ID,
-        tenantId: TENANT_ID,
-        wait: {
-          intervalMs: 1000,
-          timeoutMs: 60000,
-          untilStates: ["published"],
-        },
-      })
-      .then((result) => {
-        setUploadedFiles((prev) =>
-          prev.map((uploadedFile) =>
-            uploadedFile.id === id
-              ? {
-                  ...uploadedFile,
-                  progress: 100,
-                  failed: false,
-                  assetId: result.assetId,
-                  versionId: result.versionId,
-                  lifecycleState: result.version.lifecycleState,
-                }
-              : uploadedFile
-          )
-        );
-      })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof CDNgineClientError
-            ? error.problem.detail ??
-              error.problem.title ??
-              "CDNgine rejected the upload."
-            : error instanceof Error
-              ? error.message
-              : "Upload failed.";
-
-        setUploadedFiles((prev) =>
-          prev.map((uploadedFile) =>
-            uploadedFile.id === id
-              ? {
-                  ...uploadedFile,
-                  failed: true,
-                  progress: 0,
-                  error: message,
-                }
-              : uploadedFile
-          )
-        );
+      const result = await media.upload(file, {
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        idempotencyKey: `upload-${file.name}-${file.size}`,
       });
-  };
+
+      setStatus(`Ready: ${result.assetId}/${result.versionId}`);
+    } catch (error) {
+      setStatus(
+        error instanceof CDNgineClientError
+          ? error.problem.detail ?? error.problem.title ?? "Upload rejected."
+          : error instanceof Error
+            ? error.message
+            : "Upload failed."
+      );
+    }
+  }
 
   return (
-    <FileUpload.Root>
-      <FileUpload.DropZone
-        isDisabled={props.isDisabled}
-        onDropFiles={handleDropFiles}
-      />
-
-      <FileUpload.List>
-        {uploadedFiles.map((file) => {
-          const { sourceFile: _, error: __, ...uiFile } = file;
-
-          return (
-            <FileUpload.ListItemProgressBar
-              key={file.id}
-              {...uiFile}
-              size={file.size}
-              onDelete={() => handleDeleteFile(file.id)}
-              onRetry={() => handleRetryFile(file.id)}
-            />
-          );
-        })}
-      </FileUpload.List>
-    </FileUpload.Root>
+    <>
+      <input type="file" onChange={onChange} />
+      <p>{status}</p>
+    </>
   );
-};
+}
 ```
+
+#### 8.2 Smallest useful paid-download button
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { CDNgineClientError, createCDNgineClient } from "@cdngine/sdk";
+
+const client = createCDNgineClient({
+  baseUrl: import.meta.env.VITE_CDNGINE_API_BASE_URL,
+  getAccessToken: () =>
+    window.localStorage.getItem("cdngine_access_token") ?? undefined,
+});
+
+const downloads = client.withDefaults({
+  serviceNamespaceId: "media-platform",
+  tenantId: "tenant-acme",
+});
+
+export function DownloadButton(props: { assetId: string; versionId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function onClick() {
+    try {
+      setBusy(true);
+      setError(undefined);
+
+      const url = await downloads
+        .asset(props.assetId)
+        .version(props.versionId)
+        .delivery("paid-downloads")
+        .url({
+          idempotencyKey: `download-${props.versionId}`,
+          variant: "webp-master",
+        });
+
+      window.location.assign(url);
+    } catch (error) {
+      setError(
+        error instanceof CDNgineClientError
+          ? error.problem.detail ?? error.problem.title ?? "Download rejected."
+          : error instanceof Error
+            ? error.message
+            : "Download failed."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={onClick}>
+        {busy ? "Preparing download..." : "Download file"}
+      </button>
+      {error ? <p>{error}</p> : null}
+    </>
+  );
+}
+```
+
+If you are selling the original file instead of a published derivative, swap the delivery call for:
+
+```ts
+const url = await downloads.asset(assetId).version(versionId).source().url({
+  idempotencyKey: `source-${versionId}`,
+  preferredDisposition: "attachment",
+});
+```
+
+Build the bigger upload queue, retry list, and progress UI only after this smallest version is working.
 
 ## Current gaps to plan around
 
@@ -727,4 +707,5 @@ If you are integrating against the repository today, assume these gaps are still
 - [SDK Strategy](./sdk-strategy.md)
 - [Security Model](./security-model.md)
 - [Service Architecture](./service-architecture.md)
-- [`@cdngine/sdk` README](../packages/sdk/README.md)
+- `[@cdngine/sdk` README](../packages/sdk/README.md)
+

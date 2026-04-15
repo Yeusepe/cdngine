@@ -205,7 +205,7 @@ The repository now carries a checked-in TypeScript SDK package at `packages/sdk/
 
 - generated public OpenAPI types in `packages/sdk/src/generated/public-api.ts`
 - a `CDNginePublicClient` wrapper in `packages/sdk/src/public-client.ts`
-- grouped helper entry points such as `client.assets.uploadFileAndWait(...)`, `client.assets.get(...)`, and fluent version handles such as `client.asset(assetId).version(versionId)...`
+- grouped helper entry points such as `client.withDefaults(...).upload(...)`, `client.assets.uploadFileAndWait(...)`, `client.assets.get(...)`, and fluent version handles such as `client.asset(assetId).version(versionId)...`
 - quickstart usage in `packages/sdk/README.md`
 - a current-state walkthrough in `docs/public-api-and-sdk-tutorial.md`
 

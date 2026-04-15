@@ -48,6 +48,7 @@ The current leading service-level stack is:
 | API description | OpenAPI 3.1 derived from the published external surface |
 | event description | AsyncAPI where helpful |
 | database access | Prisma over PostgreSQL |
+| authentication and bearer sessions | Better Auth via `@cdngine/auth` |
 | resumable ingest endpoint | tus / tusd |
 | telemetry | OpenTelemetry |
 | logging | structured application logging with request and workflow correlation |
@@ -153,6 +154,8 @@ The synchronous request path should do only the work that belongs in a direct re
 - ingest-target issuance
 - canonicalization command acceptance
 - workflow dispatch intent creation
+
+For authenticated surfaces, the request path should resolve bearer-token sessions through Better Auth and then derive CDNgine actor scope server-side. It should not trust tenant or namespace authorization claims passed through custom caller headers.
 
 The request path should not:
 

@@ -13,9 +13,10 @@
  */
 
 import type { Hono } from 'hono';
-import type { AuthenticatedActor } from '@cdngine/auth';
+import type { AuthenticatedActor as SharedAuthenticatedActor } from '@cdngine/auth';
 
 export type ApiSurface = 'public' | 'platform-admin' | 'operator';
+export type AuthenticatedActor = SharedAuthenticatedActor;
 
 export interface RequestedScope {
   serviceNamespaceId?: string;

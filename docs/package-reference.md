@@ -19,6 +19,7 @@ That is the easiest way to read the stack list below.
 | validation and schema authoring | Zod | strongly typed runtime validation with JSON Schema conversion support |
 | public contract artifacts | OpenAPI 3.1 + JSON Schema + Arazzo | durable wire contracts plus executable workflow descriptions |
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
+| authentication and bearer sessions | Better Auth | composable bearer-token session handling with pluggable adapters and server-side session retrieval |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
 | canonical source repository | Kopia | chunk-deduplicated canonical asset history and replay provenance without custom repository code |

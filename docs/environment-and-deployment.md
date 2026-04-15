@@ -38,7 +38,13 @@ RustFS's S3-compatible API and read-after-write consistency make it a good fast-
 
 The default local packaging is therefore **single-node + multi-bucket**, with a documented path to **single-node + single-bucket** by reusing one bucket name and switching to distinct prefixes.
 
-See [`deploy/local-platform/README.md`](../deploy/local-platform/README.md) for the actual compose-based bring-up.
+The default repository entrypoints are now:
+
+- `npm start` for the dependency stack
+- `npm run start:demo` for the dependency stack plus the demo
+- `npm run stop` to tear the dependency stack back down
+
+See [`deploy/local-platform/README.md`](../deploy/local-platform/README.md) for the actual compose-based bring-up and lower-level fallback commands.
 
 ## 2. Default deployment profile
 

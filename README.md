@@ -300,6 +300,9 @@ npm run verify
 
 The important root commands are:
 
+- `npm start` - start the local dependency stack with one cross-platform command
+- `npm run start:demo` - start the local dependency stack and the demo together
+- `npm run stop` - stop the local dependency stack
 - `npm run docs:check` - verify workspace metadata and source reference headers
 - `npm run typecheck` - run the composite TypeScript workspace typecheck
 - `npm run build` - build the current workspace graph
@@ -323,13 +326,27 @@ That fast-start profile is currently **single-node + multi-bucket** by default:
 
 It can be collapsed into **single-node + single-bucket** by reusing one bucket name with distinct prefixes.
 
-For Windows PowerShell:
+The default one-command path is cross-platform:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\start.ps1
+```bash
+npm start
 ```
 
 That brings up PostgreSQL, Redis, Temporal, RustFS, tusd, Kopia, and a local OCI registry with one command.
+
+To bring up the same stack and immediately launch the demo:
+
+```bash
+npm run start:demo
+```
+
+To stop the dependency stack:
+
+```bash
+npm run stop
+```
+
+The underlying `deploy/local-platform/start.ps1` and `stop.ps1` scripts still exist for direct PowerShell use, but the npm entrypoints are now the default path on Windows and Linux.
 
 ## Read in this order
 

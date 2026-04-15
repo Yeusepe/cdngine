@@ -28,24 +28,17 @@ If needed, the same local posture can be collapsed into **single-node + single-b
 
 ## Quickstart
 
-### Windows PowerShell
+### Cross-platform npm entrypoints
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\start.ps1
+```bash
+npm start
 ```
 
-To stop it:
+That command:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\stop.ps1
-```
-
-### Raw Docker Compose
-
-```powershell
-Copy-Item .\deploy\local-platform\.env.example .\deploy\local-platform\.env
-docker compose --env-file .\deploy\local-platform\.env -f .\deploy\local-platform\compose.fast-start.yaml up -d
-```
+1. copies `deploy/local-platform/.env.example` to `deploy/local-platform/.env` if needed
+2. starts the local dependency stack with Docker Compose
+3. works the same way on Windows, Linux, and macOS
 
 ## Local endpoints
 
@@ -75,6 +68,55 @@ The `.env.example` file documents the defaults. The important local values are:
 - application database URL: `postgresql://cdngine:cdngine@localhost:5432/cdngine`
 
 Copy `.env.example` to `.env` before changing any local values. The local `.env` file is ignored by Git.
+
+## One-command variants
+
+Start the stack and the demo together:
+
+```bash
+npm run start:demo
+```
+
+Start from a clean dependency stack first:
+
+```bash
+npm run start:fresh
+```
+
+Start the stack and the demo from a clean dependency stack:
+
+```bash
+npm run start:demo:fresh
+```
+
+Stop the local dependency stack:
+
+```bash
+npm run stop
+```
+
+## Direct PowerShell and raw Docker Compose
+
+The root npm entrypoints are the default path, but the lower-level commands still exist when needed.
+
+### Windows PowerShell
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\start.ps1
+```
+
+To stop it:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\stop.ps1
+```
+
+### Raw Docker Compose
+
+```powershell
+Copy-Item .\deploy\local-platform\.env.example .\deploy\local-platform\.env
+docker compose --env-file .\deploy\local-platform\.env -f .\deploy\local-platform\compose.fast-start.yaml up -d
+```
 
 If a contributor or adopter only has one bucket available, the same platform semantics still work by setting `STAGING_BUCKET`, `DERIVED_BUCKET`, `EXPORTS_BUCKET`, and `KOPIA_BUCKET` to the same bucket name and keeping distinct prefixes such as `uploads/`, `source/`, `derived/`, and `exports/`.
 

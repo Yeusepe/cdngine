@@ -96,6 +96,37 @@ export interface AuthorizeDeliveryInput {
   versionId: string;
 }
 
+export interface AuthorizeDeliveryForVersionInput {
+  body: AuthorizeDeliveryRequest;
+  idempotencyKey: string;
+}
+
+export interface AuthorizeSourceDownloadForVersionInput {
+  body: AuthorizeSourceRequest;
+  idempotencyKey: string;
+}
+
+export interface UploadAssetInput {
+  complete: Omit<CompleteUploadSessionInput, 'uploadSessionId'>;
+  create: CreateUploadSessionInput;
+}
+
+export interface UploadAssetResult {
+  assetId: string;
+  completion: CompleteUploadSessionResponse;
+  session: CreateUploadSessionResponse;
+  uploadSessionId: string;
+  versionId: string;
+}
+
+export interface UploadAssetAndWaitInput extends UploadAssetInput {
+  wait?: WaitForVersionOptions;
+}
+
+export interface UploadAssetAndWaitResult extends UploadAssetResult {
+  version: GetAssetVersionResponse;
+}
+
 function buildUrl(baseUrl: string, pathname: string) {
   return new URL(pathname.replace(/^\//, ''), `${baseUrl.replace(/\/+$/, '')}/`).toString();
 }
@@ -122,6 +153,26 @@ export class CDNginePublicClient {
     | (() => Record<string, string> | Promise<Record<string, string> | undefined> | undefined)
     | undefined;
   private readonly getAccessToken: (() => string | Promise<string> | undefined) | undefined;
+  readonly assets: {
+    byId: (assetId: string) => CDNgineAssetClient;
+    upload: (input: UploadAssetInput) => Promise<UploadAssetResult>;
+    uploadAndWait: (input: UploadAssetAndWaitInput) => Promise<UploadAssetAndWaitResult>;
+    version: (assetId: string, versionId: string) => CDNgineAssetVersionClient;
+    waitForVersion: (
+      assetId: string,
+      versionId: string,
+      options?: WaitForVersionOptions
+    ) => Promise<GetAssetVersionResponse>;
+  };
+  readonly deliveries: {
+    authorize: (input: AuthorizeDeliveryInput) => Promise<AuthorizeDeliveryResponse>;
+  };
+  readonly manifests: {
+    get: (assetId: string, versionId: string, manifestType: string) => Promise<GetManifestResponse>;
+  };
+  readonly sources: {
+    authorizeDownload: (input: AuthorizeSourceDownloadInput) => Promise<AuthorizeSourceResponse>;
+  };
 
   constructor(private readonly options: CDNgineClientOptions) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
@@ -143,6 +194,28 @@ export class CDNginePublicClient {
       const headers = options.getHeaders;
       this.getHeaders = () => headers;
     }
+
+    this.assets = {
+      byId: (assetId) => this.asset(assetId),
+      upload: (input) => this.uploadAsset(input),
+      uploadAndWait: (input) => this.uploadAssetAndWait(input),
+      version: (assetId, versionId) => new CDNgineAssetVersionClient(this, assetId, versionId),
+      waitForVersion: (assetId, versionId, waitOptions) =>
+        this.waitForVersion(assetId, versionId, waitOptions)
+    };
+    this.deliveries = {
+      authorize: (input) => this.authorizeDelivery(input)
+    };
+    this.manifests = {
+      get: (assetId, versionId, manifestType) => this.getManifest(assetId, versionId, manifestType)
+    };
+    this.sources = {
+      authorizeDownload: (input) => this.authorizeSourceDownload(input)
+    };
+  }
+
+  asset(assetId: string) {
+    return new CDNgineAssetClient(this, assetId);
   }
 
   async authorizeDelivery(input: AuthorizeDeliveryInput): Promise<AuthorizeDeliveryResponse> {
@@ -249,6 +322,32 @@ export class CDNginePublicClient {
     }
   }
 
+  async uploadAsset(input: UploadAssetInput): Promise<UploadAssetResult> {
+    const session = await this.createUploadSession(input.create);
+    const completion = await this.completeUploadSession({
+      ...input.complete,
+      uploadSessionId: session.uploadSessionId
+    });
+
+    return {
+      assetId: completion.assetId,
+      completion,
+      session,
+      uploadSessionId: session.uploadSessionId,
+      versionId: completion.versionId
+    };
+  }
+
+  async uploadAssetAndWait(input: UploadAssetAndWaitInput): Promise<UploadAssetAndWaitResult> {
+    const upload = await this.uploadAsset(input);
+    const version = await this.waitForVersion(upload.assetId, upload.versionId, input.wait);
+
+    return {
+      ...upload,
+      version
+    };
+  }
+
   private async requestJson<TResponse>(input: {
     body?: JsonValue;
     headers?: Record<string, string>;
@@ -289,6 +388,69 @@ export class CDNginePublicClient {
 
     return payload as TResponse;
   }
+}
+
+export class CDNgineAssetClient {
+  constructor(
+    private readonly client: CDNginePublicClient,
+    private readonly assetId: string
+  ) {}
+
+  version(versionId: string) {
+    return new CDNgineAssetVersionClient(this.client, this.assetId, versionId);
+  }
+}
+
+export class CDNgineAssetVersionClient {
+  constructor(
+    private readonly client: CDNginePublicClient,
+    readonly assetId: string,
+    readonly versionId: string
+  ) {}
+
+  authorizeSourceDownload(
+    input: AuthorizeSourceDownloadForVersionInput
+  ): Promise<AuthorizeSourceResponse> {
+    return this.client.authorizeSourceDownload({
+      ...input,
+      assetId: this.assetId,
+      versionId: this.versionId
+    });
+  }
+
+  delivery(deliveryScopeId: string) {
+    return {
+      authorize: (input: AuthorizeDeliveryForVersionInput) =>
+        this.client.authorizeDelivery({
+          ...input,
+          assetId: this.assetId,
+          deliveryScopeId,
+          versionId: this.versionId
+        })
+    };
+  }
+
+  get(): Promise<GetAssetVersionResponse> {
+    return this.client.getAssetVersion(this.assetId, this.versionId);
+  }
+
+  listDerivatives(): Promise<ListDerivativesResponse> {
+    return this.client.listDerivatives(this.assetId, this.versionId);
+  }
+
+  manifest(manifestType: string) {
+    return {
+      get: () => this.client.getManifest(this.assetId, this.versionId, manifestType)
+    };
+  }
+
+  wait(options?: WaitForVersionOptions): Promise<GetAssetVersionResponse> {
+    return this.client.waitForVersion(this.assetId, this.versionId, options);
+  }
+}
+
+export function createCDNgineClient(options: CDNgineClientOptions) {
+  return new CDNginePublicClient(options);
 }
 
 export type {

@@ -43,6 +43,12 @@ import {
   WorkflowDispatchRuntime,
   runImagePublicationWorkflow
 } from '../../packages/workflows/dist/index.js';
+import {
+  createAuthFixture,
+  createJsonBearerHeaders,
+  provisionOperatorActor,
+  provisionPublicActor
+} from '../auth-fixture.mjs';
 
 class FakeStagingBlobStore {
   constructor(descriptors = {}) {
@@ -110,23 +116,6 @@ class FakeDerivedObjectStore {
   }
 }
 
-function createPublicHeaders(overrides = {}) {
-  return {
-    authorization: 'Bearer user_123',
-    'content-type': 'application/json',
-    'x-cdngine-allowed-namespaces': 'media-platform',
-    ...overrides
-  };
-}
-
-function createOperatorHeaders(overrides = {}) {
-  return {
-    authorization: 'Bearer operator_123',
-    'x-cdngine-roles': 'operator',
-    ...overrides
-  };
-}
-
 function createIdGenerator() {
   const counters = new Map();
 
@@ -138,6 +127,10 @@ function createIdGenerator() {
 }
 
 test('image lifecycle conformance covers issue, complete, dispatch, deterministic publication, and delivery authorization', async () => {
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth, {
+    allowedTenantIds: ['tenant-acme']
+  });
   const generateId = createIdGenerator();
   const now = () => new Date('2026-01-15T18:45:00.000Z');
   const uploadStore = new InMemoryUploadSessionIssuanceStore({
@@ -166,6 +159,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     snapshotId: 'snap_001'
   });
   const uploadApp = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         now,
@@ -179,7 +173,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
 
   const createResponse = await uploadApp.request('http://localhost/v1/upload-sessions', {
     method: 'POST',
-    headers: createPublicHeaders({
+    headers: createJsonBearerHeaders(publicActor.token, {
       'idempotency-key': 'idem-create-001'
     }),
     body: JSON.stringify({
@@ -220,7 +214,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     `http://localhost/v1/upload-sessions/${issued.uploadSessionId}/complete`,
     {
       method: 'POST',
-      headers: createPublicHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'idem-complete-001'
       }),
       body: JSON.stringify(completionRequest)
@@ -230,7 +224,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     `http://localhost/v1/upload-sessions/${issued.uploadSessionId}/complete`,
     {
       method: 'POST',
-      headers: createPublicHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'idem-complete-001'
       }),
       body: JSON.stringify(completionRequest)
@@ -385,6 +379,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     ]
   });
   const publicReadApp = createApiApp({
+    auth,
     registerPublicRoutes(publicApp) {
       registerDeliveryRoutes(publicApp, {
         now,
@@ -396,14 +391,14 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
   const versionResponse = await publicReadApp.request(
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}`,
     {
-      headers: createPublicHeaders()
+      headers: createJsonBearerHeaders(publicActor.token)
     }
   );
   const deliveryAuthResponse = await publicReadApp.request(
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}/deliveries/public-images/authorize`,
     {
       method: 'POST',
-      headers: createPublicHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'idem-delivery-001'
       }),
       body: JSON.stringify({
@@ -416,7 +411,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     `http://localhost/v1/assets/${completed.assetId}/versions/${completed.versionId}/source/authorize`,
     {
       method: 'POST',
-      headers: createPublicHeaders({
+      headers: createJsonBearerHeaders(publicActor.token, {
         'idempotency-key': 'idem-source-001'
       }),
       body: JSON.stringify({
@@ -483,6 +478,12 @@ test('dispatch duplicate conformance keeps one workflow identity when Temporal r
 });
 
 test('operator conformance preserves audited quarantine and release behavior', async () => {
+  const auth = createAuthFixture();
+  const defaultOperator = await provisionOperatorActor(auth);
+  const secondaryOperator = await provisionOperatorActor(auth, {
+    email: 'operator-2@cdngine.test',
+    subject: 'operator_456'
+  });
   const store = new InMemoryOperatorControlStore({
     generateId: () => 'op_001',
     now: () => new Date('2026-01-15T18:45:00.000Z'),
@@ -499,6 +500,7 @@ test('operator conformance preserves audited quarantine and release behavior', a
     ]
   });
   const app = createApiApp({
+    auth,
     registerOperatorRoutes(operatorApp) {
       registerOperatorRoutes(operatorApp, { store });
     }
@@ -508,16 +510,14 @@ test('operator conformance preserves audited quarantine and release behavior', a
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/quarantine',
     {
       method: 'POST',
-      headers: createOperatorHeaders()
+      headers: createJsonBearerHeaders(defaultOperator.token)
     }
   );
   const releaseResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/release',
     {
       method: 'POST',
-      headers: createOperatorHeaders({
-        authorization: 'Bearer operator_456'
-      })
+      headers: createJsonBearerHeaders(secondaryOperator.token)
     }
   );
   const diagnostics = await store.getDiagnostics('ast_001', 'ver_001');

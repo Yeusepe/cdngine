@@ -41,12 +41,15 @@ The repository now uses a real npm workspace foundation.
 Contributors should use these root commands:
 
 1. `npm install`
-2. `npm run docs:check`
-3. `npm run contracts:check`
-4. `npm run typecheck`
-5. `npm run build`
-6. `npm run test`
-7. `npm run verify`
+2. `npm start` when they need the local dependency stack
+3. `npm run start:demo` when they need the local dependency stack plus the interactive demo
+4. `npm run stop` when they are done with the local dependency stack
+5. `npm run docs:check`
+6. `npm run contracts:check`
+7. `npm run typecheck`
+8. `npm run build`
+9. `npm run test`
+10. `npm run verify`
 
 Every workspace package in `apps/*` and `packages/*` must keep its `package.json` metadata up to date:
 

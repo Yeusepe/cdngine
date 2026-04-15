@@ -205,6 +205,7 @@ The repository now carries a checked-in TypeScript contract package at `packages
 
 - generated public OpenAPI types in `packages/contracts/src/generated/public-api.ts`
 - a `CDNginePublicClient` wrapper in `packages/contracts/src/public-client.ts`
+- grouped helper entry points such as `client.assets.uploadAndWait(...)` and fluent version handles such as `client.asset(assetId).version(versionId)...`
 - quickstart usage in `packages/contracts/README.md`
 
 The intended maintenance flow is:

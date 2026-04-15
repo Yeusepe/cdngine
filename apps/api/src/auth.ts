@@ -19,7 +19,10 @@ import type { ApiEnv, ApiSurface, AuthenticatedActor, RequestedScope } from './a
 import { ProblemDetailError, problemTypes } from './problem-details.js';
 
 function ensureSurfaceRole(surface: ApiSurface, actor: AuthenticatedActor) {
-  if (surface === 'platform-admin' && !actor.roles.some((role) => role === 'platform-admin' || role === 'operator')) {
+  if (
+    surface === 'platform-admin' &&
+    !actor.roles.some((role: string) => role === 'platform-admin' || role === 'operator')
+  ) {
     throw new ProblemDetailError({
       type: problemTypes.forbidden,
       title: 'Forbidden',

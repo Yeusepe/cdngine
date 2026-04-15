@@ -93,7 +93,29 @@ Larger or stricter deployments may split those roles into separate buckets:
 
 Separate buckets improve policy isolation, lifecycle tuning, and operational visibility, but they are not required for the platform semantics.
 
-### 2.1.1 Who moves bytes between hot, warm, and cold
+### 2.1.1 Checked-in runtime config surface
+
+The repository now carries explicit deployment-profile inputs in `deploy/production/` and matching typed loaders in the codebase:
+
+- `packages/storage/src/runtime-storage-config.ts`
+- `packages/observability/src/readiness-profile.ts`
+- `deploy/production/runtime.one-bucket.env.example`
+- `deploy/production/runtime.multi-bucket.env.example`
+
+Those files are the checked-in answer to "how does one-bucket versus multi-bucket packaging preserve the same storage-role semantics?" The storage loader resolves environment variables into the existing normalized `ingest`, `source`, `derived`, and `exports` roles, while the readiness loader resolves which dependencies must be healthy for each deployment profile.
+
+The intended environment variables are:
+
+- `CDNGINE_STORAGE_LAYOUT_MODE`
+- `CDNGINE_STORAGE_BUCKET` or the split-bucket variables `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET`
+- `CDNGINE_INGEST_PREFIX`, `CDNGINE_SOURCE_PREFIX`, `CDNGINE_DERIVED_PREFIX`, `CDNGINE_EXPORTS_PREFIX`
+- `CDNGINE_TIERING_SUBSTRATE`
+- `CDNGINE_SOURCE_DELIVERY_MODE`
+- `CDNGINE_HOT_READ_LAYER`
+- `CDNGINE_DEPLOYMENT_PROFILE`
+- `CDNGINE_READINESS_REQUIRED`
+
+### 2.1.2 Who moves bytes between hot, warm, and cold
 
 This is one of the easiest places to get confused, so the ownership should be explicit:
 

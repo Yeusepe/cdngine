@@ -90,6 +90,8 @@ Use this stack for:
 
 This stack is **not** the source of truth for production sizing, hardening, or network layout.
 
+The next step after local fast-start is the checked-in runtime profile surface under `deploy/production/`, which shows how the same logical storage roles and readiness expectations map into one-bucket and multi-bucket deployment inputs without changing the public contract.
+
 ## Governing docs
 
 - `README.md`
@@ -97,3 +99,4 @@ This stack is **not** the source of truth for production sizing, hardening, or n
 - `docs/upstream-integration-model.md`
 - `docs/conformance.md`
 - `docs/spec-governance.md`
+- `deploy/production/README.md`

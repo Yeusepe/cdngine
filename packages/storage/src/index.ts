@@ -22,5 +22,6 @@ export * from './adapter-contracts.js';
 export * from './command-runner.js';
 export * from './kopia-source-repository.js';
 export * from './oras-artifact-publisher.js';
+export * from './runtime-storage-config.js';
 export * from './s3-compatible-object-stores.js';
 export * from './storage-role-config.js';

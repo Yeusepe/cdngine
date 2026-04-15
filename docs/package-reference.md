@@ -15,7 +15,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | database access and migrations | Prisma | type-safe ORM client, schema ownership, migrations, and generated data tooling |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
-| raw versioned source | Oxen | immutable raw asset lineage, repository semantics, and replay provenance |
+| raw versioned source | Xet | chunk-deduplicated canonical asset storage and replay provenance over S3-backed storage |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
 | metadata/query indexing | PostgreSQL GIN over JSONB | indexable structured metadata without inventing a custom metadata engine |
 | cache and coordination | Redis | mature cache, lock, and ephemeral coordination primitives |
@@ -24,6 +24,7 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | video and image-to-video | FFmpeg | broad codec support, hardware acceleration, deep ecosystem |
 | document conversion | Gotenberg | Chromium + LibreOffice + PDF tooling behind an API |
 | derived storage | S3-compatible object store | portable binary delivery origin |
+| delivery control patterns | CDN delivery guidance and HTTP standards | per-organization hostnames, bundle auth, immutable caching, and hot-object behavior are already well understood |
 | native SDK core | Rust + UniFFI + cbindgen | shared cross-language SDK logic without repeated reimplementation |
 
 ## 2. Repositories to study
@@ -40,6 +41,18 @@ The purpose is simple: **consume fast, proven systems wherever possible** and re
 | imgproxy | `imgproxy/imgproxy` | image server and delivery model |
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
+| Xet | `huggingface/xet-core` | chunking, deduplication, reconstruction, and Xet-aware client integrations |
+| Inngest | `inngest/inngest` | durable step-oriented workflow posture |
+| Trigger.dev | `triggerdotdev/trigger.dev` | run UX, queues, and long-running developer ergonomics |
+| DBOS | `dbos-inc/dbos-transact-ts` | PostgreSQL-centered durable execution ideas |
+| Restate | `restatedev/restate` | durable service orchestration and stateful execution |
+| OpenMetadata | `open-metadata/OpenMetadata` | metadata-plane entity and lineage modeling |
+| DataHub | `datahub-project/datahub` | metadata graph and lineage thinking |
+| lakeFS | `treeverse/lakeFS` | commit semantics, lifecycle, and GC posture |
+| Unkey | `unkeyed/unkey` | API control-plane auth and permissions patterns |
+| Better Auth | `better-auth/better-auth` | composable organization-aware auth |
+| Medusa | `medusajs/medusa` | modular workflows and provider composition |
+| Cal.com | `calcom/cal.com` | large TypeScript monorepo and multi-tenant package organization |
 | UniFFI | `mozilla/uniffi-rs` | multi-language bindings for a Rust SDK core |
 | cbindgen | `mozilla/cbindgen` | generated C headers for native bindings |
 
@@ -141,6 +154,22 @@ Use it fully:
 - use object storage backends in production
 - configure equal R2 multipart part sizes when Cloudflare R2 is the backing store
 
+### 3.7 Xet
+
+Use for:
+
+- canonical asset storage after ingest finalization
+- content-defined chunking and chunk-level deduplication
+- canonical file reconstruction for replay and processing
+- storage-efficient repeated revisions of binary-heavy source assets
+
+Use it deliberately:
+
+- keep public clients on the simpler ingest target and canonicalize into Xet after verification
+- persist Xet file IDs, logical paths, and content digests in the registry
+- treat S3 as the physical substrate while Xet remains the canonical addressing layer
+- use local Xet caches on worker hosts when repeated source reconstruction justifies them
+
 ## 4. Image stack
 
 ### 4.1 imgproxy
@@ -171,6 +200,12 @@ Use for:
 - HLS ladder generation
 - image-to-video conversion
 - clip and preview generation
+
+Video publication rules:
+
+- publish immutable segments and manifests as first-class derivatives
+- prefer bundle-level authorization for private streams
+- support range-friendly delivery behavior at the CDN layer
 
 ## 6. Document stack
 
@@ -276,6 +311,8 @@ Use for:
 - low-latency CDN edge delivery
 - R2-backed default profile when that provider fits
 - strong edge routing and cache behavior
+- per-organization hostname support where the delivery scope needs it
+- tiered-cache or reserve-style behavior for hot artifacts
 
 ## 11. References
 
@@ -297,7 +334,34 @@ Use for:
 - [Temporal Workflow IDs](https://docs.temporal.io/workflow-execution/workflowid-runid)
 - [Temporal TypeScript message passing](https://docs.temporal.io/develop/typescript/workflows/message-passing)
 - [Temporal TypeScript Continue-As-New](https://docs.temporal.io/develop/typescript/workflows/continue-as-new)
+- [Inngest docs](https://www.inngest.com/docs)
+- [Trigger.dev docs](https://trigger.dev/docs)
+- [DBOS docs](https://docs.dbos.dev/)
+- [Restate docs](https://docs.restate.dev/)
+- [Convex generated API](https://docs.convex.dev/generated-api/)
+- [OpenMetadata docs](https://docs.open-metadata.org/)
+- [DataHub GraphQL docs](https://docs.datahub.com/docs/api/graphql/overview)
+- [lakeFS documentation](https://docs.lakefs.io/)
+- [Unkey roles and permissions](https://www.unkey.com/docs/apis/features/authorization/roles-and-permissions)
+- [Better Auth organization plugin](https://better-auth.com/docs/plugins/organization)
+- [Medusa documentation](https://docs.medusajs.com/)
+- [Cal.com repository](https://github.com/calcom/cal.com)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Cloudflare Cache Reserve API model](https://developers.cloudflare.com/api/node/resources/cache/subresources/cache_reserve/models/cache_reserve/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
+- [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [Xet Protocol Specification](https://huggingface.co/docs/xet)
+- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
+- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
+- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
+- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Security Model](https://huggingface.co/docs/hub/en/xet/security)
+- [Hugging Face Storage Buckets](https://huggingface.co/storage)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)
 - [UniFFI user guide](https://mozilla.github.io/uniffi-rs/latest/)
 - [cbindgen](https://github.com/mozilla/cbindgen)

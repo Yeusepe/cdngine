@@ -32,6 +32,7 @@ Default choices should optimize for:
 | cache and coordination | Redis | mature hot-path primitives without inventing ephemeral coordination systems |
 | image transform and delivery | imgproxy + libvips | proven, fast image server instead of building our own resizing service |
 | video and image-to-video | FFmpeg | broad codec and pipeline support, hardware acceleration, deep ecosystem |
+| delivery edge behavior | immutable versioned artifacts plus CDN tiering | hot artifacts should stay cheap and fast without dragging reads back to origin or Xet |
 | document normalization | Gotenberg | LibreOffice and Chromium behind an API instead of custom conversion orchestration |
 | derived artifact storage | S3-compatible store | avoids bespoke binary storage and lets adopters bring their own provider |
 | native SDK core | Rust + UniFFI + cbindgen | lets the platform share hard client logic across languages instead of reimplementing it repeatedly |
@@ -98,7 +99,7 @@ To use it well:
 
 tus is the strongest general-purpose resumable upload protocol in the current ecosystem, and tusd is the clearest reusable server choice when CDNgine needs a public upload endpoint that supports resume, retries, and operational maturity.
 
-It should sit in front of ingest finalization and canonical Oxen commits rather than being replaced with custom upload-session chunk semantics.
+It should sit in front of ingest finalization and Xet canonicalization rather than being replaced with custom upload-session chunk semantics.
 
 To use it well:
 
@@ -196,33 +197,56 @@ with hardware acceleration where available.
 
 Use it behind narrow processor contracts rather than as a shell-script substrate hidden inside route handlers.
 
-### 4.13 Oxen and the storage split
+### 4.12.1 Video publication posture
 
-Oxen is the canonical raw/versioned source of truth. It should own:
+For streaming-oriented outputs, FFmpeg should publish:
+
+- adaptive bitrate ladders
+- HLS-style manifests
+- immutable media segments
+- poster frames and preview clips
+
+The API and CDN layers then decide how those bundles are authorized and exposed.
+
+### 4.13 Xet and the storage split
+
+Xet is the canonical raw source of truth for binary assets. It should own:
 
 - immutable uploaded originals
-- version lineage
+- storage-efficient repeated revisions of related binaries
 - replay provenance
 - auditability of what the platform derived from
-- repository and commit identity for canonical source history
+- canonical file identity and reconstruction metadata for source history
 - selected immutable source-side evidence that should travel with that history
 
-Its best fit is the **provenance repository plane after ingest finalization**, not necessarily acting as the first direct public upload endpoint for every browser or SDK client.
+Its best fit is the **canonical content plane after ingest finalization**, not necessarily acting as the first direct public upload endpoint for every browser or SDK client.
 
-To use Oxen well in CDNgine:
+To use Xet well in CDNgine:
 
-- treat Oxen repositories as part of the scoping model, usually one repository per service namespace
-- persist Oxen repository, commit, and canonical path references in the registry
-- use workspaces for trusted server-side imports and large bulk ingest where Oxen can upload directly to the remote
-- use Oxen's remote-repository model when operators or processors need source history without a full local clone
-- keep immutable source-side manifests or inspection evidence in Oxen when that evidence should replay with the source
+- treat Xet scopes or buckets as part of the scoping model, usually one per service namespace or stronger isolation boundary
+- persist Xet file IDs, canonical logical paths, and content digests in the registry
+- canonicalize staged uploads through a Xet-aware service built on `xet-core`
+- exploit chunk-level deduplication for repeated revisions of binary-heavy assets
+- use local Xet caches on workers when repeated reconstruction makes them worthwhile
+- keep immutable source-side manifests or inspection evidence in Xet when that evidence should replay with the source
 
 The derived store exists for a different reason: serve deterministic generated artifacts cheaply and fast through the CDN. The platform therefore defaults to:
 
-- **Oxen for originals and replay**
+- **Xet for originals and replay**
 - **S3-compatible derived storage for delivery artifacts**
 
 That split is deliberate, not accidental. It avoids forcing hot derivative traffic through the same system that exists to preserve provenance.
+
+### 4.14 Lessons from external platforms
+
+The architecture should also consume operating patterns from adjacent systems:
+
+- Inngest, Trigger.dev, DBOS, and Restate reinforce that durable business logic belongs in workflows with explicit waits, retries, cancellation, and run history
+- Convex reinforces that the public surface should generate pleasant developer APIs, not just technically valid clients
+- OpenMetadata and DataHub reinforce that the registry is a lineage and metadata plane, not a loose bag of tables
+- lakeFS reinforces that GC, retention, and replay are platform features, not storage afterthoughts
+- Unkey and Better Auth reinforce that authorization and organization context should be modeled explicitly and auditable
+- Medusa and Cal.com reinforce that modular boundaries and explicit package ownership matter when the platform grows
 
 ## 5. References
 
@@ -246,8 +270,32 @@ That split is deliberate, not accidental. It avoids forcing hot derivative traff
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
 - [JSON Schema](https://json-schema.org/)
 - [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
-- [Oxen Repository API](https://docs.oxen.ai/http-api)
-- [Oxen Workspaces](https://docs.oxen.ai/concepts/workspaces)
-- [Oxen Remote Repositories](https://docs.oxen.ai/concepts/remote-repos)
+- [Inngest docs](https://www.inngest.com/docs)
+- [Trigger.dev docs](https://trigger.dev/docs)
+- [DBOS docs](https://docs.dbos.dev/)
+- [Restate docs](https://docs.restate.dev/)
+- [Convex generated API](https://docs.convex.dev/generated-api/)
+- [OpenMetadata docs](https://docs.open-metadata.org/)
+- [DataHub GraphQL docs](https://docs.datahub.com/docs/api/graphql/overview)
+- [lakeFS documentation](https://docs.lakefs.io/)
+- [Unkey roles and permissions](https://www.unkey.com/docs/apis/features/authorization/roles-and-permissions)
+- [Better Auth organization plugin](https://better-auth.com/docs/plugins/organization)
+- [Medusa documentation](https://docs.medusajs.com/)
+- [Cal.com repository](https://github.com/calcom/cal.com)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Cloudflare Cache Reserve API model](https://developers.cloudflare.com/api/node/resources/cache/subresources/cache_reserve/models/cache_reserve/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
+- [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [Xet Protocol Specification](https://huggingface.co/docs/xet)
+- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
+- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
+- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
+- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Security Model](https://huggingface.co/docs/hub/en/xet/security)
+- [Hugging Face Storage Buckets](https://huggingface.co/storage)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)
 - [UniFFI user guide](https://mozilla.github.io/uniffi-rs/latest/)
 - [cbindgen](https://github.com/mozilla/cbindgen)

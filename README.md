@@ -34,7 +34,7 @@ CDNgine is meant to fix that by standardizing a few core rules:
 
 At a high level, CDNgine separates **provenance**, **control**, and **delivery**:
 
-- **Oxen** stores immutable raw versions, repository lineage, and source-side provenance evidence
+- **Xet** stores canonical source assets through content-defined chunking, deduplication, and reconstruction metadata over S3-backed storage
 - the **registry** stores asset, version, derivative, manifest, workflow, and audit state
 - **Temporal** owns long-running orchestration and replay-safe execution
 - workers generate deterministic outputs into a **derived object store**
@@ -42,7 +42,7 @@ At a high level, CDNgine separates **provenance**, **control**, and **delivery**
 
 That means the platform treats:
 
-- **Oxen** as the source of truth for originals
+- **Xet** as the canonical content plane for originals
 - the **derived store** as the source of truth for published delivery artifacts
 - the **registry** as the system of record for control-plane state
 
@@ -55,27 +55,29 @@ The ingest path is:
 3. CDNgine returns upload instructions for an **ingest-managed upload target**
 4. the client uploads the original binary to that ingest target
 5. the client calls upload completion
-6. CDNgine validates the upload and commits the canonical raw version into a scoped **Oxen** repository commit
+6. CDNgine validates the upload and canonicalizes the staged object into **Xet**, which stores deduplicated content over S3-backed storage
 7. CDNgine starts a durable workflow in **Temporal**
-8. workers read the canonical source version from **Oxen**
+8. workers read the canonical source version from **Xet**
 9. workers validate and transform that source into delivery variants
 10. workers publish those variants into the **derived store**
 11. the registry records the derivative keys and manifest
 
-The important point is: **Oxen should own the canonical committed source version, repository history, and replay source.**
+The important point is: **Xet should own the canonical source identity, deduplicated storage layout, and replay source.**
 
-That does **not** necessarily mean Oxen must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of Oxen is often the cleaner operational choice.
+That does **not** mean Xet must be the first public multipart upload endpoint exposed directly to every client. A simpler ingest target or ingest proxy in front of Xet is the cleaner operational choice for browser and SDK clients.
 
 The current best default for that public upload endpoint is:
 
 - **tus/tusd** for resumable, reusable, protocol-level uploads
 - backed by multipart-capable object storage where that improves throughput and recovery
 
-Trusted internal flows can use Oxen more directly:
+Canonical source assets still live physically in S3-compatible storage, but they are addressed through Xet identities and reconstruction metadata rather than exposed as raw application-level object keys.
 
-- bulk imports can stage and commit through Oxen workspaces
-- operator recovery and replay can anchor to Oxen commit IDs and paths
-- source-side immutable evidence can live alongside the committed source history
+Trusted internal flows can use Xet more directly:
+
+- bulk imports can canonicalize directly through Xet-aware services built on `xet-core`
+- operator recovery and replay can anchor to Xet file IDs, content digests, and canonical logical paths
+- source-side immutable evidence can live in the same Xet-backed canonical scope when it must replay with the asset
 
 ## How delivery actually works
 
@@ -86,12 +88,12 @@ The delivery path is different from the ingest path:
 3. the client fetches the published derivative through the **CDN**
 4. the CDN serves from cache or fetches from the **derived store**
 
-The important point is: **clients do not normally download published derivatives from Oxen.**
+The important point is: **clients do not normally download published derivatives from Xet.**
 
-Oxen is for:
+Xet is for:
 
 - canonical originals
-- version history
+- deduplicated source storage across revisions and related binaries
 - replay
 - provenance
 
@@ -108,23 +110,23 @@ The derived store plus CDN are for:
 
 This split is intentional:
 
-- **Oxen** answers: "what exactly was uploaded, versioned, committed, and replayed from?"
+- **Xet** answers: "what exact canonical source file should replay use, and which stored chunks already exist?"
 - the **derived store** answers: "what exact published artifact should the client receive right now?"
 
-If every published derivative had to be delivered from Oxen, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
+If every published derivative had to be delivered from Xet, the platform would mix provenance storage with hot delivery traffic, which makes replay, cache behavior, and retention policy harder to operate.
 
-Likewise, if every public upload had to speak Oxen semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized versioned data store. The cleaner pattern is usually:
+Likewise, if every public upload had to speak Xet semantics directly, the platform would couple browser and SDK ingest too tightly to a specialized canonical content system. The cleaner pattern is usually:
 
 - simple upload target for ingress
-- canonical commit into Oxen after ingest finalization
-- replay and derivation from Oxen
+- canonicalization into Xet after ingest finalization
+- replay and derivation from Xet
 
-The stronger Oxen posture is not "use Oxen less." It is "use Oxen for the things Oxen is actually good at":
+The stronger Xet posture is not "use Xet less." It is "use Xet for the things Xet is actually good at":
 
-- repository and commit identity for canonical source history
-- workspace-based trusted imports and review flows
-- immutable source-side evidence that should travel with version history
-- replay and diff operations tied to exact source commits
+- content-defined chunking and chunk-level deduplication over S3-backed storage
+- canonical file identity for replay and provenance
+- smart reconstruction of source files into worker scratch space
+- storage-efficient repeated revisions of large binaries such as Unity packages, FBX files, texture archives, and video masters
 
 ## Service stack direction
 
@@ -143,7 +145,7 @@ The current service-level direction is:
 | image delivery and transform | imgproxy + libvips |
 | video processing | FFmpeg |
 | document normalization | Gotenberg |
-| canonical raw source | Oxen |
+| canonical raw source | Xet over S3-backed storage |
 | derived delivery origin | S3-compatible object storage |
 
 This is an **opinionated default profile**, not a claim that every adopter must use the exact same infrastructure provider.
@@ -152,7 +154,7 @@ This is an **opinionated default profile**, not a claim that every adopter must 
 
 CDNgine is intentionally opinionated about the things that matter most:
 
-- **Oxen is fixed** as the raw/versioned source of truth
+- **Xet is fixed** as the canonical deduplicated source plane
 - **deterministic derivative keys** are required
 - **Temporal-style durable orchestration semantics** are required
 - **public API behavior** should remain stable even if host/runtime choices differ
@@ -179,7 +181,7 @@ The architecture is generic on purpose. It is meant to support workloads such as
 
 If you only remember one thing, remember this:
 
-**clients upload originals through the ingest service, CDNgine commits canonical raw versions into Oxen, workers derive outputs from Oxen, and clients download published outputs from the CDN-backed derived store.**
+**clients upload originals through the ingest service, CDNgine canonicalizes them into Xet over S3-backed storage, workers reconstruct from Xet, and clients download published outputs from the CDN-backed derived store.**
 
 ## What is in this repository
 

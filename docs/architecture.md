@@ -49,7 +49,7 @@ The platform does not define:
 
 ### 4.1 Immutable raw assets
 
-Every upload is preserved immutably in Oxen. Derived artifacts are never treated as the source of truth.
+Every upload is preserved canonically in Xet. Derived artifacts are never treated as the source of truth.
 
 ### 4.2 Separate control plane and data plane
 
@@ -66,6 +66,8 @@ Every derivative should be addressable by a stable key derived from:
 - recipe ID
 - schema version
 - optional content hash when needed
+
+Delivery identity should remain separate from source identity. The same derivative may be reachable through different delivery scopes without changing the underlying published artifact.
 
 ### 4.4 Durable orchestration for expensive work
 
@@ -102,7 +104,7 @@ The current default reference profile is:
 
 | Layer | Default |
 | --- | --- |
-| raw/versioned source of truth | **Oxen** |
+| raw/versioned source of truth | **Xet** |
 | metadata registry | **PostgreSQL + JSONB** |
 | low-latency coordination and cache | **Redis** |
 | durable orchestration | **Temporal** |
@@ -114,7 +116,7 @@ The current default reference profile is:
 
 ### 5.1 Why these defaults
 
-- **Oxen**: version semantics and immutable raw asset provenance
+- **Xet**: content-defined chunking, chunk-level deduplication, and canonical source provenance over S3-backed storage
 - **PostgreSQL + JSONB**: strong relational core plus flexible metadata fields, queryability, and wide operational adoption
 - **Redis**: mature, fast coordination for cache, locks, and short-lived state without pretending to be durable truth
 - **Temporal**: strong retries, replay, visibility, long-running workflow semantics, and testing support
@@ -129,7 +131,7 @@ The platform should preserve the public API and processor contracts even when in
 
 | Layer | Default | Substitution rule |
 | --- | --- | --- |
-| raw source of truth | Oxen | fixed |
+| raw source of truth | Xet | fixed |
 | metadata registry | PostgreSQL + JSONB | any SQL database that preserves relational registry semantics |
 | cache and coordination | Redis | Redis-compatible or equivalent behavior is acceptable if operational semantics remain clear |
 | orchestration | Temporal | alternate durable workflow engine only if it preserves retries, replay, visibility, and workflow ownership semantics |
@@ -143,11 +145,11 @@ The platform should preserve the public API and processor contracts even when in
 flowchart LR
     Clients["Clients and internal services"] --> Gateway["Edge API gateway"]
     Gateway --> Registry["Asset registry"]
-    Gateway --> Oxen["Oxen\ncanonical raw versions"]
+    Gateway --> Xet["Xet\ncanonical content plane"]
     Gateway --> Redis["Redis"]
     Gateway --> Temporal["Temporal workflows"]
     Temporal --> Workers["Processor workers"]
-    Workers --> Oxen
+    Workers --> Xet
     Workers --> Derived["Derived store\nhot delivery artifacts"]
     Workers --> Registry
     Temporal --> Registry
@@ -160,7 +162,7 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Provenance["Canonical provenance plane"]
-        Oxen["Oxen\nimmutable originals\nversion lineage\nreplay source"]
+        Xet["Xet\ncanonical originals\ndeduplicated chunks\nreplay source"]
     end
 
     subgraph Control["Control plane"]
@@ -177,9 +179,9 @@ flowchart TB
     Users["Apps, services, SDK consumers"] --> API
     Ops["Operators"] --> API
     API --> Registry
-    API --> Oxen
+    API --> Xet
     API --> Temporal
-    Temporal --> Oxen
+    Temporal --> Xet
     Temporal --> Derived
     Registry --> Derived
     Users --> CDN
@@ -193,7 +195,7 @@ sequenceDiagram
     participant C as Client
     participant G as Gateway
     participant I as Ingest Target
-    participant O as Oxen
+    participant O as Xet
     participant R as Registry
     participant T as Temporal
     participant W as Worker
@@ -205,7 +207,7 @@ sequenceDiagram
     G-->>C: Upload instructions for ingest-managed target
     C->>I: Upload raw asset
     C->>G: Complete upload
-    G->>O: Commit canonical raw version
+    G->>O: Canonicalize staged object
     G->>T: Start workflow
     T->>W: Run validators and processors
     W->>O: Read canonical source version
@@ -220,14 +222,14 @@ sequenceDiagram
 Read the sequence above as:
 
 1. the original upload first lands in an ingest-managed upload target
-2. CDNgine commits the canonical raw version into **Oxen**
-3. workflows and workers use **Oxen** as the canonical source for validation and derivation
+2. CDNgine canonicalizes the staged object into **Xet**
+3. workflows and workers use **Xet** as the canonical source for validation and derivation
 4. generated outputs are published to the **derived store**
 5. clients receive those published outputs from the **CDN** in front of the derived store
 
 That means:
 
-- **Oxen owns canonical provenance and replay**
+- **Xet owns canonical source identity, deduplication, and replay**
 - **the ingest target owns client-facing upload ergonomics**
 - **the derived store owns published delivery artifacts**
 - **the CDN is the ordinary client delivery path**
@@ -236,15 +238,15 @@ That means:
 
 ```mermaid
 flowchart LR
-    Source["Uploaded original"] --> Oxen["Oxen\nstores canonical original\nstores version history\nanchors replay provenance"]
-    Oxen --> Workflow["Workflow derives outputs from canonical source"]
+    Source["Uploaded original"] --> Xet["Xet\nstores canonical original\nstores version history\nanchors replay provenance"]
+    Xet --> Workflow["Workflow derives outputs from canonical source"]
     Workflow --> Derived["Derived store\nstores generated delivery artifacts\nserves as CDN origin"]
     Workflow --> Registry["Registry links source version to derivative key"]
 
-    note1["Oxen is not the hot origin for every generated variant"]
+    note1["Xet is not the hot origin for every generated variant"]
     note2["Derived store is not the canonical source of truth for uploads"]
 
-    Oxen --- note1
+    Xet --- note1
     Derived --- note2
 ```
 
@@ -256,7 +258,7 @@ sequenceDiagram
     participant API as CDNgine API
     participant CDN as CDN
     participant D as Derived Store
-    participant O as Oxen
+    participant O as Xet
 
     Client->>API: Request asset metadata or manifest
     API-->>Client: Return signed delivery URL or manifest path
@@ -264,7 +266,7 @@ sequenceDiagram
     CDN->>D: Cache miss origin fetch
     D-->>CDN: Deterministic derivative object
     CDN-->>Client: Cached derivative response
-    Note over O: Oxen is not in the hot delivery read path
+    Note over O: Xet is not in the hot delivery read path
 ```
 
 ## 7.5 Replay and reprocessing path
@@ -275,7 +277,7 @@ sequenceDiagram
     participant API as Operator/API surface
     participant R as Registry
     participant T as Temporal
-    participant O as Oxen
+    participant O as Xet
     participant W as Worker
     participant D as Derived Store
 
@@ -304,7 +306,7 @@ flowchart TB
     end
 
     subgraph Data["Data Plane"]
-        Oxen["Oxen"]
+        Xet["Xet"]
         Derived["S3-compatible derived store"]
     end
 
@@ -317,16 +319,16 @@ flowchart TB
 
     Gateway --> Registry
     Gateway --> Redis
-    Gateway --> Oxen
+    Gateway --> Xet
     Gateway --> Temporal
     Temporal --> Img
     Temporal --> Vid
     Temporal --> Doc
     Temporal --> Arc
-    Img --> Oxen
-    Vid --> Oxen
-    Doc --> Oxen
-    Arc --> Oxen
+    Img --> Xet
+    Vid --> Xet
+    Doc --> Xet
+    Arc --> Xet
     Img --> Derived
     Vid --> Derived
     Doc --> Derived
@@ -357,7 +359,7 @@ Owns:
 
 Owns:
 
-- raw binaries in Oxen
+- raw binaries in Xet
 - derived binaries in S3-compatible storage
 - transient processor scratch space
 - CDN cache state
@@ -408,7 +410,7 @@ The default metadata database is PostgreSQL with JSONB for extensible fields, ma
 
 ### 9.3 Raw asset source of truth
 
-Oxen is mandatory for immutable raw asset provenance and version semantics.
+Xet is mandatory for canonical source provenance, deduplication, and replay semantics.
 
 This gives the architecture one clear answer to:
 
@@ -416,16 +418,18 @@ This gives the architecture one clear answer to:
 - what version is canonical
 - what replay should derive from
 
-Oxen's responsibility is **not** "be the hot delivery origin for every generated artifact." Its responsibility is:
+Xet's responsibility is **not** "be the hot delivery origin for every generated artifact." Its responsibility is:
 
 - preserve the canonical uploaded binary
-- preserve version lineage and provenance
-- preserve repository and commit identity for the canonical source
+- preserve deduplicated storage across repeated revisions
+- preserve canonical file identity and provenance for the source
 - optionally preserve immutable source-side evidence that should replay with that source history
 - provide the immutable replay source for every later derivation run
 - anchor auditability when recipes, workers, or schemas change over time
 
-By default, CDNgine treats Oxen as the **source-of-truth provenance repository plane for canonical sources**, not as the storage system that must serve every delivery-path read.
+By default, CDNgine treats Xet as the **source-of-truth canonical content plane for source assets**, not as the storage system that must serve every delivery-path read.
+
+Canonical assets may still live physically in S3-compatible storage beneath Xet. The platform should address them through Xet identities and reconstruction metadata, not through raw canonical object keys.
 
 ### 9.4 Durable orchestration
 
@@ -470,7 +474,7 @@ Redis is not durable truth and must not become the platform's hidden state machi
 
 Derived artifacts are written under deterministic keys to S3-compatible storage and served through CDN paths and manifests.
 
-They do **not** go back through Oxen by default because the delivery profile optimizes for:
+They do **not** go back through Xet by default because the delivery profile optimizes for:
 
 - very high read throughput
 - low-latency CDN origin behavior
@@ -478,7 +482,7 @@ They do **not** go back through Oxen by default because the delivery profile opt
 - independent retention and purge policy for derivatives
 - cost separation between canonical provenance storage and hot delivery storage
 
-If every generated thumbnail, poster, HLS segment, slide image, and future derivative had to round-trip back into Oxen, the platform would couple the delivery plane to the provenance plane too tightly. That makes hot delivery, cache invalidation, derivative churn, and retention policy harder to operate.
+If every generated thumbnail, poster, HLS segment, slide image, and future derivative had to round-trip back into Xet, the platform would couple the delivery plane to the provenance plane too tightly. That makes hot delivery, cache invalidation, derivative churn, and retention policy harder to operate.
 
 ## 10. Storage model
 
@@ -486,28 +490,30 @@ Separate stores exist for separate purposes:
 
 | Store | Role | System of record |
 | --- | --- | --- |
-| Oxen | immutable raw assets and version history | yes for originals |
+| Xet | canonical source content, deduplicated chunks, and replay identity | yes for originals |
 | SQL metadata registry | metadata, state, manifests, registrations | yes for platform state |
 | S3-compatible derived store | delivery artifacts | yes for processed variants |
 | Redis | cache, locks, ephemeral coordination | no |
 
-### 10.1 Why derivatives do not default to Oxen
+In the reference profile, Xet itself is backed by S3-compatible storage. That means the source binaries still live in storage, but the platform should go through Xet for canonical identity, deduplication, and reconstruction instead of treating raw S3 keys as the source contract.
+
+### 10.1 Why derivatives do not default to Xet
 
 The split is intentional:
 
-1. **Oxen answers provenance questions.** What was uploaded, when, by whom, under what version, and what exact source should replay use?
+1. **Xet answers canonical source questions.** What exact source file should replay use, and which stored chunks already exist?
 2. **The derived store answers delivery questions.** What exact optimized artifact should the CDN fetch right now under a deterministic key?
 3. **The registry binds the two together.** It records which source version, recipe version, and schema version produced which derivative key.
 
 That means the derivation contract is:
 
-`Oxen source version` + `recipe binding` + `schema version` -> `deterministic derived object key`
+`Xet canonical source identity` + `recipe binding` + `schema version` -> `deterministic derived object key`
 
-The platform can therefore replay from Oxen whenever needed without forcing the delivery path to read from Oxen on every request.
+The platform can therefore replay from Xet whenever needed without forcing the delivery path to read from Xet on every request.
 
-### 10.2 When Oxen would hold more than originals
+### 10.2 When Xet would hold more than originals
 
-An adopter could choose a stricter profile where Oxen also stores selected published artifacts, but that should be treated as an **optional archival or compliance profile**, not the default hot-path design.
+An adopter could choose a stricter profile where Xet also stores selected published artifacts, but that should be treated as an **optional archival or compliance profile**, not the default hot-path design.
 
 Reasonable cases include:
 
@@ -517,23 +523,23 @@ Reasonable cases include:
 
 Even in that stricter profile, the recommended delivery origin for hot traffic is still the derived store in front of the CDN.
 
-### 10.3 How to use Oxen deeply without overloading it
+### 10.3 How to use Xet deeply without overloading it
 
-Oxen should be used more deeply than "store the original file once," but not so broadly that it absorbs responsibilities better handled elsewhere.
+Xet should be used more deeply than "store the original file once," but not so broadly that it absorbs responsibilities better handled elsewhere.
 
 The reference posture is:
 
-- use Oxen repositories as provenance boundaries, normally aligned to service namespaces
-- persist Oxen repository, commit, and canonical path references in the registry
-- use workspaces for trusted imports, large server-side adds, and operator review flows
-- keep source-side immutable evidence in Oxen when that evidence should travel with source history
-- use Oxen diffs and remote-repository features for replay analysis and diagnostics
+- use Xet scopes or buckets as canonical content boundaries, normally aligned to service namespaces or stricter isolation boundaries
+- persist Xet file IDs, canonical logical paths, and strong content digests in the registry
+- canonicalize staged uploads through a Xet-aware service built on `xet-core`
+- keep source-side immutable evidence in Xet when that evidence should travel with source history
+- use Xet's deduplication and reconstruction model to reduce repeated storage for binary-heavy revisions
 
 The platform should still avoid:
 
-- putting mutable control-plane state into Oxen
-- routing hot derivative delivery through Oxen
-- forcing every public browser upload to speak Oxen semantics directly
+- putting mutable control-plane state into Xet
+- routing hot derivative delivery through Xet
+- forcing every public browser upload to speak Xet semantics directly
 
 ## 11. Multi-service registration model
 
@@ -675,6 +681,64 @@ Illustrative derived layout:
 
 `scopeKey` should be stable and policy-driven. For public assets it may be a public delivery scope. For tenant-scoped assets it should encode the delivery isolation boundary explicitly.
 
+### 14.1 Hot-file delivery posture
+
+When a file becomes hot, the architecture should not invent a special path. It should lean harder on the delivery plane it already has.
+
+Rules:
+
+- published versioned derivatives should use immutable URLs
+- immutable derivatives and stream segments should use long-lived cache headers, normally including `immutable`
+- manifests may use shorter TTLs than immutable versioned artifacts when authorization or publication state changes faster than the underlying segments
+- CDN deployment should prefer tiered-cache or origin-shield behavior so origin fan-out does not grow with global demand
+- deployments that support reserve-style persistent cache should use it for high-read, high-rewarm-cost artifacts
+- repeated hot-read pressure should not pull ordinary clients back toward Xet or the API service
+
+### 14.2 Private reads and non-disclosure
+
+The public delivery path should be non-disclosing by default for private assets.
+
+Preferred posture:
+
+- if a caller lacks valid public delivery authorization, the delivery path should normally return `404`
+- authenticated control-plane APIs may still return `403` when the caller is known and the denial itself is useful
+- single-object delivery may use signed URLs
+- bundle-oriented delivery such as HLS manifests and segments should prefer signed cookies or equivalent bundle credentials
+- origin access remains private even when the edge URL is public
+
+### 14.3 Delivery scope and organization URLs
+
+Different organizations may need different URL shapes without changing the underlying asset contract.
+
+The platform should therefore model a **delivery scope** that can represent:
+
+- shared-domain plus scoped path prefix
+- organization subdomain on a shared parent domain
+- organization custom hostname
+
+The delivery scope controls:
+
+- hostname and path presentation
+- certificate and CDN attachment
+- authorization mode
+- cache profile
+- visibility defaults
+
+Delivery authorization must not trust the `Host` header alone. Hostnames resolve to a registered delivery scope, and normal policy still applies.
+
+### 14.4 Video streaming posture
+
+Video delivery should be treated as a first-class product surface, not as a loose collection of files.
+
+Default posture:
+
+- publish HLS-style manifests and immutable media segments
+- prefer CMAF-compatible segment layouts where the packaging profile supports it
+- publish adaptive bitrate ladders for streaming-oriented outputs
+- publish poster frames, preview clips, subtitles, and captions as related derivatives where required
+- support range requests and segment caching in the CDN profile
+- authorize private streams as bundles rather than forcing per-segment signatures into clients
+
 ## 15. Reliability model
 
 The platform is designed for durability:
@@ -691,7 +755,7 @@ Redis can accelerate locks, dedupe windows, and hot-path coordination, but it mu
 
 The highest-risk synchronous-to-async handoff in the system is:
 
-`upload complete` -> `canonical raw version committed to Oxen` -> `workflow started`
+`upload complete` -> `canonical source stored in Xet` -> `workflow started`
 
 This boundary should be modeled explicitly with:
 
@@ -701,6 +765,18 @@ This boundary should be modeled explicitly with:
 4. a business-keyed Temporal Workflow ID derived from the asset version and workflow purpose
 
 That keeps duplicate completion requests, partial failures, and retry behavior understandable without inventing hidden state in Redis or ad hoc queue glue.
+
+### 15.2 Durable business logic posture
+
+The workflow layer should be treated as business logic expressed durably in code.
+
+Rules:
+
+- request handlers validate, authorize, mutate durable state, and emit workflow intents; they do not own long-running business flow
+- workflows define stable step boundaries and project run state for operators
+- waits, pauses, external callbacks, and human-in-the-loop actions must be durable states, not polling loops hidden in workers
+- replay and cancellation should be modeled explicitly and auditable
+- long waits should release scarce execution capacity where the orchestration engine supports that posture
 
 ## 16. Security model
 
@@ -769,9 +845,13 @@ Custom code should focus on:
 
 ## 20. References
 
-- [Oxen Repository API](https://docs.oxen.ai/http-api)
-- [Oxen Workspaces](https://docs.oxen.ai/concepts/workspaces)
-- [Oxen Remote Repositories](https://docs.oxen.ai/concepts/remote-repos)
+- [Xet Protocol Specification](https://huggingface.co/docs/xet)
+- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
+- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
+- [Xet Chunking](https://huggingface.co/docs/xet/chunking)
+- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)
 - [Temporal documentation](https://docs.temporal.io/)
 - [Temporal TypeScript SDK](https://github.com/temporalio/sdk-typescript)
 - [Temporal TypeScript samples](https://github.com/temporalio/samples-typescript)
@@ -785,9 +865,17 @@ Custom code should focus on:
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
 - [AsyncAPI documentation](https://www.asyncapi.com/docs)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Cloudflare Cache Reserve API model](https://developers.cloudflare.com/api/node/resources/cache/subresources/cache_reserve/models/cache_reserve/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
 
 ## 21. Read more
 
+- [External Systems Study](./external-systems-study.md)
 - [Domain Model](./domain-model.md)
 - [API Surface](./api-surface.md)
 - [API Style Guide](./api-style-guide.md)

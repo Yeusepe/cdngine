@@ -12,6 +12,7 @@ The domain model is the backbone of the architecture. If these records are vague
 | `TenantScope` | represents an optional external tenant or customer isolation boundary within a namespace |
 | `Asset` | logical asset identity across versions |
 | `AssetVersion` | immutable uploaded source version of an asset |
+| `DeliveryScope` | modeled delivery URL, cache, and authorization boundary |
 | `Derivative` | deterministic derived artifact published for delivery |
 | `AssetManifest` | published delivery manifest for a version |
 | `WorkflowRun` | durable workflow instance |
@@ -50,6 +51,7 @@ flowchart LR
     Namespace --> Asset["Asset"]
     Tenant --> Asset
     Asset --> Version["AssetVersion"]
+    Asset --> DeliveryScope["DeliveryScope"]
     Version --> Validation["ValidationResult"]
     Version --> Job["ProcessingJob"]
     Job --> Derivative["Derivative"]
@@ -112,17 +114,36 @@ Represents one immutable uploaded source version.
 
 Should include:
 
-- Oxen repository identity, commit ID, and canonical source path
+- Xet scope or bucket identity
+- Xet file ID or equivalent reconstruction identity
+- canonical logical source path
 - source filename and detected content type
 - ingest-target reference
 - upload completion state
 - canonicalization state
 - validation state
 - source checksum or equivalent integrity marker
+- optional canonicalization and deduplication metrics for observability
 
 Once a version reaches `canonical`, the source identity must be immutable.
 
-### 4.5 `Derivative`
+### 4.5 `DeliveryScope`
+
+Represents the delivery boundary through which an organization or audience accesses published artifacts.
+
+Should include:
+
+- service namespace linkage
+- tenant scope or organization linkage where applicable
+- delivery mode such as shared-path, subdomain, or custom-hostname
+- hostname and path-prefix configuration
+- authorization mode such as public, signed URL, or signed cookie
+- cache profile
+- stream-bundle policy where applicable
+
+This keeps organization-specific URLs, private bundle access, and cache behavior modeled explicitly.
+
+### 4.6 `Derivative`
 
 Represents one deterministic published output.
 
@@ -132,12 +153,13 @@ Should include:
 - recipe identifier
 - schema version
 - deterministic delivery key
+- delivery-scope linkage
 - scoped storage prefix components
 - content metadata
 - publication state
 - publication checksum or ETag where relevant
 
-### 4.6 `AssetManifest`
+### 4.7 `AssetManifest`
 
 Represents the published delivery description for complex asset classes.
 
@@ -146,11 +168,12 @@ Should include:
 - manifest type
 - source asset and version linkage
 - referenced derivative set
+- delivery-scope linkage
 - dimensions, codecs, checksums, and ordering where relevant
 - schema version
 - active publication pointer version for optimistic concurrency
 
-### 4.7 `WorkflowRun` and `ProcessingJob`
+### 4.8 `WorkflowRun` and `ProcessingJob`
 
 These represent orchestration, not business identity.
 
@@ -159,7 +182,15 @@ These represent orchestration, not business identity.
 
 They should remain operator-visible and correlated with derivatives, validation outcomes, and asset versions.
 
-### 4.8 `ScopePolicyBinding`
+`WorkflowRun` should also project:
+
+- current durable run state
+- current step or phase
+- wait reason where applicable
+- retry summary
+- cancellation cause where applicable
+
+### 4.9 `ScopePolicyBinding`
 
 Represents the code-defined programmatic scoping and authorization rules for a namespace.
 
@@ -174,7 +205,7 @@ Should include:
 
 This is how a namespace states, in code, what its uploaders and readers are allowed to do.
 
-### 4.9 `IdempotencyRecord`
+### 4.10 `IdempotencyRecord`
 
 Represents the durable retry contract for a mutating endpoint.
 
@@ -187,7 +218,7 @@ Should include:
 - normalized request hash where relevant
 - terminal response reference
 
-### 4.10 `WorkflowDispatch`
+### 4.11 `WorkflowDispatch`
 
 Represents a durable workflow-start intent created by the request path.
 
@@ -231,12 +262,17 @@ The registry should make it easy to answer:
 - which validation result blocked or allowed processing
 - which workflow dispatch intent has or has not been started
 - which scope policy governs this asset and caller combination
+- which delivery scope governs the URL and auth behavior for this asset
 - which operator action changed the asset lifecycle most recently
 
 ## 7. References
 
+- [Xet Protocol Specification](https://huggingface.co/docs/xet)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
 - [Prisma transactions, idempotent APIs, and OCC](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
 - [Prisma index configuration](https://docs.prisma.io/docs/orm/prisma-schema/data-model/indexes)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
 - [Architecture](./architecture.md)
 - [Service Registration Model](./service-registration-model.md)

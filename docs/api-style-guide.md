@@ -31,6 +31,7 @@ The published contract posture should be:
 9. Keep service namespace, tenant scope, and asset ownership visible in request and response shapes.
 10. Treat manifests as first-class outputs, not undocumented side channels.
 11. Design method names and schemas so generated SDKs have one obvious shape for common workflows.
+12. Make delivery-scope and authorization mode explicit for private and organization-specific delivery.
 
 ## 2.1 Naming guidance
 
@@ -59,6 +60,8 @@ Every public error shape should document:
 - retryability
 - idempotency behavior
 - operator or caller remediation when relevant
+
+Public delivery should follow a non-disclosing posture for private assets. Control-plane reads may disclose authorization failure more explicitly when the caller is already authenticated.
 
 ## 3. Discoverability
 
@@ -121,6 +124,17 @@ Public resources should make ownership and policy visible when it matters:
 
 The API should not force consumers to reverse-engineer ownership from opaque IDs.
 
+## 4.3 Delivery rules
+
+Public delivery contracts should expose:
+
+- `deliveryScopeId`
+- delivery hostname or path base where relevant
+- `authorizationMode` such as `public`, `signed-url`, or `signed-cookie`
+- manifest versus bundle semantics for streaming media
+
+Streaming manifests should not make SDKs guess whether the client needs a signed URL for one file or bundle credentials for many files.
+
 ## 4.2 Example problem detail
 
 Illustrative validation error:
@@ -145,6 +159,7 @@ Illustrative validation error:
 - [AsyncAPI](https://www.asyncapi.com/docs)
 - [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
 - [Google AIP-121: Resource-oriented design](https://google.aip.dev/121)
 - [Google AIP-130: Standard methods](https://google.aip.dev/130)
 - [Redocly docs](https://redocly.com/docs/)

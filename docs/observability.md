@@ -62,6 +62,8 @@ Track:
 - dead-letter volume
 - replay volume
 - terminal failure count by workflow type
+- waiting-run count by workflow type
+- cancellation count by workflow type and reason category
 
 ### 3.3 Processor runtime
 
@@ -78,12 +80,18 @@ Track:
 
 Track:
 
-- Oxen read and write latency
+- Xet read and write latency
+- Xet deduplication ratio and bytes avoided
+- Xet reconstruction latency and cache-hit rate
 - derived-store write latency and failure rate
 - CDN cache-hit ratio by derivative class
+- CDN tiered-cache or shield hit behavior where the provider exposes it
 - origin miss rate
 - manifest fetch latency
+- segment fetch latency
 - signed URL validation failure rate
+- signed-cookie validation failure rate
+- unauthorized public-read rate
 
 ## 4. Correlation model
 
@@ -99,6 +107,7 @@ Every signal should carry the strongest safe set of correlation dimensions avail
 - `job_id`
 - `recipe_id`
 - `capability_id`
+- `delivery_scope_id`
 - `delivery_key`
 - `outcome`
 
@@ -116,7 +125,7 @@ Delivery requests should form a different trace family:
 
 `metadata lookup or signed URL generation` -> `CDN request` -> `derived origin fetch on miss`
 
-The delivery path must not appear to depend on Oxen during ordinary derivative fetches.
+The delivery path must not appear to depend on Xet during ordinary derivative fetches.
 
 ## 6. Asset lineage observability
 
@@ -125,7 +134,7 @@ Every asset version should be observable as a lineage, not just as unrelated log
 Minimum lineage checkpoints:
 
 1. upload session created
-2. raw asset committed to Oxen
+2. raw asset canonicalized into Xet
 3. upload marked complete
 4. workflow started
 5. validation passed, failed, or quarantined
@@ -144,7 +153,8 @@ Operators should have at least these dashboards:
 - request rate and latency
 - upload completion success
 - validation rejection rate
-- Oxen write latency
+- Xet canonicalization latency
+- Xet deduplication effectiveness
 
 ### 7.2 Workflow health
 
@@ -163,9 +173,12 @@ Operators should have at least these dashboards:
 ### 7.4 Delivery health
 
 - CDN hit ratio
+- CDN tiered-cache effectiveness where available
 - origin latency
 - derived-store error rate
 - signed URL failures
+- signed-cookie failures
+- manifest-versus-segment error split
 
 ### 7.5 Operator actions
 
@@ -183,7 +196,7 @@ High-priority alerts include:
 - workflow backlog above agreed operational threshold
 - repeated processor failures for a capability or recipe
 - dead-letter queue growth without drain
-- Oxen unavailable for raw reads or writes
+- Xet unavailable for canonicalization or source reconstruction
 - derived-store write failures blocking publication
 - CDN or origin errors causing delivery failure for published derivatives
 - operator replay failures
@@ -221,3 +234,6 @@ A finished slice should show:
 - [Temporal documentation](https://docs.temporal.io/)
 - [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)

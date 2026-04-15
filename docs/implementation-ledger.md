@@ -10,7 +10,7 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | --- | --- | --- |
 | docs-foundation | doing | architecture, service model, surface separation, ingest contract, and platform semantics are documented coherently |
 | contracts-and-schemas | planned | public API, manifests, capability schemas, event shapes, and SDK workflow artifacts become machine-readable |
-| ingest-foundation | planned | upload sessions, scoped Oxen repository commits, and idempotent completion behave correctly |
+| ingest-foundation | planned | upload sessions, Xet canonicalization over S3-backed storage, and idempotent completion behave correctly |
 | image-mvp | planned | the platform can validate, derive, publish, and deliver deterministic image outputs |
 | video-mvp | planned | the platform can orchestrate long-running video work and publish poster plus stream outputs |
 | presentation-mvp | planned | the platform can normalize presentations and publish slide-oriented manifests and derivatives |

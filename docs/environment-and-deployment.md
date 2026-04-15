@@ -26,10 +26,12 @@ The opinionated first production profile is:
 - PostgreSQL control-plane database
 - Redis for cache and short-lived coordination
 - Temporal for durable orchestration
-- Oxen for canonical raw/versioned assets
+- Xet over S3-backed storage for canonical source assets
 - S3-compatible derived store for published artifacts
 - CDN in front of derived artifacts
 - specialized worker pools split by workload profile
+
+The important storage rule is: source assets may live physically in S3-compatible storage, but application code should address them through Xet identities rather than raw canonical object keys.
 
 ## 3. Workload-separated worker pools
 
@@ -97,15 +99,16 @@ Expected properties:
 
 Owns:
 
-- Oxen for canonical originals
+- Xet-backed canonical source storage for originals
 - derived store for published variants
 - CDN for hot delivery traffic
 
 Expected properties:
 
-- independent scaling of provenance and delivery storage
+- independent scaling of canonical and derived storage
 - clear private-origin access rules
 - retention policies separated by store role
+- local Xet caches on worker nodes where repeated reconstructions justify them
 
 ## 5. Regionality and latency posture
 
@@ -135,7 +138,7 @@ Adopters may keep:
 
 They should not change the platform semantics around:
 
-- canonical raw provenance in Oxen
+- canonical raw provenance and deduplicated source storage in Xet
 - deterministic derivative keys
 - durable workflow ownership
 - registry-driven manifests and recipe bindings
@@ -165,7 +168,7 @@ At minimum:
 - PostgreSQL health and connection pressure
 - Redis latency and saturation
 - Temporal queue backlog and worker availability
-- Oxen latency and availability
+- Xet canonicalization latency, reconstruction health, and availability
 - derived-store error rate
 - CDN error rate and cache-hit ratio
 
@@ -174,3 +177,5 @@ At minimum:
 - [Temporal documentation](https://docs.temporal.io/)
 - [Redis documentation](https://redis.io/docs/latest/)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
+- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)

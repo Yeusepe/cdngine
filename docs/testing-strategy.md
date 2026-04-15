@@ -32,7 +32,8 @@ The preferred order is:
 The platform should explicitly test:
 
 - upload completion idempotency
-- replay from the canonical Oxen source version
+- replay from the canonical Xet source identity
+- Xet canonicalization and deduplication behavior for repeated binary revisions
 - deterministic derivative key generation
 - manifest publication integrity
 - signed delivery URL behavior
@@ -63,7 +64,7 @@ The platform needs real integration tests for:
 
 - PostgreSQL registry behavior
 - Redis-backed idempotency and ephemeral coordination
-- Oxen read and write behavior for canonical assets
+- Xet canonicalization and reconstruction behavior for canonical assets
 - derived-store publication semantics
 - signature and URL generation
 - ingest-target verification and completion semantics
@@ -113,3 +114,4 @@ A mature change should usually leave behind:
 
 - [Temporal testing docs](https://docs.temporal.io/develop/typescript/testing-suite)
 - [Google Engineering Practices: Testing](https://google.github.io/eng-practices/)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)

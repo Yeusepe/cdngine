@@ -50,16 +50,16 @@ The upload contract is intentionally split into two stages:
 3. the API returns a short-lived **ingest-managed upload target**
 4. the client uploads the raw binary to that ingest target, normally **tusd** backed by object storage
 5. the client calls upload completion, or an authenticated completion callback is received
-6. the ingest service verifies the uploaded object, validates metadata and checksums, and commits the canonical raw version into a scoped **Oxen** repository revision
+6. the ingest service verifies the uploaded object, validates metadata and checksums, and canonicalizes the staged object into **Xet** over S3-backed storage
 7. the service records canonicalization success and emits a durable workflow-dispatch intent
 8. a workflow starter launches the Temporal workflow for that asset version
 
 The important distinction is:
 
 - the **ingest target** owns resumable upload ergonomics
-- **Oxen** owns repository-backed canonical provenance after successful finalization
+- **Xet** owns deduplicated canonical source storage after successful finalization
 
-Clients do **not** upload directly to Oxen by default.
+Clients do **not** upload directly to Xet by default.
 
 ## 4. Recommended service ownership
 
@@ -67,7 +67,7 @@ Recommended service areas:
 
 | Service | Responsibility |
 | --- | --- |
-| `ingest` | upload sessions, upload completion, ingest-target verification, canonical commit into Oxen |
+| `ingest` | upload sessions, upload completion, ingest-target verification, and canonicalization into Xet |
 | `registry` | asset, version, derivative, manifest, idempotency, and audit state |
 | `delivery` | signed URLs, manifest retrieval, derivative lookup |
 | `capability-admin` | capability registration, recipe validation, namespace policy resolution |
@@ -96,11 +96,13 @@ The request path should not:
 - run long remote dependency chains
 - quietly become a second workflow engine
 
+The request path may authorize delivery access, but it should not become the streaming session manager or bundle-orchestration layer for private media reads.
+
 ## 6. Consistency and state-transition model
 
 The most important control-plane boundary in the system is:
 
-`upload complete` -> `canonical raw version committed to Oxen` -> `workflow dispatched`
+`upload complete` -> `canonical source stored in Xet` -> `workflow dispatched`
 
 That boundary must be designed explicitly.
 
@@ -135,7 +137,7 @@ The registry transaction for completion should:
 1. verify the upload session and idempotency record
 2. transition the version from `uploaded` to `canonicalizing`
 3. record verified ingest metadata
-4. persist the Oxen canonical reference when commit succeeds
+4. persist the Xet canonical file identity when canonicalization succeeds
 5. insert a workflow-dispatch outbox record
 
 Only after the outbox record exists should workflow dispatch be attempted.
@@ -153,18 +155,43 @@ The default workflow identity should be derived from stable inputs such as:
 
 That lets duplicate completion requests converge on one durable workflow intent instead of starting parallel work.
 
-### 6.3.1 Oxen commit identity
+### 6.3.2 Workflow run projection
+
+Temporal is the execution engine, but CDNgine should also project workflow state into operator-facing registry records.
+
+Minimum projected states:
+
+- `queued`
+- `running`
+- `waiting`
+- `cancelled`
+- `failed`
+- `completed`
+
+This projection should capture:
+
+- business-keyed workflow ID
+- current step or phase
+- retry summary
+- wait reason where applicable
+- cancellation cause where applicable
+- last operator intervention
+
+That keeps workflow UX closer to the stronger operator models seen in systems such as Trigger.dev, Inngest, DBOS, and Restate instead of forcing operators to reconstruct state from raw execution history alone.
+
+### 6.3.1 Xet canonical identity
 
 The canonical source pointer should not be an opaque blob reference alone.
 
 Persist at minimum:
 
-- Oxen repository identity
-- branch or logical lineage where relevant
-- commit ID
-- canonical file path inside the repository
+- Xet scope, bucket, or logical content-domain identity
+- Xet file ID or equivalent reconstruction identity
+- canonical logical path
+- strong content digest such as SHA-256
+- source size and detected media metadata when relevant
 
-That gives replay, operator diagnostics, and provenance review a stable source identity that matches Oxen's repository model.
+That gives replay, operator diagnostics, and provenance review a stable source identity that matches Xet's chunked reconstruction model.
 
 ### 6.4 Optimistic concurrency
 
@@ -204,6 +231,32 @@ await assetRepository.getVersion({
 
 Unscoped repository methods such as `getAssetById(assetId)` should be treated as an anti-pattern for tenant-aware resources.
 
+## 6.6 Delivery authorization and read posture
+
+Delivery must distinguish between single-object reads and bundle-oriented reads.
+
+Preferred service behavior:
+
+- the API may mint signed URLs for single derivatives
+- the API may mint signed-cookie or equivalent bundle credentials for manifests plus segment sets
+- public delivery should normally return `404` for unauthorized private reads so it does not disclose asset existence
+- authenticated control-plane reads may still return `403` when the denial itself is useful
+- manifests should return delivery-scope and authorization-mode metadata clearly enough that SDKs do not guess
+
+## 6.7 Delivery scope resolution
+
+Delivery URL shape should be a modeled service concern.
+
+The service layer should resolve a request against a registered `DeliveryScope` that decides:
+
+- shared-path versus subdomain versus custom-hostname delivery
+- cache profile
+- public versus private delivery mode
+- signed-URL versus signed-cookie posture
+- stream-bundle behavior where applicable
+
+Hostnames alone are not authorization truth. They are one input into delivery-scope resolution.
+
 ## 7. Package-specific service posture
 
 ### 7.1 Hono
@@ -236,6 +289,8 @@ Temporal owns durable orchestration. The service architecture should use it full
 - replay testing is required before shipping workflow changes
 - Queries, Signals, and Updates are the preferred operator interaction model for running workflows
 - Continue-As-New should be used when long-lived workflow histories approach scaling limits
+- waits, pauses, and human-in-the-loop steps should be modeled durably rather than hidden in ad hoc queue polling
+- workflow code should project enough run state that operators can see why a run is waiting, retrying, or cancelled
 
 ### 7.4 tus / tusd
 
@@ -248,24 +303,36 @@ tus and tusd should be treated as a first-class ingest subsystem, not a generic 
 - production should use a cloud/object-storage backend, not local disk or NFS-style shared folders
 - when targeting Cloudflare R2, `-s3-min-part-size` and `-s3-part-size` should be set to the same value
 
-### 7.5 Oxen
+### 7.5 Xet
 
-Oxen should be used as a repository and provenance system, not merely as a raw-file sink.
+Xet should be used as the canonical deduplicated content plane, not merely as a raw-file sink.
 
 Use it well by:
 
-- making repository topology explicit, typically per service namespace, with stricter per-tenant repositories where policy requires them
-- persisting commit IDs and canonical repository paths in the registry
-- using workspaces for trusted server-side imports, bulk ingest, review flows, and replay preparation where direct Oxen staging is beneficial
-- committing immutable source-side evidence when it should remain tied to source history
-- using remote repository and partial-access features where workers or operators do not need a full local clone
+- making Xet scope topology explicit, typically per service namespace or other high-isolation boundary
+- persisting Xet file IDs, canonical logical paths, and content digests in the registry
+- using `xet-core` or a compatible Xet-aware service for canonicalization and reconstruction
+- taking advantage of chunk-level deduplication for repeated revisions of Unity packages, Substance files, FBX assets, textures, and video masters
+- using local Xet caches on worker hosts where repeated reads justify them
+- keeping replay-critical source-side evidence in the same canonical Xet scope when that evidence must travel with the source
+- keeping raw S3 object keys behind the Xet layer rather than treating them as public or control-plane identities
 
-Keep these responsibilities out of Oxen:
+Keep these responsibilities out of Xet:
 
 - hot-path derivative delivery
 - mutable workflow state
 - authorization truth
 - public resumable browser upload ergonomics
+
+### 7.6 Delivery and CDN posture
+
+The delivery subsystem should use the CDN deliberately:
+
+- immutable versioned derivatives should be cache-friendly by default
+- manifests may use shorter cache lifetimes than immutable segments or files
+- hot-read profiles should use tiered-cache or shield behavior where available
+- private stream bundles should prefer signed cookies over per-segment URL signing
+- range-request support is required for video-oriented delivery profiles
 
 ## 8. Public, admin, and operator auth posture
 
@@ -324,9 +391,25 @@ The service design should prefer:
 - [tus protocol](https://tus.io/protocols/resumable-upload)
 - [tusd monitoring](https://tus.github.io/tusd/advanced-topics/monitoring/)
 - [tusd S3 storage backend](https://tus.github.io/tusd/storage-backends/aws-s3/)
-- [Oxen Repository API](https://docs.oxen.ai/http-api)
-- [Oxen Workspaces](https://docs.oxen.ai/concepts/workspaces)
-- [Oxen Remote Repositories](https://docs.oxen.ai/concepts/remote-repos)
+- [Xet Protocol Specification](https://huggingface.co/docs/xet)
+- [Xet Upload Protocol](https://huggingface.co/docs/xet/upload-protocol)
+- [Xet Deduplication](https://huggingface.co/docs/xet/en/deduplication)
+- [Using Xet Storage](https://huggingface.co/docs/hub/en/xet/using-xet-storage)
+- [Storage Backend (Xet)](https://huggingface.co/docs/hub/en/storage-backend)
+- [Security Model](https://huggingface.co/docs/hub/en/xet/security)
+- [Hugging Face Storage Buckets](https://huggingface.co/storage)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)
 - [NIST SP 800-162: Guide to Attribute Based Access Control (ABAC)](https://csrc.nist.gov/pubs/sp/800/162/upd2/final)
 - [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [Inngest docs](https://www.inngest.com/docs)
+- [Trigger.dev docs](https://trigger.dev/docs)
+- [DBOS docs](https://docs.dbos.dev/)
+- [Restate docs](https://docs.restate.dev/)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Cloudflare Cache Reserve API model](https://developers.cloudflare.com/api/node/resources/cache/subresources/cache_reserve/models/cache_reserve/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [Amazon CloudFront range GETs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RangeGETs.html)
+- [RFC 8246: HTTP Immutable Responses](https://www.rfc-editor.org/rfc/rfc8246.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)
+- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)

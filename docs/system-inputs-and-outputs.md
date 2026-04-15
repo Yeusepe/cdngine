@@ -18,7 +18,7 @@ The point is not only to list inputs and outputs, but to make the ownership and 
 
 The platform emits:
 
-- raw asset repository, commit, and canonical path references in Oxen
+- raw asset scope, file-ID, digest, and canonical-path references in Xet
 - ingest-object references before canonicalization
 - derivative objects in the derived store
 - manifests for complex asset classes

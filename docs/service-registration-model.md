@@ -19,6 +19,7 @@ Registration standardizes:
 - metadata schema ownership
 - authorization scope rules
 - scoped storage and cache conventions
+- delivery-scope defaults and hostname policy
 
 ## 2. Identity rules
 
@@ -48,6 +49,8 @@ Each service namespace should declare:
 Optional but recommended fields:
 
 - delivery visibility default
+- delivery-scope mode
+- default delivery auth mode
 - allowed metadata schema fragments
 - workflow override bindings
 - namespace-level validation profiles
@@ -98,6 +101,8 @@ export const creativeServicesNamespace = registerServiceNamespace({
   capabilities: ['image.backwall', 'video.hls', 'presentation.slides'],
   defaultRecipes: ['webp-master', 'thumbnail-medium'],
   keyScopeMode: 'namespace-and-tenant',
+  deliveryScopeMode: 'tenant-hostname-allowed',
+  defaultDeliveryAuthMode: 'signed-url',
   authorizationModel: 'abac-v1',
   metadataSchemaVersion: 'v1',
 });
@@ -128,6 +133,8 @@ export const operationsNamespace = registerServiceNamespace({
   capabilities: ['document.preview', 'archive.inspect', 'image.thumbnail'],
   defaultRecipes: ['thumbnail-small', 'pdf-preview'],
   keyScopeMode: 'namespace-only',
+  deliveryScopeMode: 'shared-domain-path',
+  defaultDeliveryAuthMode: 'signed-url',
   authorizationModel: 'abac-v1',
   metadataSchemaVersion: 'v1',
 })
@@ -179,6 +186,18 @@ That gives the platform enough structure to express:
 - shared platform operators with broader but auditable access
 - private delivery conditions based on resource visibility and caller context
 
+## 6.3 Delivery-scope model
+
+Every namespace registration should define its default delivery posture:
+
+- shared-domain path
+- organization subdomain
+- custom hostname allowed or forbidden
+- public, signed-URL, or signed-cookie default
+- stream-bundle behavior for video classes where applicable
+
+This keeps organization-specific URLs and private streaming behavior out of ad hoc route logic.
+
 ## 7. Operational rules
 
 1. Namespace registration changes are reviewed like code.
@@ -189,6 +208,7 @@ That gives the platform enough structure to express:
 6. Namespace registration should be discoverable from code, not only from database rows.
 7. Tenant-isolation posture must be stated explicitly for every namespace.
 8. Authorization scope rules must be code-defined and testable for every namespace.
+9. Delivery-scope defaults must be code-defined and testable for every namespace.
 
 ## 8. References
 
@@ -197,3 +217,6 @@ That gives the platform enough structure to express:
 - [Prisma index configuration](https://docs.prisma.io/docs/orm/prisma-schema/data-model/indexes)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [Temporal documentation](https://docs.temporal.io/)
+- [Cloudflare custom hostnames](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/domain-support/)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)

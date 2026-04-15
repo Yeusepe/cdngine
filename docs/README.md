@@ -5,6 +5,7 @@ Use this page first instead of treating `docs/` as one flat list.
 ## Platform
 
 - [Architecture](./architecture.md)
+- [External Systems Study](./external-systems-study.md)
 - [Service Architecture](./service-architecture.md)
 - [Technology Profile](./technology-profile.md)
 - [Package And Repository Reference](./package-reference.md)

@@ -11,8 +11,9 @@ ADRs should capture the decision, the alternatives that mattered, and the conseq
 - [0003 Deterministic Derivative Keys](./0003-deterministic-derivative-keys.md)
 - [0004 Ingest Boundary And API Surfaces](./0004-ingest-boundary-and-api-surfaces.md)
 - [0005 Programmatic Scope And Authorization Model](./0005-programmatic-scope-and-authorization-model.md)
-- [0006 Oxen As Provenance Repository Plane](./0006-oxen-as-provenance-repository-plane.md)
 - [0007 CDN As Code SDK And FFI Model](./0007-cdn-as-code-sdk-and-ffi-model.md)
+- [0008 Xet As Canonical Content Plane](./0008-xet-as-canonical-content-plane.md)
+- [0009 Delivery Scopes, Private Access, And Streaming](./0009-delivery-scopes-private-access-and-streaming.md)
 
 ## ADR writing expectations
 

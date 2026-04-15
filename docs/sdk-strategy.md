@@ -43,6 +43,7 @@ That means the platform should eventually support:
    - `client.assets.waitForVersion(...)`
    - `client.manifests.get(...)`
    - `client.derivatives.url(...)`
+   - `client.deliveries.authorize(...)`
 4. generated types that reflect the app's configured namespace, manifest, and derivative shapes where possible
 
 The public HTTP API remains the compatibility contract, but it should not be the only developer-facing shape.
@@ -73,6 +74,7 @@ The shared core should own:
 - polling and wait helpers
 - manifest parsing and validation helpers
 - request signing or delivery-signature helpers where the SDK is responsible
+- signed-cookie bundle helpers where the SDK participates in delivery authorization
 - retry and backoff behavior
 - typed problem-detail decoding
 
@@ -162,7 +164,8 @@ Public SDKs should:
 3. make typed errors first-class
 4. give manifest and derivative helpers names that match the resource model
 5. avoid forcing callers to manually assemble signed URLs, polling loops, or multipart upload semantics
-6. preserve ownership and scope concepts explicitly
+6. avoid forcing callers to individually sign or stitch stream segments
+7. preserve ownership and scope concepts explicitly
 
 ## 8. API design rules for SDK generation
 
@@ -176,6 +179,7 @@ Required posture:
 - field descriptions and examples on public schemas
 - explicit async states
 - explicit ownership and scope fields
+- explicit delivery-scope and authorization-mode fields
 - RFC 9457 problem types for public errors
 - Arazzo workflows for multi-step operations
 
@@ -217,3 +221,5 @@ The workflow docs should not exist only as prose. Multi-step examples should sta
 - [cbindgen](https://github.com/mozilla/cbindgen)
 - [Convex generated code](https://docs.convex.dev/generated-api/)
 - [Convex OpenAPI and other languages](https://docs.convex.dev/client/open-api)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [RFC 8216: HTTP Live Streaming](https://www.rfc-editor.org/rfc/rfc8216.html)

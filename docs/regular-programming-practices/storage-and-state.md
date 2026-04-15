@@ -4,7 +4,7 @@ This document defines state ownership.
 
 | System | Owns |
 | --- | --- |
-| Oxen | raw immutable asset content and version history |
+| Xet | canonical deduplicated asset content, reconstruction metadata, and source history |
 | SQL registry | asset metadata, workflow state, manifests, registrations |
 | Redis | cache, locks, and short-lived coordination only |
 | S3-compatible derived store | processed delivery artifacts |
@@ -22,4 +22,3 @@ Rules:
 - [PostgreSQL documentation](https://www.postgresql.org/docs/)
 - [Redis documentation](https://redis.io/docs/latest/)
 - [Temporal documentation](https://docs.temporal.io/)
-

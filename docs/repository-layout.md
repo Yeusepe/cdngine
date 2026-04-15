@@ -74,7 +74,7 @@ Recommended package ownership:
 | --- | --- |
 | `contracts` | schemas, OpenAPI/AsyncAPI models, manifest types |
 | `registry` | SQL models, queries, migrations, idempotency state |
-| `storage` | Oxen and derived-store adapters, signing helpers |
+| `storage` | Xet canonicalization and reconstruction adapters, derived-store adapters, signing helpers |
 | `workflows` | Temporal workflow definitions and activity contracts |
 | `capabilities` | file-type and recipe registration |
 | `manifests` | manifest builders, parsers, deterministic publication helpers |

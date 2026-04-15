@@ -21,7 +21,7 @@ Reviewers should expect contributors to:
 - keep ownership and boundaries explicit
 - explain new dependencies and why upstream capability was insufficient
 - update references when a design decision relies on upstream behavior
-- preserve the Oxen provenance model and deterministic delivery model
+- preserve the Xet canonical deduplication model and deterministic delivery model
 - keep the Hono-based portable service picture consistent with the rest of the docs
 
 ## 3. Documentation expectations

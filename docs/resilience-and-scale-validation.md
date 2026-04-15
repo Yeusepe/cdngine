@@ -9,7 +9,7 @@ Architecture prose is not enough. Asset platforms fail under retries, malformed 
 The platform should demonstrate:
 
 1. idempotent upload completion
-2. deterministic replay from Oxen
+2. deterministic replay from Xet canonical file identities
 3. safe retry behavior for registry and storage mutations
 4. clear dead-letter handling
 5. predictable degradation under load
@@ -68,7 +68,8 @@ Every major slice should aim to produce evidence in these forms:
 Must prove:
 
 - duplicate completion requests do not duplicate state
-- canonical raw assets are replayable from Oxen
+- canonical raw assets are replayable from Xet
+- repeated revisions of binary-heavy assets benefit from Xet deduplication without breaking replay
 - invalid content is rejected without publishing derivatives
 
 ### 4.2 Derivative publication
@@ -83,7 +84,7 @@ Must prove:
 
 Must prove:
 
-- replay starts from the canonical Oxen version
+- replay starts from the canonical Xet source identity
 - registry state is updated coherently after replay
 - rewritten deterministic outputs remain addressable
 
@@ -93,7 +94,7 @@ Must prove:
 
 - published artifacts are CDN-cacheable
 - private delivery remains signed and bounded
-- the hot derivative read path does not depend on Oxen
+- the hot derivative read path does not depend on Xet
 
 ## 5. Scale scenarios
 

@@ -67,7 +67,7 @@ Upload flow requirements:
 2. the API validates asset class, declared content constraints, and tenant policy
 3. the API issues a short-lived upload target for the ingest-managed upload object
 4. upload completion is confirmed through a signed or authenticated callback
-5. the ingest service verifies the uploaded object before canonical commit into Oxen
+5. the ingest service verifies the uploaded object before canonicalization into Xet
 6. the workflow re-validates the uploaded content using signature sniffing and metadata extraction
 
 Do not trust:
@@ -82,15 +82,16 @@ Upload-session issuance should bind the allowed scope explicitly so a completion
 
 The platform intentionally separates:
 
-- **Oxen** for canonical originals and provenance
+- **Xet** for canonical originals, deduplicated storage, and provenance
 - **derived storage** for published generated artifacts
 
 Security implications:
 
-- public delivery traffic should not require direct access to Oxen
+- public delivery traffic should not require direct access to Xet
 - workers should have least-privilege access scoped to the binaries they need
 - private origin access should be enforced between processors and storage systems
 - CDN-origin access should be limited to the derived store, not the canonical raw store
+- raw S3 object keys used beneath Xet should not be treated as public application-level identifiers
 
 ## 6. Signed delivery model
 
@@ -106,7 +107,27 @@ Signed delivery controls should include:
 
 The platform should never expose arbitrary free-form transforms for untrusted callers.
 
-## 6.1 Surface separation
+Bundle-oriented delivery has different ergonomics than single-file delivery.
+
+Preferred posture:
+
+- use signed URLs for one-off derivative reads when that keeps the client model simple
+- use signed cookies or equivalent bundle credentials for HLS manifests plus segments and other bundle-style reads
+- bind delivery authorization to delivery scope, visibility, and asset identity
+
+## 6.1 Unauthorized-read posture
+
+Public delivery should be non-disclosing for private assets.
+
+Preferred rule set:
+
+- delivery requests that lack valid authorization for a private asset should normally return `404`
+- authenticated control-plane APIs may return `403` when the caller is known and the denial itself is useful
+- logging and audit trails must still record the true denial reason internally
+
+This prevents the public delivery path from becoming an easy existence oracle for private assets.
+
+## 6.2 Surface separation
 
 Authorization policy must distinguish:
 
@@ -116,6 +137,17 @@ Authorization policy must distinguish:
 - internal service-to-service access
 
 Replay, quarantine, purge, namespace registration, and capability governance require elevated internal roles and should not be exposed as broad public-SDK operations.
+
+## 6.3 Delivery scope and organization URL security
+
+Per-organization delivery URLs must be modeled as registered delivery scopes.
+
+Security rules:
+
+- hostnames and path prefixes resolve to a delivery scope but are not authorization truth by themselves
+- custom hostnames require explicit certificate and ownership handling in the CDN layer
+- cache and signing behavior may differ by delivery scope, but the underlying asset and policy checks stay explicit
+- origin access remains private even when organizations use custom domains
 
 ## 7. High-risk file classes
 
@@ -212,3 +244,8 @@ Every production deployment should show:
 - [NIST SP 800-162: Guide to Attribute Based Access Control (ABAC)](https://csrc.nist.gov/pubs/sp/800/162/upd2/final)
 - [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+- [Cloudflare custom hostnames](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/domain-support/)
+- [Amazon CloudFront signed cookies](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-signed-cookies.html)
+- [Cloudflare Tiered Cache](https://developers.cloudflare.com/cache/how-to/tiered-cache/)
+- [Xet Security Model](https://huggingface.co/docs/hub/en/xet/security)

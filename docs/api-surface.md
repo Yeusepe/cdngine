@@ -29,6 +29,7 @@ The initial public API should expose these groups:
 | versions | canonical uploaded versions and processing state |
 | derivatives | processed delivery artifacts for a specific version |
 | manifests | manifest-first retrieval for complex assets |
+| deliveries | delivery authorization and scope-aware URL resolution |
 
 The public surface should **not** expose namespace registration, capability governance, replay, purge, or quarantine as ordinary SDK operations.
 
@@ -62,6 +63,7 @@ The operator surface should expose:
 - `GET /v1/assets/{assetId}/versions/{versionId}`
 - `GET /v1/assets/{assetId}/versions/{versionId}/derivatives`
 - `GET /v1/assets/{assetId}/versions/{versionId}/manifests/{manifestType}`
+- `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize`
 
 ### 5.2 Platform-admin
 
@@ -87,6 +89,7 @@ The public API should guarantee:
 - typed errors
 - predictable auth requirements
 - stable ownership fields
+- explicit delivery-scope and authorization-mode modeling
 - version-aware derivative and manifest lookup
 - stable operation names and tags for generated SDK method grouping
 
@@ -119,6 +122,7 @@ Preferred behavior:
 - completion returns accepted work and a status handle when processing is deferred
 - asset and version resources expose lifecycle state explicitly
 - derivatives and manifests appear only after publication
+- delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, or public path
 - operator actions expose workflow or operation identifiers that can be audited later
 
 ## 9. Contract artifacts
@@ -141,16 +145,17 @@ The public API should be easy to wrap into a high-level SDK shape such as:
 - `assets.waitForVersion`
 - `derivatives.list`
 - `manifests.get`
+- `deliveries.authorize`
 
 That means the HTTP surface should stay boring and resource-oriented while the published contract artifacts describe the workflow clearly enough that generated and handwritten SDK layers do not have to guess.
 
-## 10. References
+## 11. References
 
 - [OpenAPI Specification](https://spec.openapis.org/oas/latest.html)
 - [Arazzo Specification](https://spec.openapis.org/arazzo/latest.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
 
-## 11. Read more
+## 12. Read more
 
 - [API Style Guide](./api-style-guide.md)
 - [SDK Strategy](./sdk-strategy.md)

@@ -28,6 +28,13 @@ export interface KopiaSourceRepositoryConfig {
   timeoutMs?: number;
 }
 
+function buildCommandOptions(config: Pick<KopiaSourceRepositoryConfig, 'cwd' | 'timeoutMs'>) {
+  return {
+    ...(config.cwd ? { cwd: config.cwd } : {}),
+    ...(typeof config.timeoutMs === 'number' ? { timeoutMs: config.timeoutMs } : {})
+  };
+}
+
 interface ParsedKopiaSnapshot {
   id?: string;
   rootEntry?: {
@@ -57,9 +64,11 @@ function resolveSnapshotId(snapshot: ParsedKopiaSnapshot): string {
 }
 
 export class KopiaSourceRepository implements SourceRepository {
+  private readonly config: KopiaSourceRepositoryConfig;
   private readonly executable: string;
 
-  constructor(private readonly config: KopiaSourceRepositoryConfig) {
+  constructor(config: KopiaSourceRepositoryConfig) {
+    this.config = config;
     this.executable = config.executable ?? 'kopia';
   }
 
@@ -82,8 +91,7 @@ export class KopiaSourceRepository implements SourceRepository {
     const result = await this.config.runner.run({
       command: this.executable,
       args,
-      cwd: this.config.cwd,
-      timeoutMs: this.config.timeoutMs
+      ...buildCommandOptions(this.config)
     });
 
     const parsed = parseJson<ParsedKopiaSnapshot>(result.stdout, 'snapshot create');
@@ -104,8 +112,7 @@ export class KopiaSourceRepository implements SourceRepository {
     const result = await this.config.runner.run({
       command: this.executable,
       args: ['snapshot', 'list', '--json', '--tags', `assetVersionId:${assetVersionId}`],
-      cwd: this.config.cwd,
-      timeoutMs: this.config.timeoutMs
+      ...buildCommandOptions(this.config)
     });
 
     const parsed = parseJson<ParsedKopiaSnapshot[] | { snapshots?: ParsedKopiaSnapshot[] }>(
@@ -125,8 +132,7 @@ export class KopiaSourceRepository implements SourceRepository {
     await this.config.runner.run({
       command: this.executable,
       args: ['snapshot', 'restore', input.canonicalSourceId, input.destinationPath],
-      cwd: this.config.cwd,
-      timeoutMs: this.config.timeoutMs
+      ...buildCommandOptions(this.config)
     });
 
     return {

@@ -5,11 +5,19 @@
  * - docs/api-surface.md
  * - docs/api-style-guide.md
  * - docs/problem-types.md
+ * - docs/security-model.md
+ * - docs/observability.md
  * External references:
  * - https://hono.dev/docs
  * - https://www.rfc-editor.org/rfc/rfc9457.html
+ * - https://zod.dev/
  * Tests:
- * - tests/conformance/README.md
+ * - apps/api/test/api-app.test.ts
  */
 
 export const apiAppName = '@cdngine/api';
+export * from './api-app.js';
+export * from './auth.js';
+export * from './problem-details.js';
+export * from './request-context.js';
+export * from './validation.js';

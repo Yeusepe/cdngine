@@ -24,10 +24,19 @@ import {
 
 class FakeS3Client {
   readonly commands: Array<{ input: Record<string, unknown>; name: string }> = [];
+  private readonly handlers: Record<
+    string,
+    (input: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
+  >;
 
   constructor(
-    private readonly handlers: Record<string, (input: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>>
-  ) {}
+    handlers: Record<
+      string,
+      (input: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>
+    >
+  ) {
+    this.handlers = handlers;
+  }
 
   async send(command: { input: Record<string, unknown>; constructor: { name: string } }) {
     this.commands.push({
@@ -153,5 +162,5 @@ test('exports adapter deletes and signs objects under the exports role prefix', 
 
   assert.equal(published.key, 'exports/ast_123/ver_456/source.psd');
   assert.equal(signed.url, 'signed:exports/ast_123/ver_456/source.psd');
-  assert.equal(client.commands.at(-1)?.name, 'GetObjectCommand');
+  assert.equal(client.commands[1]?.name, 'DeleteObjectCommand');
 });

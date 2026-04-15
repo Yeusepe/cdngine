@@ -19,8 +19,11 @@ import { OrasArtifactPublisher } from '../src/oras-artifact-publisher.ts';
 
 class FakeRunner {
   readonly invocations: Array<{ args: string[]; command: string }> = [];
+  private readonly outputs: string[];
 
-  constructor(private readonly outputs: string[]) {}
+  constructor(outputs: string[]) {
+    this.outputs = outputs;
+  }
 
   async run(execution: { args: string[]; command: string }) {
     this.invocations.push({

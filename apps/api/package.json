@@ -8,14 +8,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test"
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [
       "docs/service-architecture.md",
       "docs/api-surface.md",
       "docs/api-style-guide.md",
-      "docs/problem-types.md"
+      "docs/problem-types.md",
+      "docs/security-model.md",
+      "docs/observability.md"
     ],
     "programmingPractices": [
       "docs/regular-programming-practices/resilient-coding-debugging-and-performance.md",
@@ -29,7 +31,8 @@
     "externalReferences": [
       "https://hono.dev/docs",
       "https://www.rfc-editor.org/rfc/rfc9457.html",
-      "https://opentelemetry.io/docs/languages/js/"
+      "https://opentelemetry.io/docs/languages/js/",
+      "https://zod.dev/"
     ]
   },
   "dependencies": {

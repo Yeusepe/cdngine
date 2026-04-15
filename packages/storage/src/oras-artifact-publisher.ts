@@ -21,6 +21,13 @@ export interface OrasArtifactPublisherConfig {
   timeoutMs?: number;
 }
 
+function buildCommandOptions(config: Pick<OrasArtifactPublisherConfig, 'cwd' | 'timeoutMs'>) {
+  return {
+    ...(config.cwd ? { cwd: config.cwd } : {}),
+    ...(typeof config.timeoutMs === 'number' ? { timeoutMs: config.timeoutMs } : {})
+  };
+}
+
 interface ParsedOrasPushOutput {
   digest?: string;
   mediaType?: string;
@@ -46,9 +53,11 @@ function resolveDigest(output: ParsedOrasPushOutput): string {
 }
 
 export class OrasArtifactPublisher implements ArtifactPublisher {
+  private readonly config: OrasArtifactPublisherConfig;
   private readonly executable: string;
 
-  constructor(private readonly config: OrasArtifactPublisherConfig) {
+  constructor(config: OrasArtifactPublisherConfig) {
+    this.config = config;
     this.executable = config.executable ?? 'oras';
   }
 
@@ -64,8 +73,7 @@ export class OrasArtifactPublisher implements ArtifactPublisher {
         '--format',
         'json'
       ],
-      cwd: this.config.cwd,
-      timeoutMs: this.config.timeoutMs
+      ...buildCommandOptions(this.config)
     });
 
     const parsed = parseJson<ParsedOrasPushOutput>(result.stdout);

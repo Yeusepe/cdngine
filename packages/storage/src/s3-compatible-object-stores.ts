@@ -42,6 +42,9 @@ type SignedUrlFactory = (
   expiresInSeconds: number
 ) => Promise<string>;
 
+const defaultSignedUrlFactory: SignedUrlFactory = async (client, command, expiresInSeconds) =>
+  getSignedUrl(client as S3Client, command, { expiresIn: expiresInSeconds });
+
 export interface S3CompatibleStoreConfig {
   client: S3CompatibleClient;
   target: NormalizedStorageRoleTarget;
@@ -97,35 +100,46 @@ function toStagedObjectDescriptor(
   target: NormalizedStorageRoleTarget,
   key: string,
   output: {
-    ContentLength?: number;
-    ETag?: string;
-    LastModified?: Date;
-    Metadata?: Record<string, string>;
+    ContentLength: number | undefined;
+    ETag: string | undefined;
+    LastModified: Date | undefined;
+    Metadata: Record<string, string> | undefined;
   }
 ): StagedObjectDescriptor {
   const checksumValue = output.Metadata?.['cdngine-checksum-sha256'];
-
-  return {
+  const descriptor: StagedObjectDescriptor = {
     bucket: target.bucket,
     key,
     byteLength: BigInt(output.ContentLength ?? 0),
-    checksum: checksumValue
+    ...(checksumValue
       ? {
-          algorithm: 'sha256',
-          value: checksumValue
+          checksum: {
+            algorithm: 'sha256' as const,
+            value: checksumValue
+          }
         }
-      : undefined,
-    etag: output.ETag,
-    lastModifiedAt: output.LastModified
+      : {}),
+    ...(output.ETag ? { etag: output.ETag } : {}),
+    ...(output.LastModified ? { lastModifiedAt: output.LastModified } : {})
   };
+
+  return descriptor;
 }
 
 abstract class S3CompatibleObjectStoreBase {
+  protected readonly client: S3CompatibleClient;
+  protected readonly target: NormalizedStorageRoleTarget;
+  private readonly signedUrlFactory: SignedUrlFactory;
+
   protected constructor(
-    protected readonly client: S3CompatibleClient,
-    protected readonly target: NormalizedStorageRoleTarget,
-    private readonly signedUrlFactory: SignedUrlFactory = getSignedUrl
-  ) {}
+    client: S3CompatibleClient,
+    target: NormalizedStorageRoleTarget,
+    signedUrlFactory: SignedUrlFactory = defaultSignedUrlFactory
+  ) {
+    this.client = client;
+    this.target = target;
+    this.signedUrlFactory = signedUrlFactory;
+  }
 
   protected resolveQualifiedKey(objectKey: string): string {
     return buildQualifiedObjectKey(this.target, objectKey);
@@ -140,7 +154,12 @@ abstract class S3CompatibleObjectStoreBase {
         })
       );
 
-      return toStagedObjectDescriptor(this.target, qualifiedKey, result);
+      return toStagedObjectDescriptor(this.target, qualifiedKey, {
+        ContentLength: result.ContentLength,
+        ETag: result.ETag,
+        LastModified: result.LastModified,
+        Metadata: result.Metadata
+      });
     } catch (error) {
       if (isMissingObjectError(error)) {
         return null;
@@ -170,11 +189,13 @@ abstract class S3CompatibleObjectStoreBase {
       })
     );
 
-    return {
+    const resultPayload: PublishObjectResult = {
       bucket: this.target.bucket,
       key: qualifiedKey,
-      etag: result.ETag
+      ...(result.ETag ? { etag: result.ETag } : {})
     };
+
+    return resultPayload;
   }
 
   protected async deleteResolvedObject(qualifiedKey: string): Promise<void> {
@@ -211,11 +232,14 @@ export class S3CompatibleStagingBlobStore
   extends S3CompatibleObjectStoreBase
   implements StagingBlobStore
 {
+  private readonly config: S3CompatibleStagingBlobStoreConfig;
+
   constructor(
-    private readonly config: S3CompatibleStagingBlobStoreConfig,
+    config: S3CompatibleStagingBlobStoreConfig,
     signedUrlFactory?: SignedUrlFactory
   ) {
     super(config.client, config.target, signedUrlFactory);
+    this.config = config;
   }
 
   async createUploadTarget(input: CreateUploadTargetInput): Promise<CreateUploadTargetResult> {

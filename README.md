@@ -1,3 +1,5 @@
+![cdngine](https://github.com/user-attachments/assets/144e0e2a-f652-4a08-b400-0f6220b0c234)
+
 CDNgine is an asset ingest, processing, and delivery platform for products that need one system for **canonical source storage, durable workflow orchestration, deterministic derivatives, and CDN-friendly delivery**.
 
 It is designed for workloads such as:

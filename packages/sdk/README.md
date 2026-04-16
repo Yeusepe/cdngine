@@ -1,176 +1,230 @@
 # `@cdngine/sdk`
 
-Checked-in contract and SDK package for the public CDNgine API.
+TypeScript SDK for the public CDNgine API.
 
-## What is here
+## Start here
 
-- generated public OpenAPI TypeScript types in `src/generated/public-api.ts`
-- `CDNginePublicClient` in `src/public-client.ts`
-- grouped helpers such as `client.assets.*` and fluent version handles such as `client.asset(assetId).version(versionId)`
-- repo-level generation and freshness checks:
-  - `npm run sdk:generate`
-  - `npm run sdk:check`
+Most app developers only need this SDK for two jobs:
 
-## Current scope
+1. upload a file
+2. get a download URL for a file
 
-The checked-in client wraps the public control-plane calls for:
+## What the words mean
 
-- logical-asset reads
-- upload-session creation
-- upload-session completion
-- full file and byte upload orchestration
-- version reads and polling
-- derivative listing
-- manifest fetch
-- derivative delivery authorization
-- original-source authorization
+| Word | Plain meaning |
+| --- | --- |
+| `serviceNamespaceId` | A label for the app area using CDNgine. Example: `media`. |
+| `tenantId` | The customer, workspace, or organization the file belongs to. |
+| `assetOwner` | Who owns the file in your product. Example: `user:123`. |
+| `assetId` | The file ID. |
+| `versionId` | The version of that file. |
+| `deliveryScopeId` | The download rule to use. Example: `paid-downloads`. |
+| `variant` | Which generated file you want. |
 
-Be realistic about the current limits:
+## What is a namespace?
 
-1. this package is a private workspace package today, not a published npm package
+A **namespace** is just a label for the app area using CDNgine.
 
-## Real upload flow
+Examples:
+
+- `media`
+- `course-files`
+- `store-downloads`
+
+Most apps pick one namespace and mostly forget about it.
+
+## Which values do I need?
+
+| Job | Usually required |
+| --- | --- |
+| Upload a file | `serviceNamespaceId`, `assetOwner`, file bytes |
+| Upload in a multi-tenant app | `serviceNamespaceId`, `assetOwner`, `tenantId`, file bytes |
+| Download a generated file | `assetId`, `versionId`, `deliveryScopeId`, `variant` |
+| Download the original uploaded file | `assetId`, `versionId` |
+
+## Examples that make it click
+
+### Profile photo upload
 
 ```ts
-import { readFile } from 'node:fs/promises';
-
-import { createCDNgineClient } from '@cdngine/sdk';
-
-const filePath = './hero-banner.png';
-const fileBuffer = await readFile(filePath);
-
-// createCDNgineClient(...) builds the root SDK client for your app.
-const client = createCDNgineClient({
-  // baseUrl points at the host app that mounted the CDNgine public API.
-  baseUrl: 'https://api.cdngine.local',
-  // getAccessToken supplies the bearer token CDNgine should send on requests.
-  getAccessToken: () => process.env.CDNGINE_TOKEN
-});
-
-// withDefaults(...) creates a scoped client so you do not repeat the same
-// namespace, tenant, owner, and wait settings on every call.
-const media = client.withDefaults({
-  // assetOwner is the caller-facing owner persisted for policy and audit.
-  assetOwner: 'customer:acme',
-  // serviceNamespaceId selects the registered CDNgine namespace.
-  serviceNamespaceId: 'media-platform',
-  // tenantId applies tenant isolation inside that namespace.
-  tenantId: 'tenant-acme',
+const files = client.withDefaults({
+  serviceNamespaceId: 'media',
+  assetOwner: 'user:123',
   wait: {
-    // untilStates defines which lifecycle states count as "ready".
     untilStates: ['published']
   }
 });
 
-// upload(...) is the shortest high-level helper for "upload this file and wait".
-const uploaded = await media.upload(fileBuffer, {
-  // contentType records the media type of the uploaded file.
-  contentType: 'image/png',
-  // filename sets the persisted source file name.
-  filename: 'hero-banner.png',
-  // idempotencyKey makes retries converge on one logical upload.
-  idempotencyKey: 'hero-banner-v1'
+const result = await files.upload(file, {
+  filename: file.name,
+  contentType: file.type
+});
+```
+
+### Workspace file upload
+
+```ts
+const files = client.withDefaults({
+  serviceNamespaceId: 'media',
+  tenantId: 'acme',
+  assetOwner: 'organization:acme',
+  wait: {
+    untilStates: ['published']
+  }
 });
 
-// asset(...).version(...) targets one immutable version.
-// delivery('public-images') selects the delivery policy.
-// authorize(...) returns the full authorization payload.
-const delivery = await client
-  .asset(uploaded.assetId)
-  .version(uploaded.versionId)
+const result = await files.upload(file, {
+  filename: file.name,
+  contentType: file.type
+});
+```
+
+### Generated image download
+
+```ts
+const imageUrl = await client
+  .asset(assetId)
+  .version(versionId)
   .delivery('public-images')
-  .authorize({
-    // idempotencyKey makes repeated authorization attempts safe.
-    idempotencyKey: `delivery-${uploaded.versionId}`,
-    body: {
-      // responseFormat='url' asks for a redirectable URL response.
-      responseFormat: 'url',
-      // variant chooses which published derivative you want.
-      variant: 'webp-master'
-    }
+  .url({
+    variant: 'webp-master',
+    idempotencyKey: `image-${versionId}`
+  });
+```
+
+### Original file download
+
+```ts
+const sourceUrl = await client
+  .asset(assetId)
+  .version(versionId)
+  .source()
+  .url({
+    preferredDisposition: 'attachment',
+    idempotencyKey: `source-${versionId}`
+  });
+```
+
+### Paid download
+
+```ts
+const downloadUrl = await client
+  .asset(assetId)
+  .version(versionId)
+  .delivery('paid-downloads')
+  .url({
+    variant: 'download-pdf',
+    idempotencyKey: `download-${versionId}`
+  });
+```
+
+## Smallest upload example
+
+```ts
+import { createCDNgineClient } from '@cdngine/sdk';
+
+const client = createCDNgineClient({
+  baseUrl: 'https://api.example.com',
+  getAccessToken: () => accessToken
+});
+
+const files = client.withDefaults({
+  serviceNamespaceId: 'media',
+  assetOwner: 'user:123',
+  tenantId: 'acme', // only if your app is multi-tenant
+  wait: {
+    untilStates: ['published']
+  }
+});
+
+const result = await files.upload(file, {
+  filename: file.name,
+  contentType: file.type || 'application/octet-stream',
+  idempotencyKey: `upload-${file.name}-${file.size}`
+});
+```
+
+Use `withDefaults(...)` for uploads because uploads usually repeat the same setup values.
+
+## Smallest generated-download example
+
+```ts
+import { createCDNgineClient } from '@cdngine/sdk';
+
+const client = createCDNgineClient({
+  baseUrl: 'https://api.example.com',
+  getAccessToken: () => accessToken
+});
+
+const url = await client
+  .asset(assetId)
+  .version(versionId)
+  .delivery('paid-downloads')
+  .url({
+    variant: 'webp-master',
+    idempotencyKey: `download-${versionId}`
   });
 
-console.log(uploaded.version.lifecycleState, delivery.url);
+window.location.assign(url);
 ```
 
-## Private multi-tenant downloads
+Downloads usually do **not** need:
 
-If you are selling files to authenticated users, the normal pattern is:
+- `serviceNamespaceId`
+- `tenantId`
+- `assetOwner`
 
-1. your host app authenticates the user and checks the business entitlement
-2. the caller's token resolves to a CDNgine actor with the correct tenant and namespace scope
-3. the SDK asks CDNgine for a short-lived authorized URL
-4. your UI redirects the user to that URL
+Those matter when the file is created, not when you download an existing file.
 
-Derivative download example:
+## Smallest original-download example
 
 ```ts
-// createCDNgineClient(...) builds the root browser SDK client.
+import { createCDNgineClient } from '@cdngine/sdk';
+
 const client = createCDNgineClient({
-  // baseUrl points at your mounted public API.
-  baseUrl: 'https://api.cdngine.local',
-  // getAccessToken reads the current signed-in user's bearer token.
-  getAccessToken: () => sessionStorage.getItem('access_token') ?? undefined
+  baseUrl: 'https://api.example.com',
+  getAccessToken: () => accessToken
 });
 
-// withDefaults(...) binds the namespace and tenant once for later download calls.
-const downloads = client.withDefaults({
-  serviceNamespaceId: 'media-platform',
-  tenantId: 'tenant-acme'
-});
+const url = await client
+  .asset(assetId)
+  .version(versionId)
+  .source()
+  .url({
+    preferredDisposition: 'attachment',
+    idempotencyKey: `source-${versionId}`
+  });
 
-// asset(...).version(...) targets the exact immutable version.
-// delivery('paid-downloads') selects the paid-download policy.
-// url(...) is the shorthand helper that returns only the final redirect URL.
-const url = await downloads.asset('ast_001').version('ver_001').delivery('paid-downloads').url({
-  // idempotencyKey makes repeated clicks or retries safe.
-  idempotencyKey: 'download-ver_001-user_123',
-  // variant chooses which published output the user should receive.
-  variant: 'webp-master'
-});
-
-// Redirect the browser to the short-lived authorized download URL.
 window.location.assign(url);
 ```
 
-Original-source download example:
+## Which method should I use?
 
-```ts
-// asset(...).version(...) targets the exact immutable version.
-// source().url(...) is the shorthand helper for the original uploaded file.
-const url = await client.asset('ast_001').version('ver_001').source().url({
-  // idempotencyKey makes retries safe.
-  idempotencyKey: 'source-ver_001-user_123',
-  // preferredDisposition='attachment' tells the browser to download the file.
-  preferredDisposition: 'attachment'
-});
+| Goal | Use this |
+| --- | --- |
+| Upload and wait until ready | `client.withDefaults(...).upload(file, ...)` |
+| Upload but do not wait | `client.withDefaults(...).uploadFile(file, ...)` |
+| Download a generated file | `client.asset(assetId).version(versionId).delivery(scope).url(...)` |
+| Download the original file | `client.asset(assetId).version(versionId).source().url(...)` |
+| You need the full auth response, not just a URL | use `.authorize(...)` instead of `.url(...)` |
 
-// Redirect the browser to the short-lived authorized source-download URL.
-window.location.assign(url);
-```
+## What this package wraps
 
-Use CDNgine's authorize step as the product download boundary. Do not expose the raw origin object URL directly as your customer-facing download link.
+The checked-in client wraps:
 
-## Low-level upload helpers still exist
+- asset reads
+- upload-session creation and completion
+- file upload orchestration
+- version reads and waiting
+- derivative listing
+- manifest fetch
+- generated-file authorization
+- original-file authorization
 
-`client.withDefaults(...)` and `client.scope(...)` are the shortest path for normal application code because they let you bind namespace, tenant, owner, and default wait behavior once.
+## Current limit
 
-Then prefer:
+This package is a workspace package in this monorepo today. It is not yet published as a standalone npm package.
 
-- `scopedClient.upload(...)`
-- `scopedClient.uploadFile(...)`
+## Read more
 
-Under that, `client.assets.uploadFile(...)` and `client.assets.uploadFileAndWait(...)` are still available when you want the explicit all-options object shape.
-
-Use the lower-level `assets.upload(...)` and `assets.uploadAndWait(...)` helpers only when another layer already uploaded the bytes or when you are deliberately controlling the staging flow yourself.
-
-## Step-by-step tutorial
-
-For the SDK-first tutorial plus the raw HTTP reference flow, read [Public API And TypeScript SDK Tutorial](../../docs/public-api-and-sdk-tutorial.md).
-
-## Governing docs
-
-- `docs/sdk-strategy.md`
-- `docs/spec-governance.md`
-- `docs/api-surface.md`
-- `docs/public-api-and-sdk-tutorial.md`
+For the longer walkthrough, read [Public API and TypeScript SDK Tutorial](../../docs/public-api-and-sdk-tutorial.md).

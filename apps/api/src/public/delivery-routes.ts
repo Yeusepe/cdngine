@@ -21,6 +21,7 @@ import { ProblemDetailError, problemTypes } from '../problem-details.js';
 import {
   InMemoryPublicVersionReadStore,
   PublicAssetVersionNotFoundError,
+  PublicDownloadLinkNotFoundError,
   PublicVersionNotReadyError,
   type PublicVersionReadStore
 } from './delivery-service.js';
@@ -32,10 +33,12 @@ export interface DeliveryRouteDependencies {
 }
 
 const authorizeSourceSchema = z.object({
+  oneTime: z.boolean().optional(),
   preferredDisposition: z.enum(['attachment', 'inline']).optional()
 });
 
 const authorizeDeliverySchema = z.object({
+  oneTime: z.boolean().optional(),
   responseFormat: z.enum(['url', 'cookie-bundle']).optional(),
   variant: z.string().min(1)
 });
@@ -58,6 +61,16 @@ function getIdempotencyKey(appContext: { req: { header: (name: string) => string
 
 function mapPublicReadError(error: unknown): never {
   if (error instanceof PublicAssetVersionNotFoundError) {
+    throw new ProblemDetailError({
+      type: problemTypes.notFound,
+      title: 'Not found',
+      status: 404,
+      detail: error.message,
+      retryable: false
+    });
+  }
+
+  if (error instanceof PublicDownloadLinkNotFoundError) {
     throw new ProblemDetailError({
       type: problemTypes.notFound,
       title: 'Not found',
@@ -180,7 +193,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
     validateJsonBody(authorizeSourceSchema),
     async (context) => {
       try {
-        getIdempotencyKey(context);
+        const idempotencyKey = getIdempotencyKey(context);
         const assetId = context.req.param('assetId');
         const versionId = context.req.param('versionId');
         await requireScopedVersion(context, dependencies, assetId, versionId);
@@ -189,7 +202,11 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
           assetId,
           versionId,
           body.preferredDisposition,
-          (dependencies.now ?? (() => new Date()))()
+          {
+            idempotencyKey,
+            now: (dependencies.now ?? (() => new Date()))(),
+            ...(body.oneTime ? { oneTime: true } : {})
+          }
         );
 
         return context.json(authorization);
@@ -204,7 +221,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
     validateJsonBody(authorizeDeliverySchema),
     async (context) => {
       try {
-        getIdempotencyKey(context);
+        const idempotencyKey = getIdempotencyKey(context);
         const assetId = context.req.param('assetId');
         const versionId = context.req.param('versionId');
         const deliveryScopeId = context.req.param('deliveryScopeId');
@@ -215,7 +232,11 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
           versionId,
           deliveryScopeId,
           body.variant,
-          (dependencies.now ?? (() => new Date()))()
+          {
+            idempotencyKey,
+            now: (dependencies.now ?? (() => new Date()))(),
+            ...(body.oneTime ? { oneTime: true } : {})
+          }
         );
 
         return context.json(authorization);
@@ -224,6 +245,24 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
       }
     }
   );
+}
+
+export function registerDownloadLinkRoutes(
+  app: Hono<ApiEnv>,
+  dependencies: DeliveryRouteDependencies
+) {
+  app.get('/download-links/:downloadToken', async (context) => {
+    try {
+      const link = await dependencies.store.consumeDownloadLink(
+        context.req.param('downloadToken'),
+        (dependencies.now ?? (() => new Date()))()
+      );
+
+      return context.redirect(link.url, 302);
+    } catch (error) {
+      mapPublicReadError(error);
+    }
+  });
 }
 
 export function createInMemoryDeliveryRouteDependencies(

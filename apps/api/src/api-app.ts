@@ -25,6 +25,7 @@ import { requestContextMiddleware } from './request-context.js';
 
 export interface CreateApiAppOptions {
   auth?: RequestActorAuthenticator;
+  registerCapabilityRoutes?: SurfaceRouteRegistrar;
   registerOperatorRoutes?: SurfaceRouteRegistrar;
   registerPlatformAdminRoutes?: SurfaceRouteRegistrar;
   registerPublicRoutes?: SurfaceRouteRegistrar;
@@ -72,6 +73,7 @@ export function createApiApp(options: CreateApiAppOptions = {}) {
     })
   );
 
+  options.registerCapabilityRoutes?.(app);
   app.route('/v1', createSurfaceApp('public', options.registerPublicRoutes, options.auth));
   app.route(
     '/v1/platform',

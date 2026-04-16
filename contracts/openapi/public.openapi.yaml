@@ -324,7 +324,11 @@ paths:
                   enum:
                     - attachment
                     - inline
+                oneTime:
+                  type: boolean
+                  description: Return a one-time-use download URL that becomes invalid after the first successful access.
               example:
+                oneTime: true
                 preferredDisposition: attachment
       responses:
         '200':
@@ -339,7 +343,9 @@ paths:
                 authorizationMode: signed-url
                 resolvedOrigin: source-export
                 expiresAt: '2026-01-15T18:15:00Z'
-                url: https://downloads.cdngine.local/source/exp_01JQ9Z4SZ4SX2Y6V7G4W6J9P2V
+                oneTime: true
+                remainingUses: 1
+                url: https://api.cdngine.local/download-links/lnk_source_001
         '401':
           $ref: '#/components/responses/Problem'
         '403':
@@ -501,7 +507,11 @@ paths:
                   enum:
                     - url
                     - cookie-bundle
+                oneTime:
+                  type: boolean
+                  description: Return a one-time-use download URL that becomes invalid after the first successful access.
               example:
+                oneTime: true
                 variant: webp-1600
                 responseFormat: url
       responses:
@@ -518,7 +528,9 @@ paths:
                 authorizationMode: signed-url
                 resolvedOrigin: cdn-derived
                 expiresAt: '2026-01-15T18:30:00Z'
-                url: https://cdn.cdngine.local/i/public-images/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/webp-1600
+                oneTime: true
+                remainingUses: 1
+                url: https://api.cdngine.local/download-links/lnk_delivery_001
         '401':
           $ref: '#/components/responses/Problem'
         '403':
@@ -526,6 +538,29 @@ paths:
         '404':
           $ref: '#/components/responses/Problem'
         '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /download-links/{downloadToken}:
+    get:
+      tags:
+        - downloads
+      summary: Consume a one-time download link
+      description: |
+        Redirects to the underlying authorized delivery or source URL and invalidates the
+        capability after the first successful access.
+      operationId: consumeDownloadLink
+      parameters:
+        - $ref: '#/components/parameters/DownloadToken'
+      responses:
+        '302':
+          description: Redirect to the authorized download target.
+          headers:
+            Location:
+              description: Authorized download target URL.
+              schema:
+                type: string
+        '404':
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
@@ -559,6 +594,13 @@ components:
       in: path
       required: true
       description: Immutable asset-version identifier.
+      schema:
+        type: string
+    DownloadToken:
+      name: downloadToken
+      in: path
+      required: true
+      description: One-time capability token embedded in a previously authorized download URL.
       schema:
         type: string
     ManifestType:

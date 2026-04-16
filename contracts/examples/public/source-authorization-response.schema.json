@@ -23,6 +23,13 @@
     "expiresAt": {
       "type": "string"
     },
+    "oneTime": {
+      "type": "boolean"
+    },
+    "remainingUses": {
+      "type": "integer",
+      "minimum": 0
+    },
     "url": {
       "type": "string"
     }

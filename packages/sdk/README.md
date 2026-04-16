@@ -114,9 +114,12 @@ const downloadUrl = await client
   .delivery('paid-downloads')
   .url({
     variant: 'download-pdf',
+    oneTime: true,
     idempotencyKey: `download-${versionId}`
   });
 ```
+
+Use `oneTime: true` when you want a link that works once and then becomes invalid.
 
 ## Smallest upload example
 
@@ -162,6 +165,7 @@ const url = await client
   .delivery('paid-downloads')
   .url({
     variant: 'webp-master',
+    oneTime: true,
     idempotencyKey: `download-${versionId}`
   });
 

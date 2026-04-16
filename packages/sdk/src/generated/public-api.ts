@@ -179,6 +179,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/download-links/{downloadToken}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consume a one-time download link
+         * @description Redirects to the underlying authorized delivery or source URL and invalidates the
+         *     capability after the first successful access.
+         */
+        get: operations["consumeDownloadLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -288,6 +309,8 @@ export interface components {
             /** @enum {string} */
             resolvedOrigin: "source-export" | "source-proxy" | "lazy-read-cache";
             expiresAt: string;
+            oneTime?: boolean;
+            remainingUses?: number;
             url: string;
         };
         /** DerivativeListResponse */
@@ -369,6 +392,8 @@ export interface components {
             /** @enum {string} */
             resolvedOrigin: "cdn-derived" | "origin-derived" | "manifest-bundle";
             expiresAt: string;
+            oneTime?: boolean;
+            remainingUses?: number;
             url: string;
         };
     };
@@ -403,6 +428,8 @@ export interface components {
         AssetId: string;
         /** @description Immutable asset-version identifier. */
         VersionId: string;
+        /** @description One-time capability token embedded in a previously authorized download URL. */
+        DownloadToken: string;
         /** @description Published manifest family for the version. */
         ManifestType: string;
         /** @description Delivery policy scope that resolves the public delivery posture. */
@@ -687,6 +714,8 @@ export interface operations {
                 "application/json": {
                     /** @enum {string} */
                     preferredDisposition?: "attachment" | "inline";
+                    /** @description Return a one-time-use download URL that becomes invalid after the first successful access. */
+                    oneTime?: boolean;
                 };
             };
         };
@@ -704,7 +733,9 @@ export interface operations {
                      *       "authorizationMode": "signed-url",
                      *       "resolvedOrigin": "source-export",
                      *       "expiresAt": "2026-01-15T18:15:00Z",
-                     *       "url": "https://downloads.cdngine.local/source/exp_01JQ9Z4SZ4SX2Y6V7G4W6J9P2V"
+                     *       "oneTime": true,
+                     *       "remainingUses": 1,
+                     *       "url": "https://api.cdngine.local/download-links/lnk_source_001"
                      *     }
                      */
                     "application/json": components["schemas"]["source-authorization-response.schema"];
@@ -817,6 +848,8 @@ export interface operations {
                     variant?: string;
                     /** @enum {string} */
                     responseFormat?: "url" | "cookie-bundle";
+                    /** @description Return a one-time-use download URL that becomes invalid after the first successful access. */
+                    oneTime?: boolean;
                 };
             };
         };
@@ -835,7 +868,9 @@ export interface operations {
                      *       "authorizationMode": "signed-url",
                      *       "resolvedOrigin": "cdn-derived",
                      *       "expiresAt": "2026-01-15T18:30:00Z",
-                     *       "url": "https://cdn.cdngine.local/i/public-images/ast_existing_123/ver_01JQ9YG2PGM4H7QPQY5C8D6BBN/webp-1600"
+                     *       "oneTime": true,
+                     *       "remainingUses": 1,
+                     *       "url": "https://api.cdngine.local/download-links/lnk_delivery_001"
                      *     }
                      */
                     "application/json": components["schemas"]["delivery-authorization-response.schema"];
@@ -845,6 +880,31 @@ export interface operations {
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    consumeDownloadLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description One-time capability token embedded in a previously authorized download URL. */
+                downloadToken: components["parameters"]["DownloadToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the authorized download target. */
+            302: {
+                headers: {
+                    /** @description Authorized download target URL. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Problem"];
             default: components["responses"]["Problem"];
         };
     };

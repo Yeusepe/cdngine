@@ -289,6 +289,53 @@ test('version download helpers collapse authorization payloads into simple url c
   assert.equal(requests[1].headers['idempotency-key'], 'idem-source-url');
 });
 
+test('version download helpers can request one-time links', async () => {
+  const requests = [];
+  const client = createCDNgineClient({
+    baseUrl: 'https://api.cdngine.local',
+    fetch: async (url, init) => {
+      requests.push({
+        body: init?.body ? JSON.parse(init.body) : undefined,
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        method: init?.method,
+        url
+      });
+
+      return createJsonResponse({
+        authorizationMode: 'signed-url',
+        oneTime: true,
+        remainingUses: 1,
+        url: 'https://api.cdngine.local/download-links/lnk_once_001'
+      });
+    },
+    getAccessToken: 'token_123'
+  });
+
+  const version = client.asset('ast_001').version('ver_001');
+  const deliveryUrl = await version.delivery('paid-downloads').url({
+    idempotencyKey: 'idem-delivery-once',
+    oneTime: true,
+    variant: 'ebook-pdf'
+  });
+  const sourceUrl = await version.source().url({
+    idempotencyKey: 'idem-source-once',
+    oneTime: true,
+    preferredDisposition: 'attachment'
+  });
+
+  assert.equal(deliveryUrl, 'https://api.cdngine.local/download-links/lnk_once_001');
+  assert.equal(sourceUrl, 'https://api.cdngine.local/download-links/lnk_once_001');
+  assert.deepEqual(requests[0].body, {
+    oneTime: true,
+    responseFormat: 'url',
+    variant: 'ebook-pdf'
+  });
+  assert.deepEqual(requests[1].body, {
+    oneTime: true,
+    preferredDisposition: 'attachment'
+  });
+});
+
 test('withDefaults binds upload scope so common file uploads need very little code', async () => {
   let attempt = 0;
   const requests = [];

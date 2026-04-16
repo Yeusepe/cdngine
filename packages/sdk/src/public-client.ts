@@ -117,11 +117,13 @@ export interface AuthorizeSourceDownloadForVersionInput {
 
 export interface DeliveryUrlForVersionInput {
   idempotencyKey: string;
+  oneTime?: boolean;
   variant: NonNullable<AuthorizeDeliveryRequest['variant']>;
 }
 
 export interface SourceUrlForVersionInput {
   idempotencyKey: string;
+  oneTime?: boolean;
   preferredDisposition?: AuthorizeSourceRequest['preferredDisposition'];
 }
 
@@ -917,6 +919,7 @@ export class CDNgineAssetVersionClient {
       url: async (input: SourceUrlForVersionInput) => {
         const authorization = await this.authorizeSourceDownload({
           body: {
+            ...(input.oneTime ? { oneTime: true } : {}),
             ...(input.preferredDisposition
               ? { preferredDisposition: input.preferredDisposition }
               : {})
@@ -942,6 +945,7 @@ export class CDNgineAssetVersionClient {
         const authorization = await this.client.authorizeDelivery({
           assetId: this.assetId,
           body: {
+            ...(input.oneTime ? { oneTime: true } : {}),
             responseFormat: 'url',
             variant: input.variant
           },

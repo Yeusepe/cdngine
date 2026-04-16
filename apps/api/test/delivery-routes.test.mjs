@@ -16,7 +16,8 @@ import {
   InMemoryPublicVersionReadStore
 } from '../dist/public/delivery-service.js';
 import {
-  registerDeliveryRoutes
+  registerDeliveryRoutes,
+  registerDownloadLinkRoutes
 } from '../dist/public/delivery-routes.js';
 import {
   createAuthFixture,
@@ -31,6 +32,12 @@ async function createPublicApp(store, principalOverrides = {}) {
   return {
     app: createApiApp({
       auth,
+      registerCapabilityRoutes(capabilityApp) {
+        registerDownloadLinkRoutes(capabilityApp, {
+          now: () => new Date('2026-01-15T18:45:00.000Z'),
+          store
+        });
+      },
       registerPublicRoutes(publicApp) {
         registerDeliveryRoutes(publicApp, {
           now: () => new Date('2026-01-15T18:45:00.000Z'),
@@ -169,6 +176,118 @@ test('public delivery routes expose published versions, derivatives, manifests, 
     url: 'https://downloads.cdngine.local/source/exp_001',
     versionId: 'ver_001'
   });
+});
+
+test('delivery routes can issue and consume one-time download links', async () => {
+  const issuedTokens = ['lnk_delivery_001', 'lnk_source_001'];
+  const store = new InMemoryPublicVersionReadStore({
+    linkTokenFactory: () => issuedTokens.shift() ?? 'lnk_fallback_001',
+    versions: [
+      {
+        assetId: 'ast_010',
+        assetOwner: 'customer:acme',
+        deliveries: [
+          {
+            assetId: 'ast_010',
+            byteLength: 512334n,
+            contentType: 'image/webp',
+            deliveryScopeId: 'paid-downloads',
+            deterministicKey: 'deriv/media-platform/ast_010/ver_010/download-pdf/download-pdf',
+            derivativeId: 'drv_010',
+            recipeId: 'download-pdf',
+            storageKey: 'derived/paid-downloads/ast_010/ver_010/download-pdf.pdf',
+            variant: 'download-pdf',
+            versionId: 'ver_010'
+          }
+        ],
+        lifecycleState: 'published',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 1024n,
+          contentType: 'application/pdf',
+          filename: 'paid-file.pdf'
+        },
+        sourceAuthorization: {
+          authorizationMode: 'signed-url',
+          expiresAt: new Date('2026-01-15T19:00:00.000Z'),
+          resolvedOrigin: 'source-export',
+          url: 'https://downloads.cdngine.local/source/exp_once_010'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_010',
+        versionNumber: 1,
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, headers } = await createPublicApp(store);
+
+  const deliveryAuthResponse = await app.request(
+    'http://localhost/v1/assets/ast_010/versions/ver_010/deliveries/paid-downloads/authorize',
+    {
+      method: 'POST',
+      headers: headers({
+        'idempotency-key': 'idem-delivery-once'
+      }),
+      body: JSON.stringify({
+        oneTime: true,
+        responseFormat: 'url',
+        variant: 'download-pdf'
+      })
+    }
+  );
+  const sourceAuthResponse = await app.request(
+    'http://localhost/v1/assets/ast_010/versions/ver_010/source/authorize',
+    {
+      method: 'POST',
+      headers: headers({
+        'idempotency-key': 'idem-source-once'
+      }),
+      body: JSON.stringify({
+        oneTime: true,
+        preferredDisposition: 'attachment'
+      })
+    }
+  );
+
+  assert.equal(deliveryAuthResponse.status, 200);
+  assert.deepEqual(await deliveryAuthResponse.json(), {
+    assetId: 'ast_010',
+    authorizationMode: 'signed-url',
+    deliveryScopeId: 'paid-downloads',
+    expiresAt: '2026-01-15T19:00:00.000Z',
+    oneTime: true,
+    remainingUses: 1,
+    resolvedOrigin: 'cdn-derived',
+    url: 'https://api.cdngine.local/download-links/lnk_delivery_001',
+    versionId: 'ver_010'
+  });
+
+  assert.equal(sourceAuthResponse.status, 200);
+  assert.deepEqual(await sourceAuthResponse.json(), {
+    assetId: 'ast_010',
+    authorizationMode: 'signed-url',
+    expiresAt: '2026-01-15T19:00:00.000Z',
+    oneTime: true,
+    remainingUses: 1,
+    resolvedOrigin: 'source-export',
+    url: 'https://api.cdngine.local/download-links/lnk_source_001',
+    versionId: 'ver_010'
+  });
+
+  const firstUseResponse = await app.request('http://localhost/download-links/lnk_source_001', {
+    redirect: 'manual'
+  });
+  const secondUseResponse = await app.request('http://localhost/download-links/lnk_source_001', {
+    redirect: 'manual'
+  });
+
+  assert.equal(firstUseResponse.status, 302);
+  assert.equal(
+    firstUseResponse.headers.get('location'),
+    'https://downloads.cdngine.local/source/exp_once_010'
+  );
+  assert.equal(secondUseResponse.status, 404);
 });
 
 test('delivery routes reject unpublished versions as not ready', async () => {

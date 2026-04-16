@@ -187,6 +187,8 @@ const sourceUrl = await client
 Your app decides the user bought the file.
 Then you ask CDNgine for a short-lived download URL.
 
+If you want a link that only works **once**, add `oneTime: true`.
+
 Use:
 
 - `delivery('paid-downloads')`
@@ -199,11 +201,18 @@ const downloadUrl = await client
   .delivery('paid-downloads')
   .url({
     variant: 'download-pdf',
+    oneTime: true,
     idempotencyKey: `download-${versionId}`
   });
 
 window.location.assign(downloadUrl);
 ```
+
+What `oneTime: true` means:
+
+- the returned URL is a special one-time link
+- the first successful open works
+- the second open fails
 
 ### Example 6: the same file, different outputs
 
@@ -287,6 +296,7 @@ const url = await client
   .delivery('paid-downloads')
   .url({
     variant: 'webp-master',
+    oneTime: true,
     idempotencyKey: `download-${versionId}`
   });
 
@@ -299,6 +309,7 @@ window.location.assign(url);
 - `versionId`: the version of that file
 - `delivery('paid-downloads')`: the download rule you want to use
 - `variant`: which generated file to return
+- `oneTime`: use `true` if the link should only work once
 
 ### What is not needed here
 

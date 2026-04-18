@@ -22,6 +22,7 @@ export const problemTypes = {
   invalidStateTransition: 'https://docs.cdngine.dev/problems/invalid-state-transition',
   invalidRequest: 'https://docs.cdngine.dev/problems/invalid-request',
   notFound: 'https://docs.cdngine.dev/problems/not-found',
+  outputWorkflowNotFound: 'https://docs.cdngine.dev/problems/output-workflow-not-found',
   operatorActionRejected: 'https://docs.cdngine.dev/problems/operator-action-rejected',
   scopeNotAllowed: 'https://docs.cdngine.dev/problems/scope-not-allowed',
   unauthorized: 'https://docs.cdngine.dev/problems/unauthorized',

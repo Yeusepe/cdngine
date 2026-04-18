@@ -27,4 +27,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/_demo': 'http://localhost:4000',
+      '/download-links': 'http://localhost:4000',
+      '/v1': 'http://localhost:4000'
+    }
+  }
 })

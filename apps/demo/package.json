@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && node ./scripts/generate-demo-scenario.mjs && vite",
-    "build": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && node ./scripts/generate-demo-scenario.mjs && tsc -b && vite build",
+    "dev": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && node ./scripts/dev.mjs",
+    "build": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/workflows && tsc -b && vite build",
     "lint": "tsc -b --pretty false",
     "preview": "vite preview",
     "test": "node --test"

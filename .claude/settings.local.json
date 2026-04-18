@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(Start-Process -NoNewWindow -FilePath \"cmd\" -ArgumentList \"/c npm run dev -- --host > C:\\\\Users\\\\svalp\\\\AppData\\\\Local\\\\Temp\\\\cdngine-demo.log 2>&1\")",
+      "Bash(nohup npm:*)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

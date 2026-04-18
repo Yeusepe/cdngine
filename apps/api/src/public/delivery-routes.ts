@@ -1,8 +1,9 @@
 /**
- * Purpose: Registers public version, derivative, manifest, derivative-delivery, and original-source authorization routes without exposing internal storage topology.
+ * Purpose: Registers public version, derivative, manifest, derivative-delivery, and original-source authorization routes without exposing internal storage topology. Includes optional output-workflow integration.
  * Governing docs:
  * - docs/api-surface.md
  * - docs/original-source-delivery.md
+ * - docs/output-workflows.md
  * - docs/storage-tiering-and-materialization.md
  * - docs/security-model.md
  * External references:
@@ -25,20 +26,35 @@ import {
   PublicVersionNotReadyError,
   type PublicVersionReadStore
 } from './delivery-service.js';
+import {
+  UnknownOutputWorkflowError,
+  type OutputWorkflowStore,
+  type OutputWorkflowTriggerContext
+} from './output-workflow-service.js';
 import { validateJsonBody } from '../validation.js';
 
 export interface DeliveryRouteDependencies {
   now?: () => Date;
+  outputWorkflowStore?: OutputWorkflowStore;
   store: PublicVersionReadStore;
 }
 
+const outputWorkflowSchema = z
+  .object({
+    outputWorkflowId: z.string().min(1),
+    outputParameters: z.record(z.string(), z.unknown()).optional()
+  })
+  .optional();
+
 const authorizeSourceSchema = z.object({
   oneTime: z.boolean().optional(),
+  outputWorkflow: outputWorkflowSchema,
   preferredDisposition: z.enum(['attachment', 'inline']).optional()
 });
 
 const authorizeDeliverySchema = z.object({
   oneTime: z.boolean().optional(),
+  outputWorkflow: outputWorkflowSchema,
   responseFormat: z.enum(['url', 'cookie-bundle']).optional(),
   variant: z.string().min(1)
 });
@@ -90,7 +106,37 @@ function mapPublicReadError(error: unknown): never {
     });
   }
 
+  if (error instanceof UnknownOutputWorkflowError) {
+    throw new ProblemDetailError({
+      type: problemTypes.outputWorkflowNotFound,
+      title: 'Output workflow not found',
+      status: 404,
+      detail: error.message,
+      retryable: false
+    });
+  }
+
   throw error;
+}
+
+async function maybeRunOutputWorkflow(
+  outputWorkflowRequest:
+    | { outputWorkflowId: string; outputParameters?: Record<string, unknown> | undefined }
+    | undefined,
+  context: Omit<OutputWorkflowTriggerContext, 'outputWorkflowId' | 'outputParameters'>,
+  store: OutputWorkflowStore | undefined
+) {
+  if (!outputWorkflowRequest || !store) {
+    return undefined;
+  }
+
+  return store.triggerOutputWorkflow({
+    ...context,
+    outputWorkflowId: outputWorkflowRequest.outputWorkflowId,
+    ...(outputWorkflowRequest.outputParameters
+      ? { outputParameters: outputWorkflowRequest.outputParameters }
+      : {})
+  });
 }
 
 async function requireScopedVersion(
@@ -198,18 +244,40 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
         const versionId = context.req.param('versionId');
         await requireScopedVersion(context, dependencies, assetId, versionId);
         const body = context.get('validatedBody') as z.infer<typeof authorizeSourceSchema>;
+        const now = (dependencies.now ?? (() => new Date()))();
         const authorization = await dependencies.store.authorizeSource(
           assetId,
           versionId,
           body.preferredDisposition,
           {
             idempotencyKey,
-            now: (dependencies.now ?? (() => new Date()))(),
+            now,
             ...(body.oneTime ? { oneTime: true } : {})
           }
         );
 
-        return context.json(authorization);
+        const outputRun = await maybeRunOutputWorkflow(
+          body.outputWorkflow,
+          {
+            assetId,
+            authorizationKind: 'source',
+            idempotencyKey,
+            now,
+            resolvedUrl: authorization.url,
+            versionId
+          },
+          dependencies.outputWorkflowStore
+        );
+
+        return context.json({
+          ...authorization,
+          ...(outputRun
+            ? {
+                outputWorkflowRun: outputRun,
+                ...(outputRun.url ? { url: outputRun.url } : {})
+              }
+            : {})
+        });
       } catch (error) {
         mapPublicReadError(error);
       }
@@ -227,6 +295,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
         const deliveryScopeId = context.req.param('deliveryScopeId');
         await requireScopedVersion(context, dependencies, assetId, versionId);
         const body = context.get('validatedBody') as z.infer<typeof authorizeDeliverySchema>;
+        const now = (dependencies.now ?? (() => new Date()))();
         const authorization = await dependencies.store.authorizeDelivery(
           assetId,
           versionId,
@@ -234,12 +303,34 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
           body.variant,
           {
             idempotencyKey,
-            now: (dependencies.now ?? (() => new Date()))(),
+            now,
             ...(body.oneTime ? { oneTime: true } : {})
           }
         );
 
-        return context.json(authorization);
+        const outputRun = await maybeRunOutputWorkflow(
+          body.outputWorkflow,
+          {
+            assetId,
+            authorizationKind: 'delivery',
+            deliveryScopeId,
+            idempotencyKey,
+            now,
+            resolvedUrl: authorization.url,
+            versionId
+          },
+          dependencies.outputWorkflowStore
+        );
+
+        return context.json({
+          ...authorization,
+          ...(outputRun
+            ? {
+                outputWorkflowRun: outputRun,
+                ...(outputRun.url ? { url: outputRun.url } : {})
+              }
+            : {})
+        });
       } catch (error) {
         mapPublicReadError(error);
       }

@@ -35,6 +35,7 @@ The initial public API should expose these groups:
 | derivatives | processed delivery artifacts for a specific version |
 | manifests | manifest-first retrieval for complex assets |
 | deliveries | delivery authorization and scope-aware URL resolution |
+| output-workflows | download-time transformation triggers attached to authorization responses |
 
 The public surface should **not** expose namespace registration, capability governance, replay, purge, or quarantine as ordinary SDK operations.
 
@@ -126,6 +127,7 @@ The public API should guarantee:
 - explicit delivery-scope and authorization-mode modeling
 - version-aware derivative and manifest lookup
 - stable operation names and tags for generated SDK method grouping
+- optional output-workflow transforms at authorization time, surfaced via the additive `outputWorkflowRun` field in authorization responses
 
 The public API should expose enough fields that clients do not need to reverse-engineer ownership or processing state from opaque identifiers.
 
@@ -159,6 +161,8 @@ Preferred behavior:
 - derivatives and manifests appear only after publication
 - delivery authorization responses expose whether the caller receives a signed URL, signed cookie bundle, public path, or proxy-style follow-up URL
 - authorization responses expose a `resolvedOrigin` field such as `cdn-derived`, `source-export`, `source-proxy`, or `lazy-read-cache`
+- when an output workflow is triggered at authorization time and completes synchronously (`state: 'complete'`), the `url` field in the authorization response is replaced with the workflow-produced URL; the `outputWorkflowRun` object carries `runId`, `state`, `outputWorkflowId`, and the workflow-produced `url`
+- when an output workflow run is `pending` or `running`, the original authorization `url` is preserved and clients should retry the authorization request with the same `Idempotency-Key` to poll for completion
 - operator actions expose workflow or operation identifiers that can be audited later
 
 ## 9. Contract artifacts
@@ -211,6 +215,7 @@ Those remain internal implementation dependencies behind CDNgine-owned routes an
 
 - [Public API And TypeScript SDK Tutorial](./public-api-and-sdk-tutorial.md)
 - [API Style Guide](./api-style-guide.md)
+- [Output Workflows](./output-workflows.md)
 - [SDK Strategy](./sdk-strategy.md)
 - [Service Architecture](./service-architecture.md)
 - [Upstream Integration Model](./upstream-integration-model.md)

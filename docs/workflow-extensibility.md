@@ -173,6 +173,28 @@ Recommended workflow tests:
 - terminal failure handling
 - Continue-As-New behavior where long-lived flows use it
 
+## 11. Output workflows (download-time transforms)
+
+Output workflows differ from ingest-time derivation workflows in one critical way: they are triggered at **authorization time**, not at ingest time. They are short-lived by design and apply per-recipient transformations—injecting a license key, watermarking a file for a specific requester, or embedding per-download metadata.
+
+The trigger model is:
+
+1. A client calls `source/authorize` or `deliveries/{deliveryScopeId}/authorize` with an `outputWorkflow` field in the request body.
+2. The authorization step resolves the base URL as normal.
+3. The platform calls `OutputWorkflowStore.triggerOutputWorkflow()` with the trigger context (asset identity, authorization kind, idempotency key, caller-supplied output parameters, and the base resolved URL).
+4. The store dispatches `output-delivery-v1` on the `output-processing` task queue.
+5. When the run reaches `state: 'complete'`, the `url` in the authorization response is replaced with the workflow-produced URL.
+
+Three mandatory rules for every `OutputWorkflowStore` implementation:
+
+1. **Idempotent** — repeated calls with the same `idempotencyKey` must return the same `runId` and, once complete, the same `url`.
+2. **Scope-preserving** — output workflows receive the same authorization context as the base step and must not serve content outside the authorized scope.
+3. **Async-declared** — if the workflow cannot complete synchronously within the authorization timeout, return `state: 'pending'` or `state: 'running'` so callers know to retry.
+
+The `InMemoryOutputWorkflowStore` in `apps/api/src/public/output-workflow-service.ts` is the test-friendly fake. Use `createImmediateOutputWorkflowHandler` to register named workflows that resolve synchronously.
+
+See [Output Workflows](./output-workflows.md) for the full contract.
+
 ## 10. References
 
 - [Temporal safe deployments](https://docs.temporal.io/develop/safe-deployments)

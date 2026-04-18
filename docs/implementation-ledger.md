@@ -24,6 +24,7 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | presentation-mvp | done | the platform can resolve presentation workflow templates from source content type, normalize canonical presentations to PDF plus slide images, publish presentation manifests, and prove the flow through conformance tests |
 | operator-foundation | done | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
 | architecture-conformance-audit | done | every major implemented code area is mapped back to architecture responsibilities, governing docs, and executable evidence with no remaining undocumented workload-specific drift in the public manifest or workflow-selection surfaces |
+| output-workflow-foundation | done | the platform can trigger a registered output workflow at authorization time, replace the resolved URL with the workflow-produced URL, and surface the run record additively in the authorization response; tests confirm backward compat when no store is configured, correct URL replacement on complete, and 404 on unknown workflow ID |
 
 ## 2. Rules for updating the ledger
 

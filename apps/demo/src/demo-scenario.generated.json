@@ -2464,7 +2464,7 @@
       ],
       "tenantId": "tenant-acme",
       "tenantName": "Tenant Acme",
-      "tokenPreview": "0fbqw9CfQmKGlcbf..."
+      "tokenPreview": "WIlFXl5MGF5NdYIR..."
     },
     {
       "actorEmail": "customer-beta-demo@cdngine.test",
@@ -2480,7 +2480,7 @@
       ],
       "tenantId": "tenant-beta",
       "tenantName": "Tenant Beta",
-      "tokenPreview": "uWc0NovFLW1au3Yn..."
+      "tokenPreview": "NVa2Ffvutsv9njIm..."
     }
   ]
 }

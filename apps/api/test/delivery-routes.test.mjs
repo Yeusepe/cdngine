@@ -1,8 +1,9 @@
 /**
- * Purpose: Verifies public version reads, derivative and manifest access, derivative delivery authorization, and original-source authorization without leaking storage topology.
+ * Purpose: Verifies public version reads, derivative and manifest access, derivative delivery authorization, and original-source authorization without leaking storage topology. Includes output-workflow authorization tests.
  * Governing docs:
  * - docs/api-surface.md
  * - docs/original-source-delivery.md
+ * - docs/output-workflows.md
  * - docs/storage-tiering-and-materialization.md
  * Tests:
  * - apps/api/test/delivery-routes.test.mjs
@@ -16,6 +17,10 @@ import {
   InMemoryPublicVersionReadStore
 } from '../dist/public/delivery-service.js';
 import {
+  InMemoryOutputWorkflowStore,
+  createImmediateOutputWorkflowHandler
+} from '../dist/public/output-workflow-service.js';
+import {
   registerDeliveryRoutes,
   registerDownloadLinkRoutes
 } from '../dist/public/delivery-routes.js';
@@ -25,7 +30,7 @@ import {
   provisionPublicActor
 } from '../../../tests/auth-fixture.mjs';
 
-async function createPublicApp(store, principalOverrides = {}) {
+async function createPublicApp(store, { principalOverrides = {}, outputWorkflowStore } = {}) {
   const auth = createAuthFixture();
   const actor = await provisionPublicActor(auth, principalOverrides);
 
@@ -41,6 +46,7 @@ async function createPublicApp(store, principalOverrides = {}) {
       registerPublicRoutes(publicApp) {
         registerDeliveryRoutes(publicApp, {
           now: () => new Date('2026-01-15T18:45:00.000Z'),
+          outputWorkflowStore,
           store
         });
       }
@@ -437,9 +443,11 @@ test('delivery routes deny callers outside the version tenant scope', async () =
     ]
   });
   const { app, headers } = await createPublicApp(store, {
-    allowedTenantIds: ['tenant-beta'],
-    email: 'tenant-beta-viewer@cdngine.test',
-    subject: 'tenant-beta-user'
+    principalOverrides: {
+      allowedTenantIds: ['tenant-beta'],
+      email: 'tenant-beta-viewer@cdngine.test',
+      subject: 'tenant-beta-user'
+    }
   });
 
   const response = await app.request('http://localhost/v1/assets/ast_003/versions/ver_003', {
@@ -449,4 +457,186 @@ test('delivery routes deny callers outside the version tenant scope', async () =
 
   assert.equal(response.status, 403);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/scope-not-allowed');
+});
+
+// ---------------------------------------------------------------------------
+// Output-workflow tests
+// ---------------------------------------------------------------------------
+
+function buildOutputWorkflowStore() {
+  return new InMemoryPublicVersionReadStore({
+    versions: [
+      {
+        assetId: 'ast_ow1',
+        assetOwner: 'customer:acme',
+        deliveries: [
+          {
+            assetId: 'ast_ow1',
+            byteLength: 204800n,
+            contentType: 'image/webp',
+            deliveryScopeId: 'paid-scope',
+            deterministicKey: 'deriv/media-platform/ast_ow1/ver_ow1/image-default/webp-1600',
+            derivativeId: 'drv_ow1',
+            recipeId: 'image-default',
+            storageKey: 'derived/paid-scope/ast_ow1/ver_ow1/webp-1600',
+            variant: 'webp-1600',
+            versionId: 'ver_ow1'
+          }
+        ],
+        lifecycleState: 'published',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 1024n,
+          contentType: 'application/zip',
+          filename: 'software.zip'
+        },
+        sourceAuthorization: {
+          authorizationMode: 'signed-url',
+          expiresAt: new Date('2026-01-15T19:00:00.000Z'),
+          resolvedOrigin: 'source-export',
+          url: 'https://downloads.cdngine.local/source/exp_ow1'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_ow1',
+        versionNumber: 1,
+        workflowState: 'completed'
+      }
+    ]
+  });
+}
+
+test('source authorization ignores outputWorkflow when no output workflow store is configured', async () => {
+  const store = buildOutputWorkflowStore();
+  const { app, headers } = await createPublicApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        outputWorkflow: { outputWorkflowId: 'license-inject-v1' }
+      })
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.url, 'https://downloads.cdngine.local/source/exp_ow1');
+  assert.equal(payload.outputWorkflowRun, undefined);
+});
+
+test('source authorization with output workflow store replaces url and adds outputWorkflowRun', async () => {
+  const store = buildOutputWorkflowStore();
+  const outputWorkflowStore = new InMemoryOutputWorkflowStore({
+    handlers: new Map([
+      [
+        'license-inject-v1',
+        createImmediateOutputWorkflowHandler(
+          (_ctx, runId) => `https://transforms.cdngine.local/output/${runId}`
+        )
+      ]
+    ]),
+    runIdFactory: () => 'owrun_001'
+  });
+  const { app, headers } = await createPublicApp(store, { outputWorkflowStore });
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        outputWorkflow: {
+          outputWorkflowId: 'license-inject-v1',
+          outputParameters: { licenseKey: 'XXXX-YYYY', licensee: 'Acme Corp' }
+        }
+      })
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.url, 'https://transforms.cdngine.local/output/owrun_001');
+  assert.equal(payload.outputWorkflowRun.runId, 'owrun_001');
+  assert.equal(payload.outputWorkflowRun.state, 'complete');
+  assert.equal(payload.outputWorkflowRun.url, 'https://transforms.cdngine.local/output/owrun_001');
+  assert.equal(payload.outputWorkflowRun.outputWorkflowId, 'license-inject-v1');
+});
+
+test('delivery authorization with output workflow store replaces url and adds outputWorkflowRun', async () => {
+  const store = buildOutputWorkflowStore();
+  const outputWorkflowStore = new InMemoryOutputWorkflowStore({
+    handlers: new Map([
+      [
+        'watermark-v1',
+        createImmediateOutputWorkflowHandler(
+          () => 'https://transforms.cdngine.local/watermarked/ast_ow1/ver_ow1/webp-1600'
+        )
+      ]
+    ]),
+    runIdFactory: () => 'owrun_002'
+  });
+  const { app, headers } = await createPublicApp(store, { outputWorkflowStore });
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/deliveries/paid-scope/authorize',
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        outputWorkflow: { outputWorkflowId: 'watermark-v1' },
+        variant: 'webp-1600'
+      })
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    payload.url,
+    'https://transforms.cdngine.local/watermarked/ast_ow1/ver_ow1/webp-1600'
+  );
+  assert.equal(payload.outputWorkflowRun.runId, 'owrun_002');
+  assert.equal(payload.outputWorkflowRun.state, 'complete');
+});
+
+test('source authorization with unknown outputWorkflowId returns 404', async () => {
+  const store = buildOutputWorkflowStore();
+  const outputWorkflowStore = new InMemoryOutputWorkflowStore({ handlers: new Map() });
+  const { app, headers } = await createPublicApp(store, { outputWorkflowStore });
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        outputWorkflow: { outputWorkflowId: 'does-not-exist' }
+      })
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 404);
+  assert.equal(payload.type, 'https://docs.cdngine.dev/problems/output-workflow-not-found');
+  assert.equal(payload.retryable, false);
+});
+
+test('source authorization with malformed outputWorkflow body returns 400', async () => {
+  const store = buildOutputWorkflowStore();
+  const { app, headers } = await createPublicApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        outputWorkflow: { outputWorkflowId: '' }
+      })
+    }
+  );
+
+  assert.equal(response.status, 400);
 });

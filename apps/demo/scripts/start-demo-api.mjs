@@ -1,6 +1,6 @@
 /**
  * Purpose: Starts a local Node.js HTTP server wrapping the CDNgine Hono API for the interactive demo.
- *   Accepts real file uploads, runs publication synchronously in memory, and serves downloaded bytes.
+ *   Accepts real file uploads, streams pipeline steps via SSE, and serves downloaded bytes.
  * Governing docs:
  * - docs/repository-layout.md
  * - docs/api-surface.md
@@ -9,7 +9,7 @@
  * External references:
  * - https://hono.dev/docs
  * - https://nodejs.org/api/http.html
- * - https://nodejs.org/api/crypto.html
+ * - https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
  * Tests:
  * - apps/demo/package.json
  */
@@ -30,11 +30,11 @@ import {
 const PORT = 4000;
 const SERVICE_NAMESPACE = 'media-platform';
 
-// In-memory file store: versionId -> { bytes, contentType, filename }
+// In-memory file store: versionId -> { bytes: Buffer, contentType: string, filename: string }
 const uploadedFiles = new Map();
 
 // ---------------------------------------------------------------------------
-// Mutable delivery store
+// Mutable delivery store — seeded after each upload
 // ---------------------------------------------------------------------------
 
 class MutableDemoVersionStore {
@@ -43,7 +43,20 @@ class MutableDemoVersionStore {
   #manifests = new Map();
   #sourceUrls = new Map();
 
-  seed({ assetId, versionId, assetOwner, serviceNamespaceId, versionNumber, source, lifecycleState, workflowState, defaultManifestType, derivatives, manifests, sourceUrl }) {
+  seed({
+    assetId,
+    assetOwner,
+    defaultManifestType,
+    derivatives,
+    lifecycleState,
+    manifests,
+    serviceNamespaceId,
+    source,
+    sourceUrl,
+    versionId,
+    versionNumber,
+    workflowState
+  }) {
     const key = `${assetId}:${versionId}`;
     this.#versions.set(key, {
       assetId,
@@ -156,8 +169,12 @@ function buildId(prefix) {
   return `${prefix}_${randomUUID().replace(/-/gu, '').slice(0, 12)}`;
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ---------------------------------------------------------------------------
-// Demo upload handler
+// Upload handler — streams pipeline steps as SSE events
 // ---------------------------------------------------------------------------
 
 async function handleDemoUpload(c) {
@@ -185,92 +202,149 @@ async function handleDemoUpload(c) {
   const workflowId = `wf-image-${versionId}`;
   const derivativeId = `drv_${versionId}_001`;
 
-  const steps = [
-    {
-      detail: `Session: ${uploadSessionId} → Asset: ${assetId} → Version: ${versionId}`,
-      step: 'Upload session issued'
-    },
-    {
-      detail: `${bytes.length.toLocaleString()} bytes staged (SHA-256: ${sha256.slice(0, 16)}…)`,
-      step: 'File bytes staged'
-    },
-    {
-      detail: `Canonical source ID: ${canonicalSourceId}`,
-      step: 'Source canonicalized'
-    },
-    {
-      detail: `Workflow: ${workflowId} on task queue image-derivation-v1`,
-      step: 'Publication workflow dispatched'
-    },
-    {
-      detail: `Variant "full" published as ${derivativeId} (${contentType})`,
-      step: 'Derivative processed'
-    },
-    {
-      detail: `image-default manifest ready for ${versionId}`,
-      step: 'Manifest published'
-    },
-    {
-      detail: `published — ${filename} is ready for delivery`,
-      step: 'Lifecycle state updated'
-    }
-  ];
+  const encoder = new TextEncoder();
+  function sse(data) {
+    return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+  }
 
-  uploadedFiles.set(versionId, { bytes, contentType, filename });
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        // Step 1 — API edge validates and issues upload session
+        controller.enqueue(sse({
+          component: 'api-edge',
+          detail: `Session: ${uploadSessionId} · Asset: ${assetId} · Version: ${versionId}`,
+          step: 'Upload session issued',
+          type: 'step'
+        }));
+        await delay(500);
 
-  versionStore.seed({
-    assetId,
-    assetOwner: 'demo:user',
-    defaultManifestType: 'image-default',
-    derivatives: [
-      {
-        assetId,
-        byteLength: BigInt(bytes.length),
-        contentType,
-        deliveryScopeId: 'public-images',
-        derivativeId,
-        deterministicKey: sha256,
-        recipeId: 'passthrough',
-        storageKey: `derived/${assetId}/${versionId}/full`,
-        variant: 'full',
-        versionId
-      }
-    ],
-    lifecycleState: 'published',
-    manifests: [
-      {
-        assetId,
-        deliveryScopeId: 'public-images',
-        manifestPayload: {
+        // Step 2 — bytes land in the staging store
+        uploadedFiles.set(versionId, { bytes, contentType, filename });
+        controller.enqueue(sse({
+          component: 'ingest-staging',
+          detail: `${bytes.length.toLocaleString()} bytes staged (SHA-256: ${sha256.slice(0, 16)}…)`,
+          step: 'File bytes staged',
+          type: 'step'
+        }));
+        await delay(500);
+
+        // Step 3 — snapshot into canonical source repository
+        controller.enqueue(sse({
+          component: 'canonical-source',
+          detail: `Canonical source ID: ${canonicalSourceId}`,
+          step: 'Source canonicalized',
+          type: 'step'
+        }));
+        await delay(600);
+
+        // Step 4 — publication workflow dispatched
+        controller.enqueue(sse({
+          component: 'workflow-controller',
+          detail: `Workflow: ${workflowId} → task queue: image-derivation-v1`,
+          step: 'Publication workflow dispatched',
+          type: 'step'
+        }));
+        await delay(700);
+
+        // Step 5 — derivative processing
+        controller.enqueue(sse({
+          component: 'derivation-worker',
+          detail: `Variant "full" published as ${derivativeId} (${contentType})`,
+          step: 'Derivative processed',
+          type: 'step'
+        }));
+        await delay(500);
+
+        // Step 6 — manifest written to registry
+        controller.enqueue(sse({
+          component: 'delivery-registry',
+          detail: `image-default manifest ready for ${versionId}`,
+          step: 'Manifest published',
+          type: 'step'
+        }));
+        await delay(400);
+
+        // Seed the delivery store before announcing published
+        versionStore.seed({
           assetId,
-          derivatives: [{ contentType, derivativeId, variant: 'full' }],
+          assetOwner: 'demo:user',
+          defaultManifestType: 'image-default',
+          derivatives: [
+            {
+              assetId,
+              byteLength: BigInt(bytes.length),
+              contentType,
+              deliveryScopeId: 'public-images',
+              derivativeId,
+              deterministicKey: sha256,
+              recipeId: 'passthrough',
+              storageKey: `derived/${assetId}/${versionId}/full`,
+              variant: 'full',
+              versionId
+            }
+          ],
+          lifecycleState: 'published',
+          manifests: [
+            {
+              assetId,
+              deliveryScopeId: 'public-images',
+              manifestPayload: {
+                assetId,
+                derivatives: [{ contentType, derivativeId, variant: 'full' }],
+                versionId
+              },
+              manifestType: 'image-default',
+              objectKey: `manifests/${assetId}/${versionId}/image-default`,
+              versionId
+            }
+          ],
+          serviceNamespaceId: SERVICE_NAMESPACE,
+          source: {
+            byteLength: BigInt(bytes.length),
+            contentType,
+            filename
+          },
+          sourceUrl: `/_demo/files/${versionId}`,
+          versionId,
+          versionNumber: 1,
+          workflowState: 'completed'
+        });
+
+        // Step 7 — lifecycle state set to published
+        controller.enqueue(sse({
+          component: 'delivery-registry',
+          detail: `lifecycleState: published — ${filename} is ready for delivery`,
+          step: 'Lifecycle state updated',
+          type: 'step'
+        }));
+        await delay(300);
+
+        // Final event
+        controller.enqueue(sse({
+          assetId,
+          byteLength: bytes.length,
+          contentType,
+          downloadUrl: `/_demo/files/${versionId}`,
+          filename,
+          type: 'complete',
           versionId
-        },
-        manifestType: 'image-default',
-        objectKey: `manifests/${assetId}/${versionId}/image-default`,
-        versionId
+        }));
+        controller.close();
+      } catch (error) {
+        controller.enqueue(sse({ error: String(error), type: 'error' }));
+        controller.close();
       }
-    ],
-    serviceNamespaceId: SERVICE_NAMESPACE,
-    source: {
-      byteLength: BigInt(bytes.length),
-      contentType,
-      filename
-    },
-    sourceUrl: `/_demo/files/${versionId}`,
-    versionId,
-    versionNumber: 1,
-    workflowState: 'completed'
+    }
   });
 
-  return c.json({
-    assetId,
-    byteLength: bytes.length,
-    contentType,
-    downloadUrl: `/_demo/files/${versionId}`,
-    filename,
-    steps,
-    versionId
+  return new Response(stream, {
+    headers: {
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'text/event-stream',
+      'X-Accel-Buffering': 'no'
+    },
+    status: 200
   });
 }
 
@@ -298,7 +372,7 @@ async function handleDemoFiles(c) {
 // ---------------------------------------------------------------------------
 
 const app = new Hono();
-app.use('*', requestContextMiddleware({ timeoutMs: 30_000 }));
+app.use('*', requestContextMiddleware({ timeoutMs: 60_000 }));
 
 // Demo endpoints — no auth required
 app.post('/_demo/upload', handleDemoUpload);

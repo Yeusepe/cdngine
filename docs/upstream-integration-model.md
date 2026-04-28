@@ -120,6 +120,7 @@ Preferred posture:
 
 - run **Kopia repository server** where shared authenticated access is needed
 - wrap the **Kopia CLI** in a source-repository adapter for worker-side operations
+- keep the adapter result engine neutral so the control plane can benchmark **xet-core** or another challenger later without changing request-path semantics
 
 The first commands CDNgine should rely on are:
 
@@ -140,6 +141,16 @@ It does **not** own:
 - deduplication
 - repository maintenance
 - restore tree semantics
+
+### 4.3.1 Xet-like evaluation gate
+
+`xet-core` is the leading challenger for near-duplicate binary revisions, but it is **not** the current default.
+
+Use it next as:
+
+- a benchmark target against the current Kopia baseline
+- a reference for shard, reconstruction-handle, and cache-aware source-evidence fields
+- a candidate sidecar or controlled-service boundary only if benchmark and migration evidence justify a backend change
 
 ### 4.4 Temporal
 

@@ -11,11 +11,18 @@
  * - packages/capabilities/test/presentation-capability.test.mjs
  */
 
+import type {
+  CapabilityMatchStrategy,
+  CapabilityNormalizationRegistration
+} from './normalization-contract.js';
+
 export interface CapabilityRegistration {
   capabilityId: string;
   extensions: readonly string[];
   keyTemplate: string;
+  matchStrategy: CapabilityMatchStrategy;
   mimeTypes: readonly string[];
+  normalization: CapabilityNormalizationRegistration;
   recipes: readonly string[];
   resourceProfile: string;
   retryPolicy: string;

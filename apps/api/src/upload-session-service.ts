@@ -2,6 +2,8 @@
  * Purpose: Defines upload-session issuance and completion contracts plus a deterministic in-memory lifecycle implementation for route and idempotency tests.
  * Governing docs:
  * - docs/service-architecture.md
+ * - docs/canonical-source-and-tiering-contract.md
+ * - docs/source-plane-strategy.md
  * - docs/domain-model.md
  * - docs/persistence-model.md
  * - docs/idempotency-and-dispatch.md
@@ -270,10 +272,33 @@ function buildWorkflowKey(
 
 function cloneSnapshotResult(snapshot: SnapshotResult): SnapshotResult {
   return {
+    repositoryEngine: snapshot.repositoryEngine,
     canonicalSourceId: snapshot.canonicalSourceId,
     snapshotId: snapshot.snapshotId,
     logicalPath: snapshot.logicalPath,
     digests: snapshot.digests.map((digest) => ({ ...digest })),
+    ...(snapshot.logicalByteLength === undefined
+      ? {}
+      : { logicalByteLength: snapshot.logicalByteLength }),
+    ...(snapshot.storedByteLength === undefined ? {} : { storedByteLength: snapshot.storedByteLength }),
+    ...(snapshot.dedupeMetrics
+      ? {
+          dedupeMetrics: {
+            ...snapshot.dedupeMetrics,
+            ...(snapshot.dedupeMetrics.storedByteLength === undefined
+              ? {}
+              : { storedByteLength: snapshot.dedupeMetrics.storedByteLength })
+          }
+        }
+      : {}),
+    ...(snapshot.reconstructionHandles
+      ? {
+          reconstructionHandles: snapshot.reconstructionHandles.map((handle) => ({
+            kind: handle.kind,
+            value: handle.value
+          }))
+        }
+      : {}),
     ...(snapshot.substrateHints ? { substrateHints: { ...snapshot.substrateHints } } : {})
   };
 }

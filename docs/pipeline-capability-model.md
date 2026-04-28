@@ -7,7 +7,10 @@ This document defines the contract for file-type and processor registration.
 Each capability registration should declare:
 
 - supported MIME types and extensions
+- match strategy (`exact` or `fallback`)
 - validation hooks
+- format-agnostic normalization fallback
+- optional capability-owned normalization adapters
 - recipe outputs
 - execution resource profile
 - retry and timeout policy
@@ -37,8 +40,18 @@ Illustrative TypeScript shape:
 export const backwallImageCapability = registerCapability({
   capabilityId: 'image.backwall',
   schemaVersion: 'v1',
+  matchStrategy: 'exact',
   mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
   extensions: ['.png', '.jpg', '.jpeg', '.webp'],
+  normalization: {
+    executionMode: 'post-canonicalization',
+    fallback: {
+      preserveOriginal: true,
+      digestAlgorithms: ['sha256'],
+      semanticClaims: 'capability-scoped',
+    },
+    supportedArtifacts: ['semantic-fingerprint'],
+  },
   validators: ['sniff-image', 'validate-backwall-dimensions'],
   recipes: ['webp-master', 'image-to-video-loop', 'poster-frame'],
   resourceProfile: 'image-medium',
@@ -46,6 +59,27 @@ export const backwallImageCapability = registerCapability({
   keyTemplate: '/{namespace}/{assetId}/{versionId}/{recipeId}/{schemaVersion}/{filename}',
 });
 ```
+
+## 4.1 Format-agnostic normalization contract
+
+Every capability must be safe even before capability-specific parsers exist.
+
+The minimum normalization contract is:
+
+1. preserve the original
+2. retain strong digests
+3. make no semantic claims unless a capability-owned adapter proves them
+4. allow generic container inventory only when container detection is proven
+
+Capability-owned adapters should stay behind generic roles such as:
+
+- `ContainerNormalizer`
+- `SemanticExtractor`
+- `CanonicalIntermediateBuilder`
+- `SemanticFingerprintBuilder`
+- `SemanticRelationRecorder`
+
+The fallback capability for unknown formats should use `matchStrategy: 'fallback'` and bind to the generic asset workflow so future file types still survive `stage -> canonicalize -> process -> publish -> deliver` without a core-service rewrite.
 
 ## 5. Processor contract
 

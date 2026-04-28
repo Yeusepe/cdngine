@@ -148,6 +148,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     }
   });
   const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'kopia',
     canonicalSourceId: 'src_001',
     digests: [
       {

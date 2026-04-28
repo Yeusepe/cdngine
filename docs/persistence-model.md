@@ -83,10 +83,12 @@ In particular:
 One transaction should:
 
 1. persist the canonical source identity set
-2. persist backing bucket or prefix metadata needed for operator diagnostics without treating raw object keys as public identity
-3. move `AssetVersion` from `canonicalizing` to `canonical`
-4. create `WorkflowDispatch` in `pending`
-5. emit an `AuditEvent`
+2. persist repository engine, strong digests, logical-versus-stored size evidence, and reconstruction handles when available
+3. persist generic fallback normalization evidence or capability-owned semantic evidence references when that slice exists
+4. persist backing bucket or prefix metadata needed for operator diagnostics without treating raw object keys as public identity
+5. move `AssetVersion` from `canonicalizing` to `canonical`
+6. create `WorkflowDispatch` in `pending`
+7. emit an `AuditEvent`
 
 ### 3.4 Publication
 

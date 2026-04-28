@@ -63,8 +63,15 @@ test('KopiaSourceRepository snapshots, lists, and restores through the runner bo
 
   const snapshot = await repository.snapshotFromPath({
     assetVersionId: 'ver_123',
+    logicalByteLength: 2048n,
     localPath: '/scratch/input',
     sourceFilename: 'hero-banner.png',
+    sourceDigests: [
+      {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    ],
     metadata: {
       serviceNamespaceId: 'media-platform'
     }
@@ -77,6 +84,20 @@ test('KopiaSourceRepository snapshots, lists, and restores through the runner bo
   });
 
   assert.equal(snapshot.snapshotId, 'snap-123');
+  assert.equal(snapshot.repositoryEngine, 'kopia');
+  assert.equal(snapshot.logicalByteLength, 2048n);
+  assert.deepEqual(snapshot.digests, [
+    {
+      algorithm: 'sha256',
+      value: 'abc123'
+    }
+  ]);
+  assert.deepEqual(snapshot.reconstructionHandles, [
+    {
+      kind: 'snapshot',
+      value: 'snap-123'
+    }
+  ]);
   assert.equal(snapshots[0]?.snapshotId, 'snap-123');
   assert.equal(restore.restoredPath, '/scratch/output');
   assert.deepEqual(runner.invocations[0]?.args.slice(0, 4), [

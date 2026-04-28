@@ -13,6 +13,8 @@
 
 export const capabilitiesPackageName = '@cdngine/capabilities';
 export * from './capability-registration.js';
+export * from './generic-asset-capability.js';
 export * from './image-capability.js';
+export * from './normalization-contract.js';
 export * from './presentation-capability.js';
 export * from './workflow-template-resolution.js';

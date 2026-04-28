@@ -3,6 +3,8 @@
  * Governing docs:
  * - docs/service-architecture.md
  * - docs/api-surface.md
+ * - docs/canonical-source-and-tiering-contract.md
+ * - docs/source-plane-strategy.md
  * - docs/domain-model.md
  * - docs/persistence-model.md
  * - docs/idempotency-and-dispatch.md
@@ -329,12 +331,14 @@ export function registerUploadSessionRoutes(
             },
             async (canonicalizationRequest) =>
               dependencies.sourceRepository!.snapshotFromPath({
-              assetVersionId: canonicalizationRequest.versionId,
-              localPath: buildStagingSnapshotSourcePath(canonicalizationRequest.stagedObject.descriptor),
-              sourceFilename: canonicalizationRequest.filename,
-              metadata: {
-                assetId: canonicalizationRequest.assetId,
-                assetOwner: canonicalizationRequest.assetOwner,
+                assetVersionId: canonicalizationRequest.versionId,
+                logicalByteLength: canonicalizationRequest.stagedObject.byteLength,
+                localPath: buildStagingSnapshotSourcePath(canonicalizationRequest.stagedObject.descriptor),
+                sourceFilename: canonicalizationRequest.filename,
+                sourceDigests: [canonicalizationRequest.stagedObject.checksum],
+                metadata: {
+                  assetId: canonicalizationRequest.assetId,
+                  assetOwner: canonicalizationRequest.assetOwner,
                 serviceNamespaceId: canonicalizationRequest.serviceNamespaceId,
                 uploadSessionId: canonicalizationRequest.uploadSessionId,
                 versionNumber: String(canonicalizationRequest.versionNumber),

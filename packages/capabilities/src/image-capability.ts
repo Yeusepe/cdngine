@@ -15,6 +15,7 @@ import type {
   CapabilityRegistration,
   ProcessorRegistration
 } from './capability-registration.js';
+import { createFormatAgnosticNormalizationRegistration } from './normalization-contract.js';
 
 export type { CapabilityRegistration, ProcessorRegistration } from './capability-registration.js';
 
@@ -32,7 +33,12 @@ export const defaultImageCapability: CapabilityRegistration = {
   capabilityId: 'image.default',
   extensions: ['.png', '.jpg', '.jpeg', '.webp'],
   keyTemplate: '/{serviceNamespaceId}/{assetId}/{versionId}/{recipeId}/{variantKey}',
+  matchStrategy: 'exact',
   mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+  normalization: createFormatAgnosticNormalizationRegistration({
+    semanticClaims: 'capability-scoped',
+    supportedArtifacts: ['semantic-fingerprint']
+  }),
   recipes: ['webp-master', 'thumbnail-small'],
   resourceProfile: 'image-medium',
   retryPolicy: 'default-media-retry',

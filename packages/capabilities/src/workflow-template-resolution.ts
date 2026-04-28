@@ -11,6 +11,10 @@
  */
 
 import {
+  defaultGenericCapability,
+  getGenericRecipeBinding
+} from './generic-asset-capability.js';
+import {
   defaultImageCapability,
   getImageRecipeBinding
 } from './image-capability.js';
@@ -37,6 +41,12 @@ const defaultWorkflowBindings: Array<ResolvedWorkflowTemplate & { mimeTypes: rea
     manifestType: getPresentationRecipeBinding('normalized-pdf').manifestType,
     mimeTypes: defaultPresentationCapability.mimeTypes,
     workflowTemplateId: getPresentationRecipeBinding('normalized-pdf').workflowTemplateId
+  },
+  {
+    capabilityId: defaultGenericCapability.capabilityId,
+    manifestType: getGenericRecipeBinding('preserve-original').manifestType,
+    mimeTypes: defaultGenericCapability.mimeTypes,
+    workflowTemplateId: getGenericRecipeBinding('preserve-original').workflowTemplateId
   }
 ];
 
@@ -48,11 +58,16 @@ export function resolveDefaultWorkflowTemplateForSource(
     candidate.mimeTypes.some((mimeType) => mimeType.toLowerCase() === normalizedContentType)
   );
 
-  return binding
+  const fallbackBinding = defaultWorkflowBindings.find(
+    (candidate) => candidate.capabilityId === defaultGenericCapability.capabilityId
+  );
+  const resolvedBinding = binding ?? fallbackBinding;
+
+  return resolvedBinding
     ? {
-        capabilityId: binding.capabilityId,
-        manifestType: binding.manifestType,
-        workflowTemplateId: binding.workflowTemplateId
+        capabilityId: resolvedBinding.capabilityId,
+        manifestType: resolvedBinding.manifestType,
+        workflowTemplateId: resolvedBinding.workflowTemplateId
       }
     : null;
 }

@@ -15,6 +15,7 @@ ADRs should capture the decision, the alternatives that mattered, and the conseq
 - [0008 Xet As Canonical Content Plane (Superseded)](./0008-xet-as-canonical-content-plane.md)
 - [0009 Delivery Scopes, Private Access, And Streaming](./0009-delivery-scopes-private-access-and-streaming.md)
 - [0010 Canonical Source Repository And Tiered Storage](./0010-canonical-source-repository-and-tiered-storage.md)
+- [0011 Source Plane Benchmark Gate And Engine-Neutral Evidence](./0011-source-plane-benchmark-gate-and-engine-neutral-evidence.md)
 
 ADR numbering is not required to be contiguous. `0006` is intentionally unused to preserve numbering from earlier planning history.
 

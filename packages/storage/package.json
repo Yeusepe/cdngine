@@ -13,6 +13,7 @@
   "cdngine": {
     "governingDocs": [
       "docs/canonical-source-and-tiering-contract.md",
+      "docs/source-plane-strategy.md",
       "docs/storage-tiering-and-materialization.md",
       "docs/original-source-delivery.md",
       "docs/upstream-integration-model.md",
@@ -30,6 +31,8 @@
     "externalReferences": [
       "https://tus.io/protocols/resumable-upload",
       "https://kopia.io/docs/features/",
+      "https://huggingface.co/docs/xet/en/deduplication",
+      "https://restic.readthedocs.io/en/stable/design.html",
       "https://oras.land/docs/",
       "https://github.com/rustfs/rustfs",
       "https://github.com/seaweedfs/seaweedfs"

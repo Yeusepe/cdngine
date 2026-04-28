@@ -63,6 +63,7 @@ class FakeSourceRepository {
   constructor(snapshotResult) {
     this.snapshotResult =
       snapshotResult ?? {
+        repositoryEngine: 'kopia',
         canonicalSourceId: 'src_001',
         snapshotId: 'snap_001',
         logicalPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
@@ -460,12 +461,19 @@ test('upload-session completion snapshots staged bytes and exposes a pending wor
   });
   assert.equal(sourceRepository.snapshotCalls.length, 1);
   assert.deepEqual(sourceRepository.snapshotCalls[0], {
-    assetVersionId: 'ver_001',
-    localPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
-    sourceFilename: 'hero-banner.png',
-    metadata: {
-      assetId: 'ast_001',
-      assetOwner: 'customer:acme',
+     assetVersionId: 'ver_001',
+     logicalByteLength: 1234n,
+     localPath: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001',
+     sourceFilename: 'hero-banner.png',
+     sourceDigests: [
+       {
+         algorithm: 'sha256',
+         value: 'abc123'
+       }
+     ],
+     metadata: {
+       assetId: 'ast_001',
+       assetOwner: 'customer:acme',
       serviceNamespaceId: 'media-platform',
       uploadSessionId: 'upl_001',
       versionNumber: '1'
@@ -669,6 +677,7 @@ test('upload-session completion resolves the presentation workflow template from
     }
   });
   const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'kopia',
     canonicalSourceId: 'src_deck',
     digests: [
       {

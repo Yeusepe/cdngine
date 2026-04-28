@@ -106,6 +106,7 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
       registerUploadSessionRoutes(publicApp, {
         now,
         sourceRepository: new FakeSourceRepository({
+          repositoryEngine: 'kopia',
           canonicalSourceId: 'src_001',
           digests: [
             {

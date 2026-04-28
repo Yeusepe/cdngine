@@ -17,6 +17,7 @@ The point is to show how the generic platform supports real product patterns wit
 | Unity packages | `.unitypackage`, bundles | raw binary, inventory manifest, scan results | preserve original even when no transform is bound |
 | Substance assets | `.sbs`, `.sbsar` | raw binary, metadata, optional generated textures | future custom processors likely |
 | generic archives | `.zip` and other archives | raw binary, inventory manifest, optional extraction results | strong security posture required |
+| strange future formats | unknown or custom binary types | preserve-original, strong digests, optional container inventory | handled through the fallback capability until a more specific capability is registered |
 
 ## 2. Recipe families
 
@@ -42,6 +43,7 @@ Common recipe families:
 - backwall image uploads may additionally bind to `image-to-video-loop`
 - presentation uploads bind to `normalized-pdf`, `slide-images`, and a manifest recipe
 - archive and package uploads may bind only to `preserve-original` and `inventory-manifest` until a domain-specific processor is registered
+- unknown formats should fall back to `preserve-original` first and only add inventory evidence when container detection is proven
 
 ## 4. Why this matrix matters
 

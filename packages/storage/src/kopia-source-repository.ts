@@ -2,11 +2,13 @@
  * Purpose: Implements the canonical source adapter through a controlled Kopia CLI boundary instead of reimplementing repository semantics in TypeScript.
  * Governing docs:
  * - docs/canonical-source-and-tiering-contract.md
+ * - docs/source-plane-strategy.md
  * - docs/upstream-integration-model.md
  * - docs/storage-tiering-and-materialization.md
  * External references:
  * - https://kopia.io/docs/reference/command-line/common/snapshot-create/
  * - https://kopia.io/docs/features/
+ * - https://restic.readthedocs.io/en/stable/design.html
  * Tests:
  * - packages/storage/test/cli-adapters.test.ts
  */
@@ -63,6 +65,27 @@ function resolveSnapshotId(snapshot: ParsedKopiaSnapshot): string {
   throw new Error('Kopia output did not include a snapshot identifier.');
 }
 
+function cloneDigests(digests: SnapshotFromPathInput['sourceDigests']): SnapshotResult['digests'] {
+  const seen = new Set<string>();
+  const result: SnapshotResult['digests'] = [];
+
+  for (const digest of digests ?? []) {
+    const key = `${digest.algorithm}:${digest.value}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push({
+      algorithm: digest.algorithm,
+      value: digest.value
+    });
+  }
+
+  return result;
+}
+
 export class KopiaSourceRepository implements SourceRepository {
   private readonly config: KopiaSourceRepositoryConfig;
   private readonly executable: string;
@@ -96,12 +119,21 @@ export class KopiaSourceRepository implements SourceRepository {
 
     const parsed = parseJson<ParsedKopiaSnapshot>(result.stdout, 'snapshot create');
     const snapshotId = resolveSnapshotId(parsed);
+    const digests = cloneDigests(input.sourceDigests);
 
     return {
+      repositoryEngine: 'kopia',
       canonicalSourceId: snapshotId,
       snapshotId,
       logicalPath: parsed.source?.path ?? input.localPath,
-      digests: [],
+      digests,
+      ...(input.logicalByteLength === undefined ? {} : { logicalByteLength: input.logicalByteLength }),
+      reconstructionHandles: [
+        {
+          kind: 'snapshot',
+          value: snapshotId
+        }
+      ],
       substrateHints: {
         repositoryTool: 'kopia'
       }

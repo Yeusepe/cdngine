@@ -122,6 +122,7 @@ Represents one immutable uploaded source version.
 
 Should include:
 
+- repository engine
 - canonical repository identity
 - snapshot or manifest identity for reconstruction
 - canonical logical source path
@@ -131,8 +132,11 @@ Should include:
 - canonicalization state
 - validation state
 - source checksum or equivalent integrity marker
+- logical size and stored size when available
+- repository-native reconstruction handles when available
 - source-download policy or visibility posture where it differs from derivative delivery
 - optional canonicalization and deduplication metrics for observability
+- optional normalization evidence summary, clearly separated between generic fallback evidence and capability-scoped semantic evidence
 
 Once a version reaches `canonical`, the source identity must be immutable.
 

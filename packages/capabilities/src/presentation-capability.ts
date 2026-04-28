@@ -14,6 +14,7 @@ import type {
   CapabilityRegistration,
   ProcessorRegistration
 } from './capability-registration.js';
+import { createFormatAgnosticNormalizationRegistration } from './normalization-contract.js';
 
 export interface PresentationRecipeBinding {
   capabilityId: string;
@@ -29,11 +30,16 @@ export const defaultPresentationCapability: CapabilityRegistration = {
   capabilityId: 'presentation.default',
   extensions: ['.pdf', '.ppt', '.pptx'],
   keyTemplate: '/{serviceNamespaceId}/{assetId}/{versionId}/{recipeId}/{variantKey}',
+  matchStrategy: 'exact',
   mimeTypes: [
     'application/pdf',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   ],
+  normalization: createFormatAgnosticNormalizationRegistration({
+    semanticClaims: 'capability-scoped',
+    supportedArtifacts: ['canonical-intermediate', 'semantic-fingerprint']
+  }),
   recipes: ['normalized-pdf', 'slide-images'],
   resourceProfile: 'document-medium',
   retryPolicy: 'default-document-retry',

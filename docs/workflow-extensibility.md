@@ -40,11 +40,14 @@ The registration flow maps onto the lifecycle like this:
 | Registration type | Lifecycle stage it mainly affects |
 | --- | --- |
 | capability | validation and canonicalization rules |
+| normalization contract | post-canonicalization evidence and optional semantic extraction |
 | recipe binding | processing and publication shape |
 | processor registration | processing execution |
 | workflow template | processing to publication orchestration |
 
 The important architectural rule is that processors and workflows run **after** canonicalization. They consume canonical source identity, not staging objects.
+
+Capability-owned normalization adapters follow the same rule. They may extract container inventory, canonical intermediates, fingerprints, or semantic relations after canonicalization, but unknown formats must still degrade to preserve-original plus digest evidence without blocking workflow dispatch.
 
 ## 3. Template model
 

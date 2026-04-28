@@ -2,12 +2,15 @@
  * Purpose: Defines the CDNgine-owned adapter contracts for staging, canonical source, derived delivery, exports, and optional artifact publication.
  * Governing docs:
  * - docs/canonical-source-and-tiering-contract.md
+ * - docs/source-plane-strategy.md
  * - docs/storage-tiering-and-materialization.md
  * - docs/original-source-delivery.md
  * - docs/upstream-integration-model.md
  * External references:
  * - https://tus.io/protocols/resumable-upload
  * - https://kopia.io/docs/features/
+ * - https://huggingface.co/docs/xet/en/deduplication
+ * - https://restic.readthedocs.io/en/stable/design.html
  * - https://oras.land/docs/
  * Tests:
  * - packages/storage/test/storage-role-config.test.ts
@@ -51,16 +54,45 @@ export interface StagingBlobStore {
 
 export interface SnapshotFromPathInput {
   assetVersionId: string;
+  logicalByteLength?: bigint;
   localPath: string;
   sourceFilename: string;
+  sourceDigests?: ObjectChecksum[];
   metadata?: Record<string, string>;
 }
 
+export type SourceRepositoryEngine = 'kopia' | 'xet' | 'restic' | 'borg' | 'casync' | 'custom';
+
+export type SourceReconstructionHandleKind =
+  | 'snapshot'
+  | 'manifest'
+  | 'chunk-index'
+  | 'merkle-root'
+  | 'opaque';
+
+export interface SourceReconstructionHandle {
+  kind: SourceReconstructionHandleKind;
+  value: string;
+}
+
+export interface SourceDedupeMetrics {
+  chunkCount?: number;
+  dedupeRatio?: number;
+  reusedChunkCount?: number;
+  savingsRatio?: number;
+  storedByteLength?: bigint;
+}
+
 export interface SnapshotResult {
+  repositoryEngine: SourceRepositoryEngine;
   canonicalSourceId: string;
   snapshotId: string;
   logicalPath: string;
   digests: ObjectChecksum[];
+  logicalByteLength?: bigint;
+  storedByteLength?: bigint;
+  dedupeMetrics?: SourceDedupeMetrics;
+  reconstructionHandles?: SourceReconstructionHandle[];
   substrateHints?: Record<string, string>;
 }
 

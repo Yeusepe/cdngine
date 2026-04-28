@@ -10,6 +10,8 @@ It is designed for workloads such as:
 - archives and package-like assets
 - future file types added through explicit capability and workflow registration
 
+Unknown or unusual formats still follow a safe default posture: preserve the original, retain strong digests, and add generic container inventory only when the platform can prove the upload is a container.
+
 ## Core model
 
 CDNgine separates four concerns that most asset systems blur together:
@@ -69,7 +71,7 @@ CDNgine distinguishes the **logical asset** from each immutable **uploaded sourc
 - a retry of the **same** mutating request converges on the same upload session and version through idempotency
 - a **new revision** goes through canonicalization, workflow dispatch, and publication again for its own version
 
-That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. **Kopia** may deduplicate shared source content internally, but that does not collapse version identity in CDNgine.
+That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. **Kopia** may deduplicate shared source content internally, but that does not collapse version identity in CDNgine. The current source-plane strategy is to keep **Kopia** as the default engine, emit engine-neutral source-evidence fields, and benchmark **xet-core** before any backend replacement. See [docs/source-plane-strategy.md](./docs/source-plane-strategy.md).
 
 ### Logical roles
 

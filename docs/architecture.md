@@ -221,7 +221,7 @@ The important distinction is:
 - **duplicate request retry** = converge on the same upload session and version
 - **intentional new revision** = create a new version and repeat canonicalize -> process -> publish for that version
 
-Underlying deduplication may still reuse shared bytes in the canonical source plane, but CDNgine keeps the business identity of each version separate.
+Underlying deduplication may still reuse shared bytes in the canonical source plane, but CDNgine keeps the business identity of each version separate. The current backend-selection posture is repository-engine neutral: **Kopia** remains the implemented default, while richer source-evidence fields and benchmark gates keep a future Xet-like swap possible without changing the `AssetVersion` contract.
 
 ## 4. What is truth, and where does it live?
 
@@ -513,6 +513,8 @@ Adding a new file type should require:
 2. one or more recipe bindings
 3. a processor implementation
 4. a workflow binding
+
+Every capability registration should also declare a safe normalization fallback. Unknown formats must still preserve the original, retain strong digests, and only add generic container inventory when container detection is proven.
 
 ### 12.1 Registration model
 

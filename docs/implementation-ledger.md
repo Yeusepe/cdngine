@@ -17,6 +17,7 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | control-plane-contracts | done | lifecycle transitions, persistence writes, idempotency, dispatch, canonicalization, and workflow operator interaction are specified precisely enough to implement safely and are backed by route, registry, workflow, and conformance tests |
 | contracts-and-schemas | done | public API, manifests, capability schemas, event shapes, SDK workflow artifacts, and contract-governance scaffolding have a concrete repository home plus executable lint, bundle, and example-validation gates |
 | ingest-foundation | done | upload sessions, canonical source snapshotting over a bucket-or-prefix-backed source repository, and idempotent completion behave correctly across single-node or multi-node plus one-bucket or multi-bucket topologies |
+| format-agnostic-normalization-contract | done | capability registrations declare safe preserve-original fallback semantics for unknown formats, generic workflow resolution now converges on the fallback capability, and canonical-source contracts capture repository-engine plus reconstruction evidence without hard-coding any one asset family |
 | image-mvp | done | the platform can validate, derive, publish, and deliver deterministic image outputs through one client-facing authorization flow even when internal resolution paths differ across the supported topology matrix |
 | deployment-profile-foundation | done | one-bucket and multi-bucket runtime profiles plus readiness requirements are expressed as typed config and checked-in deployment examples instead of only prose |
 | sdk-foundation | done | the bundled public contract generates checked-in TypeScript client artifacts, freshness checks, and consumer-facing quickstart docs |
@@ -25,6 +26,7 @@ It exists to stop the architecture from floating free of execution. The ledger s
 | operator-foundation | done | replay, quarantine, diagnostics, audit surfaces, runbooks, and threat-model expectations are explicit and usable |
 | architecture-conformance-audit | done | every major implemented code area is mapped back to architecture responsibilities, governing docs, and executable evidence with no remaining undocumented workload-specific drift in the public manifest or workflow-selection surfaces |
 | output-workflow-foundation | done | the platform can trigger a registered output workflow at authorization time, replace the resolved URL with the workflow-produced URL, and surface the run record additively in the authorization response; tests confirm backward compat when no store is configured, correct URL replacement on complete, and 404 on unknown workflow ID |
+| source-plane-strategy | done | canonical-source backend choice is now benchmark-gated, format-agnostic fallback rules are explicit, and the storage contract records engine-neutral byte-reuse evidence without collapsing `AssetVersion` identity |
 
 ## 2. Rules for updating the ledger
 

@@ -260,10 +260,13 @@ The canonical source pointer should not be an opaque blob reference alone.
 Persist at minimum:
 
 - canonical repository identity
+- repository engine
 - snapshot, manifest, or equivalent reconstruction identity
 - canonical logical path
 - strong content digest such as SHA-256
-- source size and detected media metadata when relevant
+- source size, stored size when exposed, and detected media metadata when relevant
+- reconstruction handles and dedupe metrics when the repository exposes them
+- generic fallback normalization evidence or capability-owned semantic evidence references when that slice exists
 
 That gives replay, operator diagnostics, and provenance review a stable source identity that matches the repository's chunked reconstruction model.
 

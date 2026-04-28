@@ -27,13 +27,16 @@ Before a version can move from `uploaded` to `canonicalizing`, the platform shou
 
 When canonicalization succeeds and the version moves from `canonicalizing` to `canonical`, the registry must persist:
 
+- repository engine
 - canonical repository identity
 - snapshot or manifest identity for the source version
 - canonical logical source path
 - strong content digest such as SHA-256
-- source size
+- logical source size
+- stored byte size when the repository exposes it
 - detected content type and media metadata where relevant
 - deduplication or compression summary when the source repository exposes it
+- reconstruction handles such as snapshot IDs, manifest IDs, or Merkle roots when the repository exposes them
 - substrate placement metadata such as storage namespace, tier, or repository path
 - canonicalization timestamp
 
@@ -81,9 +84,12 @@ Selected immutable evidence may be retained alongside the canonical source when 
 
 - ingest verification summaries
 - source-side inventory or scan evidence
+- generic container inventory when unknown or package-like formats prove container structure
 - immutable normalization evidence needed to explain later derivations
 
 This evidence remains separate from delivery artifacts and must not turn the source repository into the hot delivery origin.
+
+Unknown formats must not force semantic guesses. The safe default is preserve-original plus digests, with container inventory only when the platform can prove container structure.
 
 ## 7. Lazy-read and materialization posture
 

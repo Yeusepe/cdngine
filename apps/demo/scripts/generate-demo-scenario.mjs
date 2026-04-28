@@ -137,6 +137,7 @@ class DemoStagingBlobStore {
 class DemoSourceRepository {
   async snapshotFromPath(input) {
     return {
+      repositoryEngine: 'kopia',
       canonicalSourceId: `src_${input.assetVersionId}`,
       digests: [
         {

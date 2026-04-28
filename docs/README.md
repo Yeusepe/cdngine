@@ -11,6 +11,7 @@ Use this page first instead of treating `docs/` as one flat list.
 - [Persistence Model](./persistence-model.md)
 - [Idempotency And Dispatch](./idempotency-and-dispatch.md)
 - [Canonical Source And Tiering Contract](./canonical-source-and-tiering-contract.md)
+- [Source Plane Strategy](./source-plane-strategy.md)
 - [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
 - [Upstream Integration Model](./upstream-integration-model.md)
 - [Original Source Delivery](./original-source-delivery.md)
@@ -67,5 +68,6 @@ For lifecycle questions, start with:
 1. [Architecture](./architecture.md)
 2. [State Machines](./state-machines.md)
 3. [Canonical Source And Tiering Contract](./canonical-source-and-tiering-contract.md)
-4. [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
+4. [Source Plane Strategy](./source-plane-strategy.md)
+5. [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
 

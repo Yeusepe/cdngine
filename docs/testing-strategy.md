@@ -34,6 +34,8 @@ The platform should explicitly test:
 - upload completion idempotency
 - replay from the canonical source identity
 - source snapshotting and deduplication behavior for repeated binary revisions
+- canonical-source evidence persistence for repository engine, digests, and logical-versus-stored size reporting
+- unknown-format fallback behavior that preserves originals, digests, and optional container inventory without semantic overclaim
 - deterministic derivative key generation
 - manifest publication integrity
 - signed delivery URL behavior

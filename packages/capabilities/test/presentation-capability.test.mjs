@@ -12,6 +12,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  defaultGenericCapability,
+  defaultGenericRecipeBindings,
   defaultPresentationCapability,
   defaultPresentationProcessor,
   defaultPresentationRecipeBindings,
@@ -61,5 +63,40 @@ test('default workflow resolution chooses presentation normalization for documen
     capabilityId: 'image.default',
     manifestType: 'image-default',
     workflowTemplateId: 'image-derivation-v1'
+  });
+  assert.deepEqual(resolveDefaultWorkflowTemplateForSource('application/x-future-format'), {
+    capabilityId: 'asset.generic',
+    manifestType: 'generic-asset-default',
+    workflowTemplateId: 'asset-derivation-v1'
+  });
+});
+
+test('generic fallback capability preserves originals and only makes format-agnostic claims', () => {
+  assert.equal(defaultGenericCapability.capabilityId, 'asset.generic');
+  assert.equal(defaultGenericCapability.matchStrategy, 'fallback');
+  assert.deepEqual(defaultGenericCapability.recipes, ['preserve-original']);
+  assert.deepEqual(defaultGenericRecipeBindings, [
+    {
+      capabilityId: 'asset.generic',
+      contentType: 'application/octet-stream',
+      manifestType: 'generic-asset-default',
+      recipeId: 'preserve-original',
+      schemaVersion: 'v1',
+      variantKey: 'preserve-original',
+      workflowTemplateId: 'asset-derivation-v1'
+    }
+  ]);
+  assert.deepEqual(defaultGenericCapability.normalization, {
+    executionMode: 'post-canonicalization',
+    supportedArtifacts: ['container-inventory'],
+    fallback: {
+      preserveOriginal: true,
+      digestAlgorithms: ['sha256'],
+      semanticClaims: 'none',
+      containerInventory: {
+        evidenceType: 'generic-container-inventory',
+        mode: 'when-container-detected'
+      }
+    }
   });
 });

@@ -9,6 +9,7 @@ It should be possible to point from a major architectural promise to the docs, t
 | Claim | Evidence target |
 | --- | --- |
 | raw assets are immutable and deduplicated canonically | canonical source integration behavior, storage contract docs, and replay tests |
+| unknown file types still survive canonicalization without format-specific code | capability fallback docs, capability registration tests, and upload-completion contract tests |
 | workflows are durable and replayable | Temporal workflow tests, operator runbooks, and retry/replay telemetry |
 | derivatives are deterministic | key-generation tests, manifest assertions, and repeat-processing evidence |
 | new file types are easy to add | capability registration docs, schema examples, and registration tests |
@@ -20,6 +21,7 @@ It should be possible to point from a major architectural promise to the docs, t
 | service namespace, tenant scope, and asset owner remain distinct | domain-model docs, auth tests, and policy examples |
 | scoping is enforced programmatically rather than by naming convention | service-architecture docs, scoped repository tests, and security-model rules |
 | the canonical source repository is used as the deduplicated source plane rather than raw object keys | source topology docs, file-identity persistence, replay tests, and operator diagnostics |
+| source-plane backend choice is benchmark-gated and does not change `AssetVersion` identity semantics | source-plane strategy doc, ADR 0011, storage contract tests, and benchmark fixtures |
 | single-bucket deployments preserve the same platform semantics through prefixes and policy | deployment docs, storage-contract docs, and integration tests against one-bucket fixtures |
 | SDKs feel code-first rather than like thin REST wrappers | OpenAPI and Arazzo artifacts, generated SDK outputs, and end-to-end upload examples |
 | lifecycle transitions are explicit and operator-visible | state-machine docs, API lifecycle fields, and workflow or repository tests |

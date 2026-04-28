@@ -53,12 +53,22 @@ That is the easiest way to read the stack list below.
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
 | Kopia | `kopia/kopia` | snapshot repository layout, deduplication, and source-history management |
+| Xet Core | `huggingface/xet-core` | benchmark challenger for Xet-like chunk dedupe and reconstruction metadata |
+| restic | `restic/restic` | object-store-friendly repository design and benchmark baseline |
+| BorgBackup | `borgbackup/borg` | content-defined chunking and cross-version repository reuse reference |
+| casync | `systemd/casync` | chunk-store plus index design, especially for package-like payloads |
+| Perkeep | `perkeep/perkeep` | broad CAS and metadata-model reference |
+| git-annex | `git.kitenet.net/git-annex` | large-file management reference, not a universal near-duplicate backend |
+| OSTree | `ostreedev/ostree` | immutable tree replication reference |
+| IPFS | `ipfs/kubo` | Merkle-DAG addressing and packaging reference |
 | RustFS | `rustfs/rustfs` | S3-compatible local or simple deployment backend for staging, source, and derived prefixes |
 | SeaweedFS | `seaweedfs/seaweedfs` | tiered storage, S3-compatible substrate, and placement controls |
 | JuiceFS | `juicedata/juicefs` | object-backed POSIX workspace semantics |
 | Nydus | `dragonflyoss/nydus` | lazy chunk-addressed reads and on-demand materialization |
 | Alluxio | `Alluxio/alluxio` | distributed hot cache in front of persistent stores |
 | ORAS | `oras-project/oras` | OCI artifact publication and immutable bundle references |
+| open-vcdiff | `google/open-vcdiff` | RFC 3284 delta reference for migration or selected capability families |
+| xdelta | `jmacd/xdelta` | delta-compression reference for migration or selected capability families |
 | DedupBench | `UWASL/dedup-bench` | benchmarking chunking algorithms on the real corpus |
 | Inngest | `inngest/inngest` | durable step-oriented workflow posture |
 | Trigger.dev | `triggerdotdev/trigger.dev` | run UX, queues, and long-running developer ergonomics |
@@ -185,9 +195,11 @@ Use it deliberately:
 
 - keep public clients on the simpler ingest target and snapshot into the source repository after verification
 - persist snapshot identities, logical paths, and content digests in the registry
+- persist repository engine, dedupe metrics, and reconstruction handles when the source plane exposes them
 - back the repository with an explicit bucket or prefix whether the deployment uses RustFS locally or SeaweedFS in fuller environments
 - treat SeaweedFS or JuiceFS as the physical substrate while the source repository remains the canonical addressing layer
 - use lazy-read or hot-cache layers only where repeated source reconstruction justifies them
+- keep semantic normalization behind capability-owned contracts so unknown formats still fall back to preserve-original plus digest evidence
 
 Do not reimplement:
 
@@ -196,6 +208,12 @@ Do not reimplement:
 - repository maintenance and prune logic
 - lazy chunk-addressed fetch semantics
 - distributed cache coherence for shared hot reads
+
+Current strategy note:
+
+- keep **Kopia** as the default implemented source repository
+- use **xet-core** as the primary benchmark challenger before any backend replacement
+- treat **restic**, **borg**, **casync**, **OSTree**, **git-annex**, and **IPFS** mainly as design and benchmark references unless a later evaluation changes the decision
 
 ### 3.7.1 ORAS
 

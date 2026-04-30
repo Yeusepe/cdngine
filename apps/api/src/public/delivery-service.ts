@@ -12,6 +12,21 @@
  * - apps/api/test/delivery-routes.test.mjs
  */
 
+import { createReadStream } from 'node:fs';
+import { mkdir, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+import {
+  buildMaterializedSourcePath,
+  clonePersistedCanonicalSourceEvidence,
+  materializeCanonicalSourceToPath,
+  resolveMaterializedSourceFilename,
+  type ExportsObjectStore,
+  type PersistedCanonicalSourceEvidence,
+  type SourceDeliveryMode,
+  type SourceRepository
+} from '@cdngine/storage';
+
 export type DeliveryAuthorizationMode = 'public' | 'signed-url';
 export type DeliveryResolvedOrigin =
   | 'cdn-derived'
@@ -30,6 +45,7 @@ export type PublicLifecycleState =
 export interface PublicAssetVersionRecord {
   assetId: string;
   assetOwner: string;
+  canonicalSourceEvidence?: PersistedCanonicalSourceEvidence;
   defaultManifestType?: string;
   lifecycleState: PublicLifecycleState;
   serviceNamespaceId: string;
@@ -151,6 +167,12 @@ export interface SeedPublicAssetVersionRecord extends PublicAssetVersionRecord {
 
 export interface InMemoryPublicVersionReadStoreOptions {
   linkTokenFactory?: () => string;
+  sourceReads?: {
+    exportsObjectStore: ExportsObjectStore;
+    materializationRootPath: string;
+    sourceDeliveryMode: SourceDeliveryMode;
+    sourceRepository: SourceRepository;
+  };
   versions?: SeedPublicAssetVersionRecord[];
 }
 
@@ -164,6 +186,13 @@ function cloneVersion(record: PublicAssetVersionRecord): PublicAssetVersionRecor
   return {
     assetId: record.assetId,
     assetOwner: record.assetOwner,
+    ...(record.canonicalSourceEvidence
+      ? {
+          canonicalSourceEvidence: clonePersistedCanonicalSourceEvidence(
+            record.canonicalSourceEvidence
+          )
+        }
+      : {}),
     ...(record.defaultManifestType ? { defaultManifestType: record.defaultManifestType } : {}),
     lifecycleState: record.lifecycleState,
     serviceNamespaceId: record.serviceNamespaceId,
@@ -247,7 +276,7 @@ export class InMemoryPublicVersionReadStore implements PublicVersionReadStore {
   private readonly sourceAuthorizations = new Map<string, Omit<SourceAuthorizationRecord, 'assetId' | 'versionId'>>();
   private readonly versions = new Map<string, PublicAssetVersionRecord>();
 
-  constructor(options: InMemoryPublicVersionReadStoreOptions = {}) {
+  constructor(private readonly options: InMemoryPublicVersionReadStoreOptions = {}) {
     this.linkTokenFactory = options.linkTokenFactory ?? (() => crypto.randomUUID());
 
     for (const version of options.versions ?? []) {
@@ -350,25 +379,29 @@ export class InMemoryPublicVersionReadStore implements PublicVersionReadStore {
       throw new PublicVersionNotReadyError(assetId, versionId, version.lifecycleState);
     }
 
+    const materializedAuthorization = await this.authorizeMaterializedSource(version, request);
+
     const authorization = this.sourceAuthorizations.get(this.buildKey(assetId, versionId));
-    const baseAuthorization: SourceAuthorizationRecord = authorization
-      ? {
-          assetId,
-          authorizationMode: authorization.authorizationMode,
-          expiresAt: new Date(request.now.getTime() + 15 * 60_000),
-          resolvedOrigin: authorization.resolvedOrigin,
-          ...(authorization.tenantId ? { tenantId: authorization.tenantId } : {}),
-          url: authorization.url,
-          versionId
-        }
-      : {
-          assetId,
-          authorizationMode: 'signed-url',
-          expiresAt: new Date(request.now.getTime() + 15 * 60_000),
-          resolvedOrigin: 'source-proxy',
-          url: `https://api.cdngine.local/v1/assets/${assetId}/versions/${versionId}/source/proxy`,
-          versionId
-        };
+    const baseAuthorization: SourceAuthorizationRecord =
+      materializedAuthorization ??
+      (authorization
+        ? {
+            assetId,
+            authorizationMode: authorization.authorizationMode,
+            expiresAt: new Date(request.now.getTime() + 15 * 60_000),
+            resolvedOrigin: authorization.resolvedOrigin,
+            ...(authorization.tenantId ? { tenantId: authorization.tenantId } : {}),
+            url: authorization.url,
+            versionId
+          }
+        : {
+            assetId,
+            authorizationMode: 'signed-url',
+            expiresAt: new Date(request.now.getTime() + 15 * 60_000),
+            resolvedOrigin: 'source-proxy',
+            url: `https://api.cdngine.local/v1/assets/${assetId}/versions/${versionId}/source/proxy`,
+            versionId
+          });
 
     if (!request.oneTime) {
       return baseAuthorization;
@@ -452,6 +485,66 @@ export class InMemoryPublicVersionReadStore implements PublicVersionReadStore {
 
   private buildKey(assetId: string, versionId: string) {
     return `${assetId}:${versionId}`;
+  }
+
+  private async authorizeMaterializedSource(
+    version: PublicAssetVersionRecord,
+    request: PublicAuthorizationRequest
+  ): Promise<SourceAuthorizationRecord | undefined> {
+    if (
+      !this.options.sourceReads ||
+      this.options.sourceReads.sourceDeliveryMode !== 'materialized-export' ||
+      !version.canonicalSourceEvidence
+    ) {
+      return undefined;
+    }
+
+    const fileName = resolveMaterializedSourceFilename({
+      sourceFilename: version.source.filename,
+      canonicalLogicalPath: version.canonicalSourceEvidence.canonicalLogicalPath
+    });
+    const destinationPath = buildMaterializedSourcePath({
+      rootPath: this.options.sourceReads.materializationRootPath,
+      pathSegments: [version.assetId, version.versionId],
+      sourceFilename: version.source.filename,
+      canonicalLogicalPath: version.canonicalSourceEvidence.canonicalLogicalPath
+    });
+    await mkdir(dirname(destinationPath), { recursive: true });
+    const restored = await materializeCanonicalSourceToPath(this.options.sourceReads.sourceRepository, {
+      canonicalSource: version.canonicalSourceEvidence,
+      destinationPath
+    });
+    const restoredStats = await stat(restored.restoredPath);
+    const exportObjectKey = [
+      'source-downloads',
+      version.serviceNamespaceId,
+      version.assetId,
+      version.versionId,
+      fileName
+    ].join('/');
+    await this.options.sourceReads.exportsObjectStore.publishExport({
+      body: createReadStream(restored.restoredPath),
+      byteLength: BigInt(restoredStats.size),
+      ...(version.canonicalSourceEvidence.canonicalDigestSet[0]
+        ? { checksum: version.canonicalSourceEvidence.canonicalDigestSet[0] }
+        : {}),
+      contentType: version.source.contentType,
+      objectKey: exportObjectKey
+    });
+    const signed = await this.options.sourceReads.exportsObjectStore.issueSignedReadUrl(
+      exportObjectKey,
+      new Date(request.now.getTime() + 15 * 60_000)
+    );
+
+    return {
+      assetId: version.assetId,
+      authorizationMode: 'signed-url',
+      expiresAt: signed.expiresAt,
+      resolvedOrigin: 'source-export',
+      ...(version.tenantId ? { tenantId: version.tenantId } : {}),
+      url: signed.url,
+      versionId: version.versionId
+    };
   }
 
   private buildDeliveryAuthorizationKey(

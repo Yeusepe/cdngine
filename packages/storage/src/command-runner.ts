@@ -33,20 +33,35 @@ export interface CommandRunner {
 }
 
 export class CommandExecutionError extends Error {
-  constructor(
-    readonly execution: CommandExecution,
-    readonly result: CommandExecutionResult
-  ) {
+  readonly execution: CommandExecution;
+  readonly result: CommandExecutionResult;
+
+  constructor(execution: CommandExecution, result: CommandExecutionResult) {
     super(
       `Command "${execution.command}" exited with code ${result.exitCode}: ${result.stderr || result.stdout || 'no output'}`
     );
     this.name = 'CommandExecutionError';
+    this.execution = execution;
+    this.result = result;
+  }
+}
+
+export class CommandTimeoutError extends Error {
+  readonly execution: CommandExecution;
+  readonly timeoutMs: number;
+
+  constructor(execution: CommandExecution, timeoutMs: number) {
+    super(`Command "${execution.command}" exceeded timeout of ${timeoutMs}ms.`);
+    this.name = 'CommandTimeoutError';
+    this.execution = execution;
+    this.timeoutMs = timeoutMs;
   }
 }
 
 export class ChildProcessCommandRunner implements CommandRunner {
   async run(execution: CommandExecution): Promise<CommandExecutionResult> {
     return new Promise<CommandExecutionResult>((resolve, reject) => {
+      let settled = false;
       const child = spawn(execution.command, execution.args, {
         cwd: execution.cwd,
         env: { ...process.env, ...execution.env },
@@ -57,6 +72,34 @@ export class ChildProcessCommandRunner implements CommandRunner {
       let stdout = '';
       let stderr = '';
       let timeoutId: NodeJS.Timeout | undefined;
+
+      const settleReject = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+
+        reject(error);
+      };
+
+      const settleResolve = (result: CommandExecutionResult) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+
+        resolve(result);
+      };
 
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
@@ -70,18 +113,10 @@ export class ChildProcessCommandRunner implements CommandRunner {
       });
 
       child.on('error', (error) => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-
-        reject(error);
+        settleReject(error);
       });
 
       child.on('close', (exitCode) => {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-
         const result = {
           exitCode: exitCode ?? -1,
           stdout,
@@ -89,11 +124,11 @@ export class ChildProcessCommandRunner implements CommandRunner {
         };
 
         if (result.exitCode !== 0) {
-          reject(new CommandExecutionError(execution, result));
+          settleReject(new CommandExecutionError(execution, result));
           return;
         }
 
-        resolve(result);
+        settleResolve(result);
       });
 
       if (typeof execution.stdin === 'string') {
@@ -102,13 +137,12 @@ export class ChildProcessCommandRunner implements CommandRunner {
 
       child.stdin.end();
 
-      if (execution.timeoutMs) {
+      if (typeof execution.timeoutMs === 'number') {
+        const timeoutMs = execution.timeoutMs;
         timeoutId = setTimeout(() => {
           child.kill('SIGTERM');
-          reject(
-            new Error(`Command "${execution.command}" exceeded timeout of ${execution.timeoutMs}ms.`)
-          );
-        }, execution.timeoutMs);
+          settleReject(new CommandTimeoutError(execution, timeoutMs));
+        }, timeoutMs);
       }
     });
   }

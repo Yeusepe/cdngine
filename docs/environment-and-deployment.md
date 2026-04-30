@@ -28,9 +28,12 @@ The current local fast-start posture is:
 - Temporal plus Temporal UI
 - RustFS as the local S3-compatible backend
 - tusd backed by that RustFS instance
-- Kopia repository server backed by a RustFS bucket and source prefix
+- a dedicated RustFS `source` bucket or prefix for the Xet-default application runtime example
+- Kopia repository server backed by a RustFS bucket and source prefix for the current local fast-start migration lane
 - a separate RustFS exports bucket for source-download export paths
 - local OCI registry for ORAS-compatible publication tests
+
+This checked-in fast-start profile is still a **pre-cutover local shape**. The governing rollout contract now makes **Xet** the default canonical source engine for new canonicalizations, while keeping the local Kopia service available until the runtime wiring and migration slices catch up.
 
 RustFS is acceptable here because the local goal is contributor speed and predictable one-command bring-up. The broader reference architecture still prefers **SeaweedFS** as the default substrate when moving beyond the fast-start profile.
 
@@ -55,7 +58,7 @@ The opinionated first production profile is:
 - PostgreSQL control-plane database
 - Redis for cache and short-lived coordination
 - Temporal for durable orchestration
-- Kopia canonical source repository over SeaweedFS-backed storage
+- Xet canonical source repository over SeaweedFS-backed storage for new canonicalizations
 - optional JuiceFS workspaces where POSIX access is required
 - optional Nydus or Alluxio hot-read layer close to workers
 - ORAS-backed artifact graph
@@ -82,7 +85,7 @@ CDNgine should support both **multi-bucket** and **one-bucket** deployments.
 One S3-compatible namespace is enough when the adopter only has one bucket:
 
 - `ingest/` for tusd staging
-- `source/` for the Kopia-backed canonical repository
+- `source/` for the canonical source repository backing store
 - `derived/` for published CDN-facing derivatives
 - `exports/` for repeated original-source downloads when export mode is enabled
 
@@ -118,10 +121,23 @@ The intended environment variables are:
 - `CDNGINE_TIERING_SUBSTRATE`
 - `CDNGINE_SOURCE_DELIVERY_MODE`
 - `CDNGINE_HOT_READ_LAYER`
+- `CDNGINE_SOURCE_ENGINE`
+- `CDNGINE_XET_COMMAND`, `CDNGINE_XET_COMMAND_ARGS_JSON`, `CDNGINE_XET_SERVICE_ENDPOINT`, `CDNGINE_XET_AUTH_TOKEN`, `CDNGINE_XET_WORKSPACE_PATH`, `CDNGINE_XET_WORKING_DIRECTORY`, `CDNGINE_XET_TIMEOUT_MS`
+- `CDNGINE_KOPIA_EXECUTABLE`, `CDNGINE_KOPIA_WORKING_DIRECTORY`, `CDNGINE_KOPIA_TIMEOUT_MS`
 - `CDNGINE_DEPLOYMENT_PROFILE`
 - `CDNGINE_READINESS_REQUIRED`
 
-### 2.1.2 Who moves bytes between hot, warm, and cold
+### 2.1.2 Xet bridge rollout posture
+
+The checked-in deployment examples now make the default-engine switch explicit:
+
+- omit `CDNGINE_SOURCE_ENGINE` to follow the rollout default of `xet`
+- set `CDNGINE_SOURCE_ENGINE=kopia` only for the temporary migration lane or emergency rollback of **new** canonicalizations
+- provide `CDNGINE_XET_COMMAND` and any optional `CDNGINE_XET_COMMAND_ARGS_JSON`, `CDNGINE_XET_WORKSPACE_PATH`, and `CDNGINE_XET_WORKING_DIRECTORY` values for the currently implemented command-backed Xet bridge
+- use `CDNGINE_XET_SERVICE_ENDPOINT` and optional `CDNGINE_XET_AUTH_TOKEN` when the deployment prefers the service-backed Xet bridge instead of the checked-in command-backed example
+- keep Kopia executable, working-directory, and repository credentials available anywhere legacy `repositoryEngine = kopia` rows remain in scope
+
+### 2.1.3 Who moves bytes between hot, warm, and cold
 
 This is one of the easiest places to get confused, so the ownership should be explicit:
 
@@ -256,7 +272,7 @@ Expected properties:
 - clear private-origin access rules
 - retention policies separated by store role
 - worker-local or distributed caches only where repeated reconstructions justify them
-- canonical repository storage backed by an explicit bucket or prefix, even when the public identity is the Kopia snapshot or manifest identifier
+- canonical repository storage backed by an explicit bucket or prefix, even when the public identity is an engine-native snapshot, manifest, or reconstruction identifier
 
 ## 5. Regionality and latency posture
 
@@ -309,6 +325,52 @@ Changes that should not be rolled out casually:
 - manifest-schema changes
 - raw-to-derived store contract changes
 
+### 7.1 Source-plane rollout and migration posture
+
+The current source-plane contract now makes **Xet the default canonical source engine for new canonicalizations** while keeping the migration away from **Kopia** explicit and temporary.
+
+What changes for the target steady state:
+
+- new canonicalizations should write `repositoryEngine = xet`
+- new versions should persist Xet-backed canonical identities and reconstruction handles through the existing engine-neutral fields
+- production, staging, and local-fuller target profiles should treat Xet as the normal write path once the runtime slice lands
+
+What must stay true during migration:
+
+- existing **Kopia-backed** `AssetVersion` rows remain valid and readable
+- the checked-in runtime examples in `deploy/production/` still describe the same `ingest`, `source`, `derived`, and `exports` roles
+- one-bucket versus multi-bucket packaging, source-delivery mode, readiness checks, and worker rollout rules do not change because the source engine changes
+- there is still intentionally **no public or product-facing "pick your source engine" contract**; rollout control belongs to operators and internal deployment policy
+
+Deployment and migration guidance for operators:
+
+1. apply the registry schema and adapter rollout needed to emit engine-neutral source evidence before shifting new canonicalizations to Xet
+2. keep the existing Kopia-backed source deployment and bucket or prefix layout available while any legacy rows still reference `repositoryEngine = kopia`
+3. treat legacy Kopia rows as first-class replay inputs until migration and any required backfill are complete
+4. run `npm run source:migration -- inventory` after rollout to identify the remaining legacy Kopia rows and any canonical rows that still rely on missing `repositoryEngine` evidence
+5. use `npm run source:migration -- recanonicalize` for dry-run planning and `npm run source:migration -- recanonicalize --apply` only when you intentionally want candidate Xet evidence generated without mutating the original registry record
+6. validate normal deployment signals after rollout: readiness, source snapshot latency, reconstruction health across **both** engines during migration, and workflow dispatch behavior
+7. only retire Kopia after migration/backfill criteria are met and operator signoff confirms there is no remaining legacy read dependency
+
+The checked-in runtime loader treats `CDNGINE_SOURCE_ENGINE` as an **operator-only rollout control** with `xet` as the default when the variable is absent. The paired Xet and Kopia variables remain deployment inputs for the internal source-repository factory and do not change the public request contract.
+
+### 7.1.1 Emergency rollback posture
+
+If the Xet bridge becomes unhealthy during rollout:
+
+1. pause or slow new canonicalizations instead of silently falling back inside one request path
+2. verify the temporary Kopia lane is still provisioned and can restore legacy rows
+3. set `CDNGINE_SOURCE_ENGINE=kopia` only as an operator rollback for new canonicalizations
+4. do **not** rewrite existing `repositoryEngine` evidence or replace canonical identities with raw bucket and key coordinates
+5. return to the Xet default once the bridge, readiness signals, and reconstruction checks recover
+
+What is **not** changing in this contract slice:
+
+- no public API break
+- no change to the supported storage-topology matrix
+- no semantic-normalization or cross-format semantic-reuse claim
+- no promise that callers interact with native Xet or Kopia protocols directly
+
 ## 8. Operational dependencies that must be monitored
 
 At minimum:
@@ -321,11 +383,32 @@ At minimum:
 - derived-store error rate
 - CDN error rate and cache-hit ratio
 
+### 8.1 Readiness expectations
+
+The checked-in readiness loader currently models two default profiles:
+
+- `local-fast-start`: `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `oci-registry`
+- `production-default`: `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `derived-store`, `exports-store`
+
+`source-repository` readiness should be interpreted as:
+
+- the configured Xet bridge command is runnable within `CDNGINE_XET_TIMEOUT_MS` when the deployment is following the Xet default
+- the backing source bucket or prefix is reachable
+- the temporary Kopia lane is still restorable anywhere legacy reads or emergency fallback still matter
+
+`CDNGINE_READINESS_REQUIRED` may narrow or widen those gates, but operators should not drop the source-plane checks casually during migration.
+
 ## 9. References
 
+- [Source Plane Strategy](./source-plane-strategy.md)
+- [ADR 0012: Xet Default Rollout And Kopia Dual-Read Migration](./adr/0012-xet-default-rollout-and-kopia-dual-read-migration.md)
+- [Persistence Model](./persistence-model.md)
+- [Production Deployment Profiles](../deploy/production/README.md)
+- [Local Platform](../deploy/local-platform/README.md)
 - [Temporal documentation](https://docs.temporal.io/)
 - [Redis documentation](https://redis.io/docs/latest/)
 - [Cloudflare R2 product page](https://www.cloudflare.com/developer-platform/products/r2/)
+- [Xet deduplication](https://huggingface.co/docs/xet/en/deduplication)
 - [Kopia features](https://kopia.io/docs/features/)
 - [RustFS S3 compatibility](https://docs.rustfs.com/features/s3-compatibility/)
 - [RustFS architecture](https://docs.rustfs.com/concepts/architecture.html)

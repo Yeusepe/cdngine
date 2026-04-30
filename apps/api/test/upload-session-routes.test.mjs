@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 
 import { createApiApp } from '../dist/api-app.js';
 import {
+  createUploadSessionRouteDependenciesFromEnvironment,
   registerUploadSessionRoutes
 } from '../dist/public/upload-session-routes.js';
 import {
@@ -28,6 +29,10 @@ import {
   createJsonBearerHeaders,
   provisionPublicActor
 } from '../../../tests/auth-fixture.mjs';
+import {
+  InMemoryXetSnapshotStore,
+  canonicalSourceEvidenceToSnapshotResult
+} from '../../../packages/storage/dist/index.js';
 
 class FakeStagingBlobStore {
   constructor(objects = {}) {
@@ -92,6 +97,23 @@ class FakeSourceRepository {
   async restoreToPath(input) {
     return {
       restoredPath: input.destinationPath
+    };
+  }
+}
+
+class FakeRunner {
+  constructor(outputs) {
+    this.outputs = [...outputs];
+    this.invocations = [];
+  }
+
+  async run(execution) {
+    this.invocations.push(execution);
+
+    return {
+      exitCode: 0,
+      stdout: this.outputs.shift() ?? '{}',
+      stderr: ''
     };
   }
 }
@@ -278,6 +300,49 @@ test('same idempotency key with a different semantic request returns a conflict'
 
   assert.equal(response.status, 409);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/idempotency-key-conflict');
+});
+
+test('upload-session issuance rejects path-like source filenames at the request boundary', async () => {
+  const { auth, headers } = await createUploadAuth();
+
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store: new InMemoryUploadSessionIssuanceStore(),
+        stagingBlobStore: new FakeStagingBlobStore(),
+        now: () => new Date('2026-01-15T18:00:00Z')
+      });
+    }
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: '..\\..\\hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(
+    payload.detail,
+    'Source filenames must be plain file names and cannot include path separators or traversal segments.'
+  );
 });
 
 test('supplying an existing asset id creates a new immutable revision', async () => {
@@ -481,7 +546,7 @@ test('upload-session completion snapshots staged bytes and exposes a pending wor
   });
 });
 
-test('same completion idempotency key and same request replay the original workflow dispatch', async () => {
+test('same completion idempotency key replays dedupe-heavy canonical-source proof without recanonicalizing the asset version', async () => {
   const sequence = {
     ast: ['ast_001'],
     ver: ['ver_001'],
@@ -509,7 +574,43 @@ test('same completion idempotency key and same request replay the original workf
       }
     }
   });
-  const sourceRepository = new FakeSourceRepository();
+  const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'xet',
+    canonicalSourceId: 'xet_file_patch_001',
+    snapshotId: 'xet_file_patch_001',
+    logicalPath: 'source/media-platform/ast_001/ver_001/original/hero-banner-v2.png',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    ],
+    logicalByteLength: 1234n,
+    storedByteLength: 256n,
+    dedupeMetrics: {
+      chunkCount: 16,
+      dedupeRatio: 0.875,
+      reusedChunkCount: 14,
+      savingsRatio: 0.875,
+      storedByteLength: 256n
+    },
+    reconstructionHandles: [
+      {
+        kind: 'manifest',
+        value: 'xet_file_patch_001'
+      },
+      {
+        kind: 'chunk-index',
+        value: 'shard_patch_001'
+      }
+    ],
+    substrateHints: {
+      deduplicatedXorbCount: '3',
+      manifestKind: 'xet-file-reconstruction',
+      termCount: '4',
+      uploadedXorbCount: '1'
+    }
+  });
   const { auth, headers } = await createUploadAuth();
   const app = createApiApp({
     auth,
@@ -563,12 +664,44 @@ test('same completion idempotency key and same request replay the original workf
     })
   };
 
-  await app.request('http://localhost/v1/upload-sessions/upl_001/complete', request);
+  const firstResponse = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', request);
   const replayResponse = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', request);
+  const firstPayload = await firstResponse.json();
   const replayPayload = await replayResponse.json();
+  const persistedVersion = store.getPersistedVersion('ver_001');
+  assert.ok(persistedVersion?.canonicalSourceEvidence);
+  const canonicalSource = canonicalSourceEvidenceToSnapshotResult(
+    persistedVersion.canonicalSourceEvidence
+  );
 
+  assert.equal(firstResponse.status, 202);
   assert.equal(replayResponse.status, 202);
+  assert.equal(firstPayload.versionId, 'ver_001');
+  assert.equal(replayPayload.versionId, 'ver_001');
+  assert.equal(firstPayload.assetId, 'ast_001');
+  assert.equal(replayPayload.assetId, 'ast_001');
   assert.equal(replayPayload.workflowDispatch.dispatchId, 'wd_001');
+  assert.deepEqual(replayPayload.workflowDispatch, firstPayload.workflowDispatch);
+  assert.equal(canonicalSource.repositoryEngine, 'xet');
+  assert.equal(canonicalSource.canonicalSourceId, 'xet_file_patch_001');
+  assert.notEqual(canonicalSource.canonicalSourceId, persistedVersion.versionId);
+  assert.deepEqual(canonicalSource.dedupeMetrics, {
+    chunkCount: 16,
+    dedupeRatio: 0.875,
+    reusedChunkCount: 14,
+    savingsRatio: 0.875,
+    storedByteLength: 256n
+  });
+  assert.deepEqual(canonicalSource.reconstructionHandles, [
+    {
+      kind: 'manifest',
+      value: 'xet_file_patch_001'
+    },
+    {
+      kind: 'chunk-index',
+      value: 'shard_patch_001'
+    }
+  ]);
   assert.equal(sourceRepository.snapshotCalls.length, 1);
 });
 
@@ -748,4 +881,728 @@ test('upload-session completion resolves the presentation workflow template from
     state: 'pending',
     workflowKey: 'media-platform:ast_001:ver_001:presentation-normalization-v1'
   });
+});
+
+test('upload-session completion persists richer canonical-source evidence in the registry-aligned version record', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 4096n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    }
+  });
+  const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'kopia',
+    canonicalSourceId: 'src_deck',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      },
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha-secondary'
+      }
+    ],
+    logicalByteLength: 4096n,
+    storedByteLength: 2048n,
+    dedupeMetrics: {
+      chunkCount: 12,
+      dedupeRatio: 2,
+      reusedChunkCount: 8,
+      savingsRatio: 0.5,
+      storedByteLength: 2048n
+    },
+    logicalPath: 'source/media-platform/ast_001/ver_001/original',
+    reconstructionHandles: [
+      {
+        kind: 'snapshot',
+        value: 'snap_deck'
+      },
+      {
+        kind: 'merkle-root',
+        value: 'tree_deck'
+      }
+    ],
+    snapshotId: 'snap_deck',
+    substrateHints: {
+      bucket: 'cdngine-source',
+      prefix: 'source/media-platform'
+    }
+  });
+  const { auth, headers } = await createUploadAuth();
+
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'event-deck.pdf',
+        contentType: 'application/pdf'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+  assert.deepEqual(store.getPersistedVersion('ver_001')?.canonicalSourceEvidence, {
+    repositoryEngine: 'kopia',
+    canonicalSourceId: 'src_deck',
+    canonicalSnapshotId: 'snap_deck',
+    canonicalLogicalPath: 'source/media-platform/ast_001/ver_001/original',
+    canonicalDigestSet: [
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      },
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha-secondary'
+      }
+    ],
+    canonicalLogicalByteLength: 4096n,
+    canonicalStoredByteLength: 2048n,
+    dedupeMetrics: {
+      chunkCount: 12,
+      dedupeRatio: 2,
+      reusedChunkCount: 8,
+      savingsRatio: 0.5,
+      storedByteLength: 2048n
+    },
+    sourceReconstructionHandles: [
+      {
+        kind: 'snapshot',
+        value: 'snap_deck'
+      },
+      {
+        kind: 'merkle-root',
+        value: 'tree_deck'
+      }
+    ],
+    sourceSubstrateHints: {
+      bucket: 'cdngine-source',
+      prefix: 'source/media-platform'
+    }
+  });
+});
+
+test('upload-session completion keeps Xet canonical-source evidence replay-safe through the shared persistence helpers', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 4096n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    }
+  });
+  const snapshotResult = {
+    repositoryEngine: 'xet',
+    canonicalSourceId: 'xet_file_001',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    ],
+    logicalByteLength: 4096n,
+    storedByteLength: 1536n,
+    logicalPath: 'source/media-platform/ast_001/ver_001/original/event-deck.pdf',
+    reconstructionHandles: [
+      {
+        kind: 'manifest',
+        value: 'xet_file_001'
+      },
+      {
+        kind: 'chunk-index',
+        value: 'shard_001'
+      }
+    ],
+    snapshotId: 'xet_file_001',
+    substrateHints: {
+      deduplicatedXorbCount: '1',
+      uploadedXorbCount: '1'
+    }
+  };
+  const sourceRepository = new FakeSourceRepository(snapshotResult);
+  const { auth, headers } = await createUploadAuth();
+
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'event-deck.pdf',
+        contentType: 'application/pdf'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 4096,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'deck-sha'
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+  const persistedVersion = store.getPersistedVersion('ver_001');
+  assert.ok(persistedVersion?.canonicalSourceEvidence);
+  assert.deepEqual(
+    canonicalSourceEvidenceToSnapshotResult(persistedVersion.canonicalSourceEvidence),
+    snapshotResult
+  );
+});
+
+test('runtime-selected upload completion canonicalizes through Xet by default when no explicit engine is configured', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const dependencies = createUploadSessionRouteDependenciesFromEnvironment(
+    {
+      CDNGINE_XET_COMMAND: 'xet-cli'
+    },
+    stagingBlobStore,
+    store,
+    {
+      xet: {
+        evidenceProvider: {
+          async captureSnapshot(input) {
+            return {
+              fileId: `xet_${input.assetVersionId}`,
+              logicalPath: 'source/media-platform/ast_001/ver_001/original/hero-banner.png',
+              terms: [
+                {
+                  xorbHash: 'xorb_001',
+                  startChunkIndex: 0,
+                  endChunkIndex: 3
+                }
+              ],
+              shardIds: ['shard_001']
+            };
+          }
+        },
+        materializer: {
+          async materializeFile() {}
+        },
+        snapshotStore: new InMemoryXetSnapshotStore()
+      },
+      workflowTemplate: 'image-derivation-v1'
+    }
+  );
+  const { auth, headers } = await createUploadAuth();
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, dependencies);
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+  assert.equal(store.getPersistedVersion('ver_001')?.canonicalSourceEvidence?.repositoryEngine, 'xet');
+});
+
+test('environment upload-session dependencies supply the default Xet snapshot store when runtime selection uses Xet', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const runner = new FakeRunner([
+    JSON.stringify({
+      fileId: 'xet_ver_001',
+      logicalPath: 'source/media-platform/ast_001/ver_001/original/hero-banner.png',
+      shardIds: ['shard_001'],
+      terms: [
+        {
+          xorbHash: 'xorb_001',
+          startChunkIndex: 0,
+          endChunkIndex: 3
+        }
+      ]
+    })
+  ]);
+  const dependencies = createUploadSessionRouteDependenciesFromEnvironment(
+    {
+      CDNGINE_XET_COMMAND: 'xet-cli'
+    },
+    stagingBlobStore,
+    store,
+    {
+      runner,
+      workflowTemplate: 'image-derivation-v1'
+    }
+  );
+  const { auth, headers } = await createUploadAuth();
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, dependencies);
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+  assert.equal(runner.invocations[0]?.command, 'xet-cli');
+  assert.equal(store.getPersistedVersion('ver_001')?.canonicalSourceEvidence?.repositoryEngine, 'xet');
+});
+
+test('runtime-selected upload completion honors explicit legacy kopia selection during migration', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const runner = new FakeRunner([
+    JSON.stringify({
+      id: 'snap_legacy_001',
+      source: {
+        path: 'staging://cdngine-ingest/ingest/media-platform/tenant-acme/upl_001'
+      }
+    })
+  ]);
+  const dependencies = createUploadSessionRouteDependenciesFromEnvironment(
+    {
+      CDNGINE_SOURCE_ENGINE: 'kopia'
+    },
+    stagingBlobStore,
+    store,
+    {
+      runner,
+      workflowTemplate: 'image-derivation-v1'
+    }
+  );
+  const { auth, headers } = await createUploadAuth();
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, dependencies);
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const response = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: JSON.stringify({
+      stagedObject: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+  assert.equal(store.getPersistedVersion('ver_001')?.canonicalSourceEvidence?.repositoryEngine, 'kopia');
+  assert.equal(runner.invocations[0]?.command, 'kopia');
+});
+
+test('completed upload-session replay rebuilds the response from persisted canonical evidence without recanonicalizing', async () => {
+  const sequence = {
+    ast: ['ast_001'],
+    ver: ['ver_001'],
+    upl: ['upl_001'],
+    wd: ['wd_001']
+  };
+  const store = new InMemoryUploadSessionIssuanceStore({
+    generateId(prefix) {
+      const next = sequence[prefix].shift();
+
+      if (!next) {
+        throw new Error(`No more ids configured for prefix ${prefix}`);
+      }
+
+      return next;
+    },
+    now: () => new Date('2026-01-15T18:00:00Z')
+  });
+  const stagingBlobStore = new FakeStagingBlobStore({
+    'media-platform/tenant-acme/upl_001': {
+      byteLength: 1234n,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+  const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'xet',
+    canonicalSourceId: 'xet_file_patch_001',
+    snapshotId: 'xet_file_patch_001',
+    logicalPath: 'source/media-platform/ast_001/ver_001/original/hero-banner-v2.png',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    ],
+    logicalByteLength: 1234n,
+    storedByteLength: 256n,
+    reconstructionHandles: [
+      {
+        kind: 'manifest',
+        value: 'xet_file_patch_001'
+      }
+    ]
+  });
+  const { auth, headers } = await createUploadAuth();
+  const app = createApiApp({
+    auth,
+    registerPublicRoutes(publicApp) {
+      registerUploadSessionRoutes(publicApp, {
+        store,
+        sourceRepository,
+        stagingBlobStore,
+        workflowTemplate: 'image-derivation-v1'
+      });
+    }
+  });
+
+  await app.request('http://localhost/v1/upload-sessions', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_create'
+    }),
+    body: JSON.stringify({
+      serviceNamespaceId: 'media-platform',
+      assetOwner: 'customer:acme',
+      source: {
+        filename: 'hero-banner.png',
+        contentType: 'image/png'
+      },
+      upload: {
+        objectKey: 'media-platform/tenant-acme/upl_001',
+        byteLength: 1234,
+        checksum: {
+          algorithm: 'sha256',
+          value: 'abc123'
+        }
+      }
+    })
+  });
+
+  const requestBody = JSON.stringify({
+    stagedObject: {
+      objectKey: 'media-platform/tenant-acme/upl_001',
+      byteLength: 1234,
+      checksum: {
+        algorithm: 'sha256',
+        value: 'abc123'
+      }
+    }
+  });
+
+  const firstResponse = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete'
+    }),
+    body: requestBody
+  });
+  assert.equal(firstResponse.status, 202);
+
+  store.uploadSessions.get('upl_001').completionResult = undefined;
+  store.uploadSessions.get('upl_001').completionRequestHash = undefined;
+
+  const replayResponse = await app.request('http://localhost/v1/upload-sessions/upl_001/complete', {
+    method: 'POST',
+    headers: headers({
+      'idempotency-key': 'idem_complete_retry'
+    }),
+    body: requestBody
+  });
+  const replayPayload = await replayResponse.json();
+
+  assert.equal(replayResponse.status, 202);
+  assert.equal(replayPayload.workflowDispatch.dispatchId, 'wd_001');
+  assert.equal(sourceRepository.snapshotCalls.length, 1);
+  assert.equal(
+    store.getPersistedVersion('ver_001')?.canonicalSourceEvidence?.canonicalSourceId,
+    'xet_file_patch_001'
+  );
 });

@@ -79,7 +79,7 @@ Capability-owned adapters should stay behind generic roles such as:
 - `SemanticFingerprintBuilder`
 - `SemanticRelationRecorder`
 
-The fallback capability for unknown formats should use `matchStrategy: 'fallback'` and bind to the generic asset workflow so future file types still survive `stage -> canonicalize -> process -> publish -> deliver` without a core-service rewrite.
+The fallback capability for unknown formats should use `matchStrategy: 'fallback'` and bind to the generic asset workflow so future file types still survive `stage -> canonicalize -> process -> publish -> deliver` without a core-service rewrite. The source plane still performs universal byte-level dedupe before any optional capability-owned semantic adapter runs.
 
 ## 5. Processor contract
 

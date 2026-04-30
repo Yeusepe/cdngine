@@ -10,7 +10,7 @@ It is designed for workloads such as:
 - archives and package-like assets
 - future file types added through explicit capability and workflow registration
 
-Unknown or unusual formats still follow a safe default posture: preserve the original, retain strong digests, and add generic container inventory only when the platform can prove the upload is a container.
+Unknown or unusual formats still follow a safe default posture: preserve the original, retain strong digests, and add generic container inventory only when the platform can prove the upload is a container. Byte-level source dedupe still applies to every canonicalized upload, while semantic normalization stays capability-owned and optional.
 
 ## Core model
 
@@ -35,7 +35,7 @@ flowchart LR
     Registry --> Temporal["Temporal"]
     Temporal --> Workers["Worker pools"]
     Ingest --> Staging["ingest storage"]
-    Workers --> SourceRepo["Kopia source repository"]
+    Workers --> SourceRepo["canonical source repository"]
     SourceRepo --> SourceStore["source storage"]
     Workers --> Derived["derived storage"]
     Workers --> Exports["exports storage"]
@@ -50,7 +50,7 @@ The important split is:
 - the **canonical source plane** exists for provenance, deduplication, replay, and storage-efficient retention
 - the **derived delivery plane** exists for browser-friendly published artifacts and hot delivery
 
-Public clients should not need to understand Kopia, SeaweedFS, ORAS, Nydus, or Temporal directly. They talk to **CDNgine APIs and SDKs**.
+Public clients should not need to understand Xet, Kopia, SeaweedFS, ORAS, Nydus, or Temporal directly. They talk to **CDNgine APIs and SDKs**.
 
 Client-facing reads stay unified even when storage is not. A caller asks CDNgine to authorize a delivery or source download once, and CDNgine resolves that request to the right internal path: **CDN-backed derivative**, **materialized export**, or **canonical-source reconstruction**.
 
@@ -71,7 +71,7 @@ CDNgine distinguishes the **logical asset** from each immutable **uploaded sourc
 - a retry of the **same** mutating request converges on the same upload session and version through idempotency
 - a **new revision** goes through canonicalization, workflow dispatch, and publication again for its own version
 
-That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. **Kopia** may deduplicate shared source content internally, but that does not collapse version identity in CDNgine. The current source-plane strategy is to keep **Kopia** as the default engine, emit engine-neutral source-evidence fields, and benchmark **xet-core** before any backend replacement. See [docs/source-plane-strategy.md](./docs/source-plane-strategy.md).
+That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. The current source-plane strategy makes **Xet** the default canonical source engine for new canonicalizations, keeps the persisted source-evidence contract engine-neutral, and requires **legacy Kopia-backed versions** to remain readable until migration, backfill, and operator signoff retire the old engine. See [docs/source-plane-strategy.md](./docs/source-plane-strategy.md).
 
 ### Logical roles
 
@@ -92,7 +92,7 @@ flowchart TB
 
     subgraph Source["Canonical source plane"]
         Staging["ingest role"]
-        SourceRepo["Kopia repository"]
+        SourceRepo["canonical source repository"]
         SourceBacking["source role"]
     end
 
@@ -170,7 +170,7 @@ sequenceDiagram
     participant Client
     participant API as CDNgine API
     participant Registry
-    participant Source as Kopia source repository
+    participant Source as canonical source repository
     participant CDN as CDN
     participant Exports as Exports storage
 
@@ -201,7 +201,7 @@ CDNgine is opinionated about the default stack, but not about one mandatory infr
 | cache and short-lived coordination | **Redis** |
 | resumable ingest | **tus / tusd** |
 | durable workflows | **Temporal** |
-| canonical source repository | **Kopia** |
+| canonical source repository | **Xet** for new canonicalizations; **Kopia** remains readable during migration until backfill and signoff |
 | tiered storage substrate | **SeaweedFS** by default, **JuiceFS** when POSIX workspace semantics matter |
 | lazy internal reads | **Nydus** plus optional **Alluxio** |
 | artifact graph and immutable bundles | **ORAS / OCI artifacts** |

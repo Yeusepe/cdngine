@@ -32,8 +32,9 @@ The second layer is implementation plumbing and must stay behind CDNgine-owned p
 | **RustFS** | local or simple S3-compatible object store | S3-compatible API | `@aws-sdk/client-s3` against RustFS buckets or prefixes |
 | **SeaweedFS S3 gateway** | stateless gateway in front of filer | S3-compatible API | `@aws-sdk/client-s3` against SeaweedFS buckets for staging and derived blobs |
 | **SeaweedFS filer** | internal metadata and path service | filer HTTP API | internal HTTP client for metadata, listings, and path-scoped operations when S3 is not enough |
-| **Kopia repository server** | repository access proxy | authenticated repository connection | server mode for shared repository access and credential isolation |
-| **Kopia CLI** | worker-local or sidecar process | `snapshot create`, `snapshot list`, `snapshot restore` with JSON output where supported | controlled process boundary wrapped by a CDNgine adapter |
+| **Xet / xet-core adapter** | managed sidecar, service, or controlled worker-local command boundary | canonicalization and reconstruction through a CDNgine-owned adapter | controlled service or command boundary; keep request-path semantics engine-neutral |
+| **Kopia repository server** | repository access proxy | authenticated repository connection for legacy source versions | server mode for shared repository access and credential isolation during migration |
+| **Kopia CLI** | worker-local or sidecar process | `snapshot create`, `snapshot list`, `snapshot restore` with JSON output where supported for legacy rows | controlled process boundary wrapped by a CDNgine adapter during migration |
 | **Temporal** | workflow service plus worker processes | official TypeScript SDK | `@temporalio/client`, `@temporalio/worker`, `@temporalio/workflow` in-process |
 | **ORAS / OCI registry** | OCI registry plus ORAS client | ORAS CLI and OCI registry APIs | controlled ORAS CLI boundary first; avoid inventing a custom artifact registry |
 | **Nydus** | worker-local runtime / mount layer | runtime mount or lazy-read path | host or sidecar managed by workers; not a public SDK dependency |
@@ -108,49 +109,49 @@ Preferred posture:
 - use explicit buckets or prefixes for `ingest`, `source`, `derived`, and `exports`
 - keep RustFS-specific behavior out of the public API contract
 
-RustFS is a backing store, not the canonical source repository itself. Kopia still owns canonical snapshot identity on top of the RustFS bucket or prefix.
+RustFS is a backing store, not the canonical source repository itself. The canonical source engine still owns source identity on top of the RustFS bucket or prefix, with **Xet** as the default write path and **Kopia** retained only for the temporary migration lane.
 
 When an installation stays on RustFS beyond local fast-start, RustFS can also own **bucket lifecycle and policy-based object tiering** for origin objects. That is still substrate behavior, not application logic. CDNgine should configure or document those rules, then continue to interact through normal S3-compatible object operations and repository adapters.
 
-### 4.3 Kopia
+### 4.3 Xet default canonical-source integration
 
-CDNgine should consume **Kopia as the source-repository product**, not recreate repository behavior in TypeScript.
+CDNgine should consume **Xet** through a controlled service or command boundary for the default canonical-source write path, not recreate repository behavior in TypeScript.
 
 Preferred posture:
 
-- run **Kopia repository server** where shared authenticated access is needed
-- wrap the **Kopia CLI** in a source-repository adapter for worker-side operations
-- keep the adapter result engine neutral so the control plane can benchmark **xet-core** or another challenger later without changing request-path semantics
-
-The first commands CDNgine should rely on are:
-
-- `kopia snapshot create ... --json`
-- `kopia snapshot list ... --json`
-- `kopia snapshot restore ...`
+- use a CDNgine-owned adapter around **xet-core** or an equivalent Xet service boundary
+- keep the adapter result engine neutral so the control plane can dual-read Xet and Kopia-backed versions without changing request-path semantics
+- persist Xet-native reconstruction handles only behind the existing engine-neutral source-evidence fields
 
 That means CDNgine owns:
 
-- preparing the local or mounted input path for a snapshot
-- mapping registry identity to Kopia snapshot identity
-- parsing command output and surfacing typed failures
+- preparing the local or mounted input path for canonicalization
+- mapping registry identity to Xet-backed canonical identity
+- parsing adapter output and surfacing typed failures
 
 It does **not** own:
 
 - chunking
-- snapshot packing
+- shard or pack maintenance
 - deduplication
 - repository maintenance
-- restore tree semantics
+- restore semantics
 
-### 4.3.1 Xet-like evaluation gate
+### 4.3.1 Kopia legacy dual-read migration
 
-`xet-core` is the leading challenger for near-duplicate binary revisions, but it is **not** the current default.
+`Kopia` remains part of the integration model only for the temporary migration period.
 
-Use it next as:
+Use it as:
 
-- a benchmark target against the current Kopia baseline
-- a reference for shard, reconstruction-handle, and cache-aware source-evidence fields
-- a candidate sidecar or controlled-service boundary only if benchmark and migration evidence justify a backend change
+- the read and replay path for legacy `AssetVersion` rows that still carry `repositoryEngine = kopia`
+- a backfill or migration source while older canonical records are rehydrated into Xet where policy requires it
+- an operator-visible fallback that is retired only after migration/backfill/signoff completes
+
+The first commands CDNgine should rely on for that temporary lane are:
+
+- `kopia snapshot create ... --json`
+- `kopia snapshot list ... --json`
+- `kopia snapshot restore ...`
 
 ### 4.4 Temporal
 
@@ -330,11 +331,14 @@ Do **not** skip to "reimplement the product semantics in app code".
 
 ## 9. References
 
+- [Format-Agnostic Upstream Review](./format-agnostic-upstream-review.md)
 - [tusd configuration and hooks](https://tus.github.io/tusd/getting-started/configuration/)
 - [RustFS S3 compatibility](https://docs.rustfs.com/features/s3-compatibility/)
 - [RustFS architecture](https://docs.rustfs.com/concepts/architecture.html)
 - [SeaweedFS filer HTTP API](https://github.com/seaweedfs/seaweedfs/wiki/Filer-Server-API)
 - [SeaweedFS Amazon S3 API](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API)
+- [Xet deduplication](https://huggingface.co/docs/xet/en/deduplication)
+- [huggingface/xet-core](https://github.com/huggingface/xet-core)
 - [Kopia repository server](https://kopia.io/docs/repository-server/)
 - [Kopia snapshot create](https://kopia.io/docs/reference/command-line/common/snapshot-create/)
 - [Kopia snapshot list](https://kopia.io/docs/reference/command-line/common/snapshot-list/)

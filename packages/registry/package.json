@@ -7,6 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "npm run prisma:validate && tsc -p tsconfig.json",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "lint": "tsc -p tsconfig.json --noEmit",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "test": "npm run build && node --test test/*.test.mjs"

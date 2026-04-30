@@ -15,6 +15,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
 
 import {
   S3CompatibleDerivedObjectStore,
@@ -163,4 +164,31 @@ test('exports adapter deletes and signs objects under the exports role prefix', 
   assert.equal(published.key, 'exports/ast_123/ver_456/source.psd');
   assert.equal(signed.url, 'signed:exports/ast_123/ver_456/source.psd');
   assert.equal(client.commands[1]?.name, 'DeleteObjectCommand');
+});
+
+test('exports adapter forwards stream bodies for source export publication', async () => {
+  const client = new FakeS3Client({
+    PutObjectCommand: () => ({ ETag: '"export-etag"' })
+  });
+  const store = new S3CompatibleExportsObjectStore({
+    client,
+    target: {
+      role: 'exports',
+      bucket: 'cdngine-exports',
+      prefix: 'exports',
+      targetKey: 'cdngine-exports/exports'
+    }
+  });
+  const body = Readable.from(['streamed-export']);
+
+  const published = await store.publishExport({
+    objectKey: 'ast_123/ver_456/source.psd',
+    contentType: 'image/vnd.adobe.photoshop',
+    byteLength: 15n,
+    body
+  });
+
+  assert.equal(published.key, 'exports/ast_123/ver_456/source.psd');
+  assert.equal(client.commands[0]?.name, 'PutObjectCommand');
+  assert.equal(client.commands[0]?.input.Body, body);
 });

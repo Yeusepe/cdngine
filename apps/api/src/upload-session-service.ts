@@ -15,9 +15,15 @@
  */
 
 import type {
+  PersistedCanonicalSourceEvidence as StoragePersistedCanonicalSourceEvidence,
   ObjectChecksum,
   SnapshotResult,
   StagedObjectDescriptor
+} from '@cdngine/storage';
+import {
+  canonicalSourceEvidenceToSnapshotResult,
+  clonePersistedCanonicalSourceEvidence,
+  snapshotResultToCanonicalSourceEvidence
 } from '@cdngine/storage';
 
 export type AssetVersionLifecycleState =
@@ -130,6 +136,8 @@ export interface WorkflowDispatchSummary {
   workflowKey: string;
 }
 
+export type PersistedCanonicalSourceEvidence = StoragePersistedCanonicalSourceEvidence;
+
 export interface CompletedUploadSession {
   assetId: string;
   canonicalSource: SnapshotResult;
@@ -227,7 +235,7 @@ interface AssetSummary {
 }
 
 interface VersionRecord extends Omit<IssuedUploadSession, 'expiresAt' | 'isDuplicate' | 'uploadSessionId'> {
-  canonicalSource?: SnapshotResult;
+  canonicalSourceEvidence?: PersistedCanonicalSourceEvidence;
   lifecycleState: AssetVersionLifecycleState;
   workflowDispatch?: WorkflowDispatchSummary;
 }
@@ -268,39 +276,6 @@ function buildWorkflowKey(
   workflowTemplate: string
 ) {
   return `${serviceNamespaceId}:${assetId}:${versionId}:${workflowTemplate}`;
-}
-
-function cloneSnapshotResult(snapshot: SnapshotResult): SnapshotResult {
-  return {
-    repositoryEngine: snapshot.repositoryEngine,
-    canonicalSourceId: snapshot.canonicalSourceId,
-    snapshotId: snapshot.snapshotId,
-    logicalPath: snapshot.logicalPath,
-    digests: snapshot.digests.map((digest) => ({ ...digest })),
-    ...(snapshot.logicalByteLength === undefined
-      ? {}
-      : { logicalByteLength: snapshot.logicalByteLength }),
-    ...(snapshot.storedByteLength === undefined ? {} : { storedByteLength: snapshot.storedByteLength }),
-    ...(snapshot.dedupeMetrics
-      ? {
-          dedupeMetrics: {
-            ...snapshot.dedupeMetrics,
-            ...(snapshot.dedupeMetrics.storedByteLength === undefined
-              ? {}
-              : { storedByteLength: snapshot.dedupeMetrics.storedByteLength })
-          }
-        }
-      : {}),
-    ...(snapshot.reconstructionHandles
-      ? {
-          reconstructionHandles: snapshot.reconstructionHandles.map((handle) => ({
-            kind: handle.kind,
-            value: handle.value
-          }))
-        }
-      : {}),
-    ...(snapshot.substrateHints ? { substrateHints: { ...snapshot.substrateHints } } : {})
-  };
 }
 
 export class InMemoryUploadSessionIssuanceStore
@@ -487,10 +462,16 @@ export class InMemoryUploadSessionIssuanceStore
       );
     }
 
+    const persistedCompletionReplay = this.buildCompletionResultFromPersistedEvidence(
+      input.uploadSessionId,
+      version
+    );
+
     if (
       version.lifecycleState !== 'session_created' &&
       version.lifecycleState !== 'uploaded' &&
-      version.lifecycleState !== 'failed_retryable'
+      version.lifecycleState !== 'failed_retryable' &&
+      !persistedCompletionReplay
     ) {
       throw new UploadSessionInvalidStateTransitionError(
         input.uploadSessionId,
@@ -537,6 +518,20 @@ export class InMemoryUploadSessionIssuanceStore
       );
     }
 
+    if (persistedCompletionReplay) {
+      session.completionRequestHash ??= input.normalizedRequestHash;
+      session.completionResult = persistedCompletionReplay;
+      this.idempotencyRecords.set(idempotencyScopeKey, {
+        normalizedRequestHash: input.normalizedRequestHash,
+        result: persistedCompletionReplay
+      });
+
+      return {
+        ...persistedCompletionReplay,
+        isDuplicate: true
+      };
+    }
+
     session.uploadSessionState = 'uploaded';
     version.lifecycleState = 'uploaded';
     version.lifecycleState = 'canonicalizing';
@@ -565,13 +560,14 @@ export class InMemoryUploadSessionIssuanceStore
         )
       };
 
-      version.canonicalSource = canonicalSource;
+      version.canonicalSourceEvidence =
+        snapshotResultToCanonicalSourceEvidence(canonicalSource);
       version.lifecycleState = 'canonical';
       version.workflowDispatch = workflowDispatch;
 
       const completionResult: Omit<CompletedUploadSession, 'isDuplicate'> = {
         assetId: version.assetId,
-        canonicalSource: cloneSnapshotResult(canonicalSource),
+        canonicalSource: canonicalSourceEvidenceToSnapshotResult(version.canonicalSourceEvidence),
         uploadSessionId: input.uploadSessionId,
         versionId: version.versionId,
         versionState: 'canonical',
@@ -595,6 +591,33 @@ export class InMemoryUploadSessionIssuanceStore
     }
   }
 
+  getPersistedVersion(versionId: string) {
+    const version = this.versionsById.get(versionId);
+
+    if (!version) {
+      return null;
+    }
+
+    return {
+      ...version,
+      checksum: { ...version.checksum },
+      ...(version.canonicalSourceEvidence
+        ? {
+            canonicalSourceEvidence: clonePersistedCanonicalSourceEvidence(
+              version.canonicalSourceEvidence
+            )
+          }
+        : {}),
+      ...(version.workflowDispatch
+        ? {
+            workflowDispatch: {
+              ...version.workflowDispatch
+            }
+          }
+        : {})
+    };
+  }
+
   private resolveOrCreateAsset(input: IssueUploadSessionInput): AssetSummary {
     if (input.assetId) {
       const existingAsset = this.assets.get(input.assetId);
@@ -616,6 +639,30 @@ export class InMemoryUploadSessionIssuanceStore
 
     this.assets.set(assetId, asset);
     return asset;
+  }
+
+  private buildCompletionResultFromPersistedEvidence(
+    uploadSessionId: string,
+    version: VersionRecord
+  ): Omit<CompletedUploadSession, 'isDuplicate'> | null {
+    if (
+      (version.lifecycleState !== 'canonical' && version.lifecycleState !== 'processing') ||
+      !version.canonicalSourceEvidence ||
+      !version.workflowDispatch
+    ) {
+      return null;
+    }
+
+    return {
+      assetId: version.assetId,
+      canonicalSource: canonicalSourceEvidenceToSnapshotResult(version.canonicalSourceEvidence),
+      uploadSessionId,
+      versionId: version.versionId,
+      versionState: version.lifecycleState,
+      workflowDispatch: {
+        ...version.workflowDispatch
+      }
+    };
   }
 
   private buildUploadSessionSummary(session: UploadSessionRecord): UploadSessionSummary {

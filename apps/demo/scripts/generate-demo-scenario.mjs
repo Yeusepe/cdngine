@@ -18,6 +18,9 @@ import {
   InMemoryPresentationPublicationStore
 } from '../../../packages/registry/dist/index.js';
 import {
+  canonicalSourceEvidenceToSnapshotResult
+} from '../../../packages/storage/dist/index.js';
+import {
   runImagePublicationWorkflow,
   runPresentationPublicationWorkflow
 } from '../../../packages/workflows/dist/index.js';
@@ -247,6 +250,16 @@ function buildPresentationProcessorActivity() {
       };
     }
   };
+}
+
+function getPersistedCanonicalSourceSnapshot(uploadStore, versionId) {
+  const persistedVersion = uploadStore.getPersistedVersion(versionId);
+
+  if (!persistedVersion?.canonicalSourceEvidence) {
+    throw new Error(`Version "${versionId}" is missing persisted canonical-source evidence.`);
+  }
+
+  return canonicalSourceEvidenceToSnapshotResult(persistedVersion.canonicalSourceEvidence);
 }
 
 function toPublicVersionSeed(version, workflowResult, deliveryScopeId, storageConfig) {
@@ -1072,6 +1085,7 @@ export async function buildDemoScenario() {
       }
     );
     const completed = completeResult.payload;
+    const canonicalSource = getPersistedCanonicalSourceSnapshot(uploadStore, completed.versionId);
     const version = {
       assetId: completed.assetId,
       assetOwner: plan.assetOwner,
@@ -1105,12 +1119,14 @@ export async function buildDemoScenario() {
             versions: [
               {
                 assetId: version.assetId,
-                canonicalLogicalPath: `source/media-platform/${version.assetId}/${version.versionId}/original/${plan.filename}`,
-                canonicalSourceId: `src_${version.versionId}`,
+                canonicalLogicalPath: canonicalSource.logicalPath,
+                canonicalSourceId: canonicalSource.canonicalSourceId,
                 detectedContentType: plan.contentType,
                 serviceNamespaceId: 'media-platform',
-                sourceByteLength: BigInt(plan.byteLength),
-                sourceChecksumValue: plan.checksumValue,
+                sourceByteLength: canonicalSource.logicalByteLength ?? BigInt(plan.byteLength),
+                sourceChecksumValue:
+                  canonicalSource.digests.find((digest) => digest.algorithm === 'sha256')?.value ??
+                  plan.checksumValue,
                 sourceFilename: plan.filename,
                 versionId: version.versionId,
                 versionNumber: version.versionNumber
@@ -1134,12 +1150,14 @@ export async function buildDemoScenario() {
             versions: [
               {
                 assetId: version.assetId,
-                canonicalLogicalPath: `source/media-platform/${version.assetId}/${version.versionId}/original/${plan.filename}`,
-                canonicalSourceId: `src_${version.versionId}`,
+                canonicalLogicalPath: canonicalSource.logicalPath,
+                canonicalSourceId: canonicalSource.canonicalSourceId,
                 detectedContentType: plan.contentType,
                 serviceNamespaceId: 'media-platform',
-                sourceByteLength: BigInt(plan.byteLength),
-                sourceChecksumValue: plan.checksumValue,
+                sourceByteLength: canonicalSource.logicalByteLength ?? BigInt(plan.byteLength),
+                sourceChecksumValue:
+                  canonicalSource.digests.find((digest) => digest.algorithm === 'sha256')?.value ??
+                  plan.checksumValue,
                 sourceFilename: plan.filename,
                 versionId: version.versionId,
                 versionNumber: version.versionNumber

@@ -13,3 +13,4 @@
  */
 
 export const workersAppName = '@cdngine/workers';
+export * from './source-materialization.js';

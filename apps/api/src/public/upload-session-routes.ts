@@ -22,7 +22,15 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 
 import { resolveDefaultWorkflowTemplateForSource } from '@cdngine/capabilities';
-import type { SourceRepository, StagingBlobStore } from '@cdngine/storage';
+import {
+  InMemoryXetSnapshotStore,
+  createSourceRepositoryFromEnvironment,
+  isSafeSourceFilename,
+  type CommandRunner,
+  type SourceRepository,
+  type StagingBlobStore,
+  type XetSourceRepositoryFactoryDependencies
+} from '@cdngine/storage';
 
 import type { ApiEnv } from '../api-types.js';
 import { requireRequestedScope } from '../api-app.js';
@@ -64,13 +72,28 @@ export interface UploadSessionRouteDependencies {
   }) => string | null | undefined;
 }
 
+export interface CreateUploadSessionRouteDependenciesFromEnvironmentOptions
+  extends Omit<UploadSessionRouteDependencies, 'sourceRepository' | 'stagingBlobStore' | 'store'> {
+  runner?: CommandRunner;
+  xet?: Omit<XetSourceRepositoryFactoryDependencies, 'snapshotStore'> & {
+    snapshotStore?: XetSourceRepositoryFactoryDependencies['snapshotStore'];
+  };
+}
+
 const uploadSessionRequestSchema = z.object({
   serviceNamespaceId: z.string().min(1),
   tenantId: z.string().min(1).optional(),
   assetId: z.string().min(1).optional(),
   assetOwner: z.string().min(1),
   source: z.object({
-    filename: z.string().min(1),
+    filename: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(isSafeSourceFilename, {
+        message:
+          'Source filenames must be plain file names and cannot include path separators or traversal segments.'
+      }),
     contentType: z.string().min(1)
   }),
   upload: z.object({
@@ -97,6 +120,17 @@ const uploadCompletionRequestSchema = z.object({
 });
 
 type UploadCompletionRequest = z.infer<typeof uploadCompletionRequestSchema>;
+
+function resolveXetDependencies(
+  xet: CreateUploadSessionRouteDependenciesFromEnvironmentOptions['xet']
+): XetSourceRepositoryFactoryDependencies {
+  return {
+    snapshotStore: xet?.snapshotStore ?? new InMemoryXetSnapshotStore(),
+    ...(xet?.evidenceProvider ? { evidenceProvider: xet.evidenceProvider } : {}),
+    ...(xet?.fetch ? { fetch: xet.fetch } : {}),
+    ...(xet?.materializer ? { materializer: xet.materializer } : {})
+  };
+}
 
 function getIdempotencyKey(appContext: { req: { header: (name: string) => string | undefined } }) {
   const idempotencyKey = appContext.req.header('idempotency-key')?.trim();
@@ -456,5 +490,25 @@ export function createInMemoryUploadSessionRouteDependencies(
     ...options,
     stagingBlobStore,
     store: new InMemoryUploadSessionIssuanceStore()
+  };
+}
+
+export function createUploadSessionRouteDependenciesFromEnvironment(
+  environment: NodeJS.ProcessEnv,
+  stagingBlobStore: StagingBlobStore,
+  store: UploadSessionIssuanceStore & UploadSessionCompletionStore = new InMemoryUploadSessionIssuanceStore(),
+  options: CreateUploadSessionRouteDependenciesFromEnvironmentOptions = {}
+): UploadSessionRouteDependencies {
+  const { runner, xet, ...routeOptions } = options;
+
+  return {
+    ...routeOptions,
+    sourceRepository: createSourceRepositoryFromEnvironment({
+      environment,
+      ...(runner ? { runner } : {}),
+      xet: resolveXetDependencies(xet)
+    }),
+    stagingBlobStore,
+    store
   };
 }

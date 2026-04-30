@@ -137,23 +137,23 @@ enum AuditActorType {
 }
 
 model ServiceNamespace {
-  id                           String                   @id @default(cuid())
-  serviceNamespaceId           String                   @unique
-  displayName                  String
-  owningTeam                   String?
-  tenantIsolationMode          String
-  defaultLifecyclePolicy       Json?
-  metadataSchemaRegistration   Json?
-  lifecycleState               NamespaceLifecycleState  @default(active)
-  versionToken                 Int                      @default(1)
-  createdAt                    DateTime                 @default(now())
-  updatedAt                    DateTime                 @updatedAt
-  tenantScopes                 TenantScope[]
-  capabilityRegistrations      CapabilityRegistration[]
-  recipeBindings               RecipeBinding[]
-  scopePolicyBindings          ScopePolicyBinding[]
-  deliveryScopes               DeliveryScope[]
-  assets                       Asset[]
+  id                         String                   @id @default(cuid())
+  serviceNamespaceId         String                   @unique
+  displayName                String
+  owningTeam                 String?
+  tenantIsolationMode        String
+  defaultLifecyclePolicy     Json?
+  metadataSchemaRegistration Json?
+  lifecycleState             NamespaceLifecycleState  @default(active)
+  versionToken               Int                      @default(1)
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  tenantScopes               TenantScope[]
+  capabilityRegistrations    CapabilityRegistration[]
+  recipeBindings             RecipeBinding[]
+  scopePolicyBindings        ScopePolicyBinding[]
+  deliveryScopes             DeliveryScope[]
+  assets                     Asset[]
 
   @@index([serviceNamespaceId])
 }
@@ -221,30 +221,30 @@ model ScopePolicyBinding {
 }
 
 model DeliveryScope {
-  id                    String            @id @default(cuid())
-  serviceNamespaceId    String
-  tenantScopeId         String?
-  scopeKey              String
-  deliveryMode          String
-  hostname              String
-  pathPrefix            String?
-  authorizationMode     AuthorizationMode
-  cacheProfile          String?
-  streamBundlePolicy    Json?
-  metadata              Json?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  serviceNamespace      ServiceNamespace  @relation(fields: [serviceNamespaceId], references: [id], onDelete: Restrict)
-  tenantScope           TenantScope?      @relation(fields: [tenantScopeId], references: [id], onDelete: SetNull)
-  derivatives           Derivative[]
-  manifests             AssetManifest[]
-  deliveryAudits        DeliveryAuthorizationAudit[]
+  id                 String                       @id @default(cuid())
+  serviceNamespaceId String
+  tenantScopeId      String?
+  scopeKey           String
+  deliveryMode       String
+  hostname           String
+  pathPrefix         String?
+  authorizationMode  AuthorizationMode
+  cacheProfile       String?
+  streamBundlePolicy Json?
+  metadata           Json?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  serviceNamespace   ServiceNamespace             @relation(fields: [serviceNamespaceId], references: [id], onDelete: Restrict)
+  tenantScope        TenantScope?                 @relation(fields: [tenantScopeId], references: [id], onDelete: SetNull)
+  derivatives        Derivative[]
+  manifests          AssetManifest[]
+  deliveryAudits     DeliveryAuthorizationAudit[]
 
   @@unique([serviceNamespaceId, tenantScopeId, scopeKey])
 }
 
 model Asset {
-  id                        String         @id @default(cuid())
+  id                        String           @id @default(cuid())
   serviceNamespaceId        String
   tenantScopeId             String?
   assetOwner                String
@@ -253,94 +253,99 @@ model Asset {
   visibilityPolicy          Json?
   retentionPolicy           Json?
   currentCanonicalVersionId String?
-  publicationPointerVersion Int            @default(1)
+  publicationPointerVersion Int              @default(1)
   metadata                  Json?
-  createdAt                 DateTime       @default(now())
-  updatedAt                 DateTime       @updatedAt
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
   serviceNamespace          ServiceNamespace @relation(fields: [serviceNamespaceId], references: [id], onDelete: Restrict)
-  tenantScope               TenantScope?   @relation(fields: [tenantScopeId], references: [id], onDelete: SetNull)
-  versions                  AssetVersion[] @relation("AssetVersions")
-  currentCanonicalVersion   AssetVersion?  @relation("AssetCurrentCanonicalVersion", fields: [currentCanonicalVersionId], references: [id], onDelete: SetNull)
+  tenantScope               TenantScope?     @relation(fields: [tenantScopeId], references: [id], onDelete: SetNull)
+  versions                  AssetVersion[]   @relation("AssetVersions")
+  currentCanonicalVersion   AssetVersion?    @relation("AssetCurrentCanonicalVersion", fields: [currentCanonicalVersionId], references: [id], onDelete: SetNull)
   auditEvents               AuditEvent[]
 
   @@unique([serviceNamespaceId, tenantScopeId, lookupKey])
 }
 
 model AssetVersion {
-  id                        String                 @id @default(cuid())
-  assetId                   String
-  versionNumber             Int
-  lifecycleState            AssetVersionState      @default(session_created)
-  sourceFilename            String
-  detectedContentType       String
-  sourceByteLength          BigInt
-  sourceChecksumAlgorithm   String
-  sourceChecksumValue       String
-  ingestObjectKey           String?
-  canonicalSourceId         String?                @unique
-  canonicalSnapshotId       String?
-  canonicalLogicalPath      String?
-  canonicalDigestSet        Json?
-  sourceDownloadPolicy      Json?
-  dedupeMetrics             Json?
-  validationState           ValidationState?
-  versionToken              Int                    @default(1)
-  createdAt                 DateTime               @default(now())
-  updatedAt                 DateTime               @updatedAt
-  asset                     Asset                  @relation("AssetVersions", fields: [assetId], references: [id], onDelete: Restrict)
-  canonicalForAssets        Asset[]                @relation("AssetCurrentCanonicalVersion")
-  uploadSessions            UploadSession[]
-  validationResults         ValidationResult[]
-  workflowDispatches        WorkflowDispatch[]
-  workflowRuns              WorkflowRun[]
-  processingJobs            ProcessingJob[]
-  derivatives               Derivative[]
-  manifests                 AssetManifest[]
-  sourceAccessGrants        SourceAccessGrant[]
+  id                          String                       @id @default(cuid())
+  assetId                     String
+  versionNumber               Int
+  lifecycleState              AssetVersionState            @default(session_created)
+  sourceFilename              String
+  detectedContentType         String
+  sourceByteLength            BigInt
+  sourceChecksumAlgorithm     String
+  sourceChecksumValue         String
+  ingestObjectKey             String?
+  repositoryEngine            String?
+  canonicalSourceId           String?                      @unique
+  canonicalSnapshotId         String?
+  canonicalLogicalPath        String?
+  canonicalDigestSet          Json?
+  canonicalLogicalByteLength  BigInt?
+  canonicalStoredByteLength   BigInt?
+  sourceDownloadPolicy        Json?
+  dedupeMetrics               Json?
+  sourceReconstructionHandles Json?
+  sourceSubstrateHints        Json?
+  validationState             ValidationState?
+  versionToken                Int                          @default(1)
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  asset                       Asset                        @relation("AssetVersions", fields: [assetId], references: [id], onDelete: Restrict)
+  canonicalForAssets          Asset[]                      @relation("AssetCurrentCanonicalVersion")
+  uploadSessions              UploadSession[]
+  validationResults           ValidationResult[]
+  workflowDispatches          WorkflowDispatch[]
+  workflowRuns                WorkflowRun[]
+  processingJobs              ProcessingJob[]
+  derivatives                 Derivative[]
+  manifests                   AssetManifest[]
+  sourceAccessGrants          SourceAccessGrant[]
   deliveryAuthorizationAudits DeliveryAuthorizationAudit[]
-  auditEvents               AuditEvent[]
-  quarantineCases           QuarantineCase[]
+  auditEvents                 AuditEvent[]
+  quarantineCases             QuarantineCase[]
 
   @@unique([assetId, versionNumber])
   @@index([assetId, lifecycleState])
 }
 
 model UploadSession {
-  id                     String             @id @default(cuid())
-  assetVersionId         String
-  state                  UploadSessionState @default(session_created)
-  ingestHandle           String?
-  stagedObjectKey        String?
-  expectedByteLength     BigInt
+  id                        String             @id @default(cuid())
+  assetVersionId            String
+  state                     UploadSessionState @default(session_created)
+  ingestHandle              String?
+  stagedObjectKey           String?
+  expectedByteLength        BigInt
   expectedChecksumAlgorithm String
-  expectedChecksumValue  String
-  firstActivityAt        DateTime?
-  lastActivityAt         DateTime?
-  expiresAt              DateTime
-  completedAt            DateTime?
-  terminalReason         String?
-  versionToken           Int                @default(1)
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  assetVersion           AssetVersion       @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  expectedChecksumValue     String
+  firstActivityAt           DateTime?
+  lastActivityAt            DateTime?
+  expiresAt                 DateTime
+  completedAt               DateTime?
+  terminalReason            String?
+  versionToken              Int                @default(1)
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+  assetVersion              AssetVersion       @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
 
   @@unique([assetVersionId])
   @@index([state, expiresAt])
 }
 
 model IdempotencyRecord {
-  id                    String     @id @default(cuid())
-  apiSurface            ApiSurface
-  callerScopeKey        String
-  operationKey          String
-  idempotencyKey        String
+  id                     String     @id @default(cuid())
+  apiSurface             ApiSurface
+  callerScopeKey         String
+  operationKey           String
+  idempotencyKey         String
   normalizedOperationKey String
-  normalizedRequestHash String?
-  responseReference     Json?
-  responsePayload       Json?
-  isTerminal            Boolean    @default(false)
-  createdAt             DateTime   @default(now())
-  completedAt           DateTime?
+  normalizedRequestHash  String?
+  responseReference      Json?
+  responsePayload        Json?
+  isTerminal             Boolean    @default(false)
+  createdAt              DateTime   @default(now())
+  completedAt            DateTime?
 
   @@unique([apiSurface, callerScopeKey, operationKey, idempotencyKey])
 }
@@ -361,114 +366,114 @@ model ValidationResult {
 }
 
 model WorkflowDispatch {
-  id               String               @id @default(cuid())
-  assetVersionId   String
+  id                 String                @id @default(cuid())
+  assetVersionId     String
   workflowTemplateId String
-  dispatchReason   String
-  dispatchState    WorkflowDispatchState @default(pending)
-  workflowKey      String               @unique
-  firstAttemptAt   DateTime?
-  lastAttemptAt    DateTime?
-  lastFailureClass String?
-  retrySummary     Json?
-  versionToken     Int                  @default(1)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  assetVersion     AssetVersion         @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  workflowRuns     WorkflowRun[]
-  auditEvents      AuditEvent[]
+  dispatchReason     String
+  dispatchState      WorkflowDispatchState @default(pending)
+  workflowKey        String                @unique
+  firstAttemptAt     DateTime?
+  lastAttemptAt      DateTime?
+  lastFailureClass   String?
+  retrySummary       Json?
+  versionToken       Int                   @default(1)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  assetVersion       AssetVersion          @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  workflowRuns       WorkflowRun[]
+  auditEvents        AuditEvent[]
 
   @@index([dispatchState, createdAt])
 }
 
 model WorkflowRun {
-  id                String           @id @default(cuid())
-  assetVersionId    String
+  id                 String            @id @default(cuid())
+  assetVersionId     String
   workflowDispatchId String?
-  workflowId        String           @unique
+  workflowId         String            @unique
   workflowTemplateId String
-  state             WorkflowRunState @default(queued)
-  currentPhase      String?
-  waitReason        String?
-  retrySummary      Json?
-  cancellationCause String?
+  state              WorkflowRunState  @default(queued)
+  currentPhase       String?
+  waitReason         String?
+  retrySummary       Json?
+  cancellationCause  String?
   lastOperatorAction String?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  assetVersion      AssetVersion     @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  workflowDispatch  WorkflowDispatch? @relation(fields: [workflowDispatchId], references: [id], onDelete: SetNull)
-  processingJobs    ProcessingJob[]
-  auditEvents       AuditEvent[]
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  assetVersion       AssetVersion      @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  workflowDispatch   WorkflowDispatch? @relation(fields: [workflowDispatchId], references: [id], onDelete: SetNull)
+  processingJobs     ProcessingJob[]
+  auditEvents        AuditEvent[]
 
   @@index([assetVersionId, state])
 }
 
 model ProcessingJob {
-  id               String            @id @default(cuid())
-  workflowRunId    String
-  assetVersionId   String
-  recipeId         String
-  state            ProcessingJobState @default(queued)
-  currentPhase     String?
-  attemptCount     Int               @default(0)
-  resultPayload    Json?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  workflowRun      WorkflowRun       @relation(fields: [workflowRunId], references: [id], onDelete: Restrict)
-  assetVersion     AssetVersion      @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  id             String             @id @default(cuid())
+  workflowRunId  String
+  assetVersionId String
+  recipeId       String
+  state          ProcessingJobState @default(queued)
+  currentPhase   String?
+  attemptCount   Int                @default(0)
+  resultPayload  Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  workflowRun    WorkflowRun        @relation(fields: [workflowRunId], references: [id], onDelete: Restrict)
+  assetVersion   AssetVersion       @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
 
   @@index([workflowRunId, state])
 }
 
 model Derivative {
-  id                String           @id @default(cuid())
+  id                String             @id @default(cuid())
   assetVersionId    String
   deliveryScopeId   String
   recipeId          String
   schemaVersion     String
   variantKey        String
-  deterministicKey  String           @unique
+  deterministicKey  String             @unique
   storageBucket     String?
   storageKey        String?
   contentType       String
   byteLength        BigInt
   checksumValue     String?
-  publicationState  PublicationState @default(pending)
+  publicationState  PublicationState   @default(pending)
   metadata          Json?
   publishedAt       DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  assetVersion      AssetVersion     @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  deliveryScope     DeliveryScope    @relation(fields: [deliveryScopeId], references: [id], onDelete: Restrict)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  assetVersion      AssetVersion       @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  deliveryScope     DeliveryScope      @relation(fields: [deliveryScopeId], references: [id], onDelete: Restrict)
   validationResults ValidationResult[]
 
   @@unique([assetVersionId, deliveryScopeId, recipeId, schemaVersion, variantKey])
 }
 
 model AssetManifest {
-  id                         String           @id @default(cuid())
-  assetVersionId             String
-  deliveryScopeId            String
-  manifestType               String
-  schemaVersion              String
-  publicationPointerVersion  Int              @default(1)
-  publicationState           PublicationState @default(pending)
-  objectKey                  String
-  checksumValue              String?
-  manifestPayload            Json?
-  publishedAt                DateTime?
-  createdAt                  DateTime         @default(now())
-  updatedAt                  DateTime         @updatedAt
-  assetVersion               AssetVersion     @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  deliveryScope              DeliveryScope    @relation(fields: [deliveryScopeId], references: [id], onDelete: Restrict)
+  id                        String           @id @default(cuid())
+  assetVersionId            String
+  deliveryScopeId           String
+  manifestType              String
+  schemaVersion             String
+  publicationPointerVersion Int              @default(1)
+  publicationState          PublicationState @default(pending)
+  objectKey                 String
+  checksumValue             String?
+  manifestPayload           Json?
+  publishedAt               DateTime?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  assetVersion              AssetVersion     @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  deliveryScope             DeliveryScope    @relation(fields: [deliveryScopeId], references: [id], onDelete: Restrict)
 
   @@unique([assetVersionId, manifestType, deliveryScopeId])
 }
 
 model SourceAccessGrant {
-  id                String            @id @default(cuid())
+  id                String                       @id @default(cuid())
   assetVersionId    String
   authorizationMode AuthorizationMode
   resolvedOrigin    ResolvedOrigin
@@ -476,50 +481,50 @@ model SourceAccessGrant {
   exportObjectKey   String?
   proxyPath         String?
   expiresAt         DateTime
-  createdAt         DateTime          @default(now())
-  assetVersion      AssetVersion      @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  createdAt         DateTime                     @default(now())
+  assetVersion      AssetVersion                 @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
   deliveryAudits    DeliveryAuthorizationAudit[]
 
   @@index([assetVersionId, expiresAt])
 }
 
 model DeliveryAuthorizationAudit {
-  id                String              @id @default(cuid())
-  assetVersionId    String
-  deliveryScopeId   String?
+  id                  String              @id @default(cuid())
+  assetVersionId      String
+  deliveryScopeId     String?
   sourceAccessGrantId String?
   authorizationFamily AuthorizationFamily
-  authorizationMode AuthorizationMode
-  resolvedOrigin    ResolvedOrigin
-  actorScopeKey     String
-  grantId           String?
-  requestMetadata   Json?
-  grantedAt         DateTime            @default(now())
-  expiresAt         DateTime?
-  assetVersion      AssetVersion        @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  deliveryScope     DeliveryScope?      @relation(fields: [deliveryScopeId], references: [id], onDelete: SetNull)
-  sourceAccessGrant SourceAccessGrant?  @relation(fields: [sourceAccessGrantId], references: [id], onDelete: SetNull)
+  authorizationMode   AuthorizationMode
+  resolvedOrigin      ResolvedOrigin
+  actorScopeKey       String
+  grantId             String?
+  requestMetadata     Json?
+  grantedAt           DateTime            @default(now())
+  expiresAt           DateTime?
+  assetVersion        AssetVersion        @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  deliveryScope       DeliveryScope?      @relation(fields: [deliveryScopeId], references: [id], onDelete: SetNull)
+  sourceAccessGrant   SourceAccessGrant?  @relation(fields: [sourceAccessGrantId], references: [id], onDelete: SetNull)
 
   @@index([authorizationFamily, grantedAt])
 }
 
 model AuditEvent {
-  id                String          @id @default(cuid())
-  assetId           String?
-  assetVersionId    String?
+  id                 String            @id @default(cuid())
+  assetId            String?
+  assetVersionId     String?
   workflowDispatchId String?
-  workflowRunId     String?
-  actorType         AuditActorType
-  actorId           String?
-  eventType         String
-  reason            String?
-  correlationId     String?
-  payload           Json?
-  createdAt         DateTime        @default(now())
-  asset             Asset?          @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  assetVersion      AssetVersion?   @relation(fields: [assetVersionId], references: [id], onDelete: SetNull)
-  workflowDispatch  WorkflowDispatch? @relation(fields: [workflowDispatchId], references: [id], onDelete: SetNull)
-  workflowRun       WorkflowRun?    @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowRunId      String?
+  actorType          AuditActorType
+  actorId            String?
+  eventType          String
+  reason             String?
+  correlationId      String?
+  payload            Json?
+  createdAt          DateTime          @default(now())
+  asset              Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  assetVersion       AssetVersion?     @relation(fields: [assetVersionId], references: [id], onDelete: SetNull)
+  workflowDispatch   WorkflowDispatch? @relation(fields: [workflowDispatchId], references: [id], onDelete: SetNull)
+  workflowRun        WorkflowRun?      @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
 
   @@index([eventType, createdAt])
 }

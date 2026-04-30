@@ -16,6 +16,8 @@
  * - packages/storage/test/storage-role-config.test.ts
  */
 
+import type { Readable } from 'node:stream';
+
 export type ChecksumAlgorithm = 'sha256';
 
 export interface ObjectChecksum {
@@ -99,6 +101,7 @@ export interface SnapshotResult {
 export interface RestoreSnapshotInput {
   canonicalSourceId: string;
   destinationPath: string;
+  snapshot?: SnapshotResult;
 }
 
 export interface RestoreResult {
@@ -121,7 +124,7 @@ export interface PublishObjectInput {
   objectKey: string;
   contentType: string;
   byteLength: bigint;
-  body: Uint8Array | string;
+  body: Uint8Array | string | Readable;
   checksum?: ObjectChecksum;
 }
 

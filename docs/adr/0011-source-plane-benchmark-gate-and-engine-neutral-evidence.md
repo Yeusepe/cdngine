@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted in part; backend-default guidance superseded by [ADR 0012](./0012-xet-default-rollout-and-kopia-dual-read-migration.md)
 
 ## Context
 
@@ -21,14 +21,14 @@ Upstream review shows:
 
 ## Decision
 
-1. keep **Kopia** as the default implemented canonical source engine until benchmark evidence justifies a change
+1. keep the source-repository contract **engine neutral** so the canonical source engine can change without breaking control-plane semantics
 2. make the `SourceRepository` contract **engine neutral** by requiring repository engine identity and allowing richer byte-reuse evidence:
    - strong digests
    - logical and stored sizes when available
    - dedupe metrics
    - reconstruction handles
 3. pass verified size and digest evidence from upload completion into canonicalization so the source adapter can return useful evidence immediately
-4. treat **xet-core** as the primary benchmark challenger, not as the current default
+4. use benchmark evidence to validate rollout quality and migration safety even after the default changes
 5. keep semantic normalization capability-driven and optional, separate from universal byte-level dedupe
 
 ## Alternatives considered
@@ -47,10 +47,14 @@ Rejected because unknown formats still need a preserve-original fallback, and cr
 
 ## Consequences
 
-- the implemented stack stays stable while the canonical-source contract becomes more useful
+- the canonical-source contract stays useful even when the default engine changes
 - future backend comparisons can use the same control-plane semantics
 - registry persistence should grow next to store richer source-evidence fields
 - `AssetVersion` identity remains separate from underlying byte reuse
+
+## Supersession note
+
+The engine-neutral evidence requirements in this ADR remain current. The older "Kopia stays default until a later benchmark gate flips it" decision does not. [ADR 0012](./0012-xet-default-rollout-and-kopia-dual-read-migration.md) makes **Xet** the default engine for new canonicalizations and turns the benchmark suite into rollout and migration evidence rather than a blocker.
 
 ## References
 

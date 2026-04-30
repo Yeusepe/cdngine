@@ -11,6 +11,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 import { createApiApp } from '../dist/api-app.js';
 import {
@@ -59,6 +61,9 @@ async function createPublicApp(store, { principalOverrides = {}, outputWorkflowS
     }
   };
 }
+
+const sourceMaterializationRoot =
+  'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\source-materializations';
 
 test('public delivery routes expose published versions, derivatives, manifests, and authorization handles', async () => {
   const store = new InMemoryPublicVersionReadStore({
@@ -182,6 +187,254 @@ test('public delivery routes expose published versions, derivatives, manifests, 
     url: 'https://downloads.cdngine.local/source/exp_001',
     versionId: 'ver_001'
   });
+});
+
+test('source authorization materializes legacy Kopia-backed canonical evidence into the export path during migration', async () => {
+  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+
+  const sourceRestores = [];
+  const exportPublications = [];
+  const exportStore = {
+    async deleteObject() {},
+    async issueSignedReadUrl(objectKey, expiresAt) {
+      return {
+        expiresAt,
+        url: `https://downloads.cdngine.local/${objectKey}`
+      };
+    },
+    async publishExport(input) {
+      const chunks = [];
+      for await (const chunk of input.body) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+
+      exportPublications.push({
+        ...input,
+        streamedBody: Buffer.concat(chunks).toString('utf8')
+      });
+      return {
+        bucket: 'cdngine-exports',
+        key: `exports/${input.objectKey}`
+      };
+    }
+  };
+  const sourceRepository = {
+    async listSnapshots() {
+      return [];
+    },
+    async restoreToPath(input) {
+      sourceRestores.push(input);
+      await mkdir(dirname(input.destinationPath), { recursive: true });
+      await writeFile(input.destinationPath, Buffer.from('legacy-source-bytes'));
+      return {
+        restoredPath: input.destinationPath
+      };
+    },
+    async snapshotFromPath() {
+      throw new Error('snapshotFromPath should not run in this source authorization test.');
+    }
+  };
+  const store = new InMemoryPublicVersionReadStore({
+    sourceReads: {
+      exportsObjectStore: exportStore,
+      materializationRootPath: sourceMaterializationRoot,
+      sourceDeliveryMode: 'materialized-export',
+      sourceRepository
+    },
+    versions: [
+      {
+        assetId: 'ast_legacy_001',
+        assetOwner: 'customer:acme',
+        canonicalSourceEvidence: {
+          repositoryEngine: 'kopia',
+          canonicalSourceId: 'legacy_src_001',
+          canonicalSnapshotId: 'snap_legacy_001',
+          canonicalLogicalPath:
+            'source/media-platform/ast_legacy_001/ver_legacy_001/original/legacy-source.psd',
+          canonicalDigestSet: [
+            {
+              algorithm: 'sha256',
+              value: 'legacy-sha256'
+            }
+          ],
+          sourceReconstructionHandles: [
+            {
+              kind: 'snapshot',
+              value: 'snap_legacy_001'
+            }
+          ]
+        },
+        lifecycleState: 'canonical',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 19n,
+          contentType: 'image/vnd.adobe.photoshop',
+          filename: 'legacy-source.psd'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_legacy_001',
+        versionNumber: 7,
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, headers } = await createPublicApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_legacy_001/versions/ver_legacy_001/source/authorize',
+    {
+      method: 'POST',
+      headers: headers({
+        'idempotency-key': 'idem-source-materialize'
+      }),
+      body: JSON.stringify({
+        preferredDisposition: 'attachment'
+      })
+    }
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    assetId: 'ast_legacy_001',
+    authorizationMode: 'signed-url',
+    expiresAt: '2026-01-15T19:00:00.000Z',
+    resolvedOrigin: 'source-export',
+    tenantId: 'tenant-acme',
+    url: 'https://downloads.cdngine.local/source-downloads/media-platform/ast_legacy_001/ver_legacy_001/legacy-source.psd',
+    versionId: 'ver_legacy_001'
+  });
+  assert.equal(sourceRestores[0]?.snapshot?.repositoryEngine, 'kopia');
+  assert.equal(
+    sourceRestores[0]?.snapshot?.reconstructionHandles?.[0]?.value,
+    'snap_legacy_001'
+  );
+  assert.equal(exportPublications[0]?.streamedBody, 'legacy-source-bytes');
+
+  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+});
+
+test('source authorization sanitizes persisted filenames for materialization and streams exports without buffering', async () => {
+  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+
+  const sourceRestores = [];
+  const exportPublications = [];
+  const exportStore = {
+    async deleteObject() {},
+    async issueSignedReadUrl(objectKey, expiresAt) {
+      return {
+        expiresAt,
+        url: `https://downloads.cdngine.local/${objectKey}`
+      };
+    },
+    async publishExport(input) {
+      const chunks = [];
+      for await (const chunk of input.body) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+
+      exportPublications.push({
+        ...input,
+        streamedBody: Buffer.concat(chunks).toString('utf8')
+      });
+      return {
+        bucket: 'cdngine-exports',
+        key: `exports/${input.objectKey}`
+      };
+    }
+  };
+  const sourceRepository = {
+    async listSnapshots() {
+      return [];
+    },
+    async restoreToPath(input) {
+      sourceRestores.push(input);
+      await mkdir(dirname(input.destinationPath), { recursive: true });
+      await writeFile(input.destinationPath, Buffer.from('streamed-legacy-source'));
+      return {
+        restoredPath: input.destinationPath
+      };
+    },
+    async snapshotFromPath() {
+      throw new Error('snapshotFromPath should not run in this source authorization test.');
+    }
+  };
+  const store = new InMemoryPublicVersionReadStore({
+    sourceReads: {
+      exportsObjectStore: exportStore,
+      materializationRootPath: sourceMaterializationRoot,
+      sourceDeliveryMode: 'materialized-export',
+      sourceRepository
+    },
+    versions: [
+      {
+        assetId: 'ast_legacy_unsafe',
+        assetOwner: 'customer:acme',
+        canonicalSourceEvidence: {
+          repositoryEngine: 'kopia',
+          canonicalSourceId: 'legacy_src_unsafe',
+          canonicalSnapshotId: 'snap_legacy_unsafe',
+          canonicalLogicalPath:
+            'source/media-platform/ast_legacy_unsafe/ver_legacy_unsafe/original/..\\unsafe\\legacy-source.psd',
+          canonicalDigestSet: [
+            {
+              algorithm: 'sha256',
+              value: 'legacy-sha256'
+            }
+          ],
+          sourceReconstructionHandles: [
+            {
+              kind: 'snapshot',
+              value: 'snap_legacy_unsafe'
+            }
+          ]
+        },
+        lifecycleState: 'canonical',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 22n,
+          contentType: 'image/vnd.adobe.photoshop',
+          filename: '..\\..\\unsafe\\legacy-source.psd'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_legacy_unsafe',
+        versionNumber: 8,
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, headers } = await createPublicApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_legacy_unsafe/versions/ver_legacy_unsafe/source/authorize',
+    {
+      method: 'POST',
+      headers: headers({
+        'idempotency-key': 'idem-source-sanitized'
+      }),
+      body: JSON.stringify({
+        preferredDisposition: 'attachment'
+      })
+    }
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    assetId: 'ast_legacy_unsafe',
+    authorizationMode: 'signed-url',
+    expiresAt: '2026-01-15T19:00:00.000Z',
+    resolvedOrigin: 'source-export',
+    tenantId: 'tenant-acme',
+    url: 'https://downloads.cdngine.local/source-downloads/media-platform/ast_legacy_unsafe/ver_legacy_unsafe/legacy-source.psd',
+    versionId: 'ver_legacy_unsafe'
+  });
+  assert.match(
+    sourceRestores[0]?.destinationPath ?? '',
+    /source-materializations\\ast_legacy_unsafe\\ver_legacy_unsafe\\legacy-source\.psd$/
+  );
+  assert.equal(typeof exportPublications[0]?.body?.pipe, 'function');
+  assert.equal(exportPublications[0]?.streamedBody, 'streamed-legacy-source');
+
+  await rm(sourceMaterializationRoot, { force: true, recursive: true });
 });
 
 test('delivery routes can issue and consume one-time download links', async () => {

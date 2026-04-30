@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, amended by [ADR 0012](./0012-xet-default-rollout-and-kopia-dual-read-migration.md)
 
 ## Context
 
@@ -18,7 +18,7 @@ The earlier Xet-specific decision was directionally useful, but it overcommitted
 
 Recent upstream study points to a stronger composed model:
 
-- **Kopia** for deduplicated snapshot history and canonical source identity
+- **Kopia** for deduplicated snapshot history and canonical source identity in the then-current default
 - **SeaweedFS** for tiered storage placement and S3-compatible substrate behavior
 - **JuiceFS** where POSIX workspaces are operationally important
 - **Nydus** and optional **Alluxio** when repeated package-like reads dominate
@@ -30,7 +30,7 @@ Adopt the following default source and storage architecture:
 
 1. public clients still upload to an ingest-managed target, normally `tusd` backed by staging object storage
 2. upload completion snapshots the staged object into a **canonical source repository** instead of treating staging as canonical truth
-3. the default reference repository is **Kopia** and is backed by a **SeaweedFS** S3-compatible namespace
+3. the default reference repository at the time of this ADR was **Kopia** and is backed by a **SeaweedFS** S3-compatible namespace
 4. **JuiceFS** is an optional workspace profile when processors or tools require POSIX semantics
 5. the registry stores canonical source identity using repository-oriented fields such as repository ID, snapshot identity, canonical path, digest, and size
 6. workers reconstruct from the canonical source repository and may use **Nydus** or **Alluxio** when the workload benefits from it
@@ -57,6 +57,10 @@ Rejected because it wastes storage and defeats the purpose of a deduplicated sou
 - observability must track source deduplication, repository health, tiering behavior, hot-cache effectiveness, and artifact publication
 - persistence and domain docs must use repository-oriented source identity rather than product-specific Xet identifiers
 - operators need runbooks for canonical source availability, tier migration, and hot-read degradation
+
+## Amendment note
+
+[ADR 0012](./0012-xet-default-rollout-and-kopia-dual-read-migration.md) keeps the broader source-plane structure from this ADR but changes the default canonical source engine for **new canonicalizations** to **Xet**. The tiered-storage, lazy-read, and artifact-graph decisions here remain current.
 
 ## References
 

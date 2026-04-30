@@ -1,5 +1,5 @@
 /**
- * Purpose: Proves the implemented image lifecycle across upload issuance, canonicalization, dispatch projection, deterministic publication, public delivery authorization, and operator audit controls.
+ * Purpose: Proves the implemented image lifecycle across upload issuance, Xet-default canonicalization, dispatch projection, deterministic publication, public delivery authorization, and operator audit controls.
  * Governing docs:
  * - docs/conformance.md
  * - docs/testing-strategy.md
@@ -29,6 +29,7 @@ import {
   InMemoryPublicVersionReadStore
 } from '../../apps/api/dist/public/delivery-service.js';
 import {
+  createUploadSessionRouteDependenciesFromEnvironment,
   registerUploadSessionRoutes
 } from '../../apps/api/dist/public/upload-session-routes.js';
 import {
@@ -49,6 +50,10 @@ import {
   provisionOperatorActor,
   provisionPublicActor
 } from '../auth-fixture.mjs';
+import {
+  canonicalSourceEvidenceToSnapshotResult,
+  InMemoryXetSnapshotStore
+} from '../../packages/storage/dist/index.js';
 
 class FakeStagingBlobStore {
   constructor(descriptors = {}) {
@@ -66,18 +71,6 @@ class FakeStagingBlobStore {
 
   async headObject(objectKey) {
     return this.descriptors.get(objectKey) ?? null;
-  }
-}
-
-class FakeSourceRepository {
-  constructor(snapshotResult) {
-    this.snapshotRequests = [];
-    this.snapshotResult = snapshotResult;
-  }
-
-  async snapshotFromPath(input) {
-    this.snapshotRequests.push(input);
-    return this.snapshotResult;
   }
 }
 
@@ -137,6 +130,7 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
     generateId,
     now
   });
+  const xetMaterializations = [];
   const stagingStore = new FakeStagingBlobStore({
     'ingest/media-platform/hero-banner.png': {
       bucket: 'cdngine-ingest',
@@ -147,28 +141,46 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
       key: 'ingest/media-platform/hero-banner.png'
     }
   });
-  const sourceRepository = new FakeSourceRepository({
-    repositoryEngine: 'kopia',
-    canonicalSourceId: 'src_001',
-    digests: [
-      {
-        algorithm: 'sha256',
-        value: 'abc123'
+  const uploadDependencies = createUploadSessionRouteDependenciesFromEnvironment(
+    {
+      CDNGINE_XET_COMMAND: 'xet-cli'
+    },
+    stagingStore,
+    uploadStore,
+    {
+      now,
+      workflowTemplate: 'image-derivation-v1',
+      xet: {
+        evidenceProvider: {
+          async captureSnapshot(input) {
+            return {
+              fileId: `xet_${input.assetVersionId}`,
+              logicalPath: `source/media-platform/${input.assetId}/${input.assetVersionId}/original/${input.sourceFilename}`,
+              terms: [
+                {
+                  xorbHash: 'xorb_001',
+                  startChunkIndex: 0,
+                  endChunkIndex: 3
+                }
+              ],
+              shardIds: ['shard_001']
+            };
+          }
+        },
+        materializer: {
+          async materializeFile(input) {
+            xetMaterializations.push(input);
+          }
+        },
+        snapshotStore: new InMemoryXetSnapshotStore()
       }
-    ],
-    logicalPath: 'source/media-platform/ast_001/ver_001/original',
-    snapshotId: 'snap_001'
-  });
+    }
+  );
+  const sourceRepository = uploadDependencies.sourceRepository;
   const uploadApp = createApiApp({
     auth,
     registerPublicRoutes(publicApp) {
-      registerUploadSessionRoutes(publicApp, {
-        now,
-        sourceRepository,
-        stagingBlobStore: stagingStore,
-        store: uploadStore,
-        workflowTemplate: 'image-derivation-v1'
-      });
+      registerUploadSessionRoutes(publicApp, uploadDependencies);
     }
   });
 
@@ -233,11 +245,17 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
   );
   const completed = await firstCompleteResponse.json();
   const replayedCompletion = await secondCompleteResponse.json();
+  const persistedVersion = uploadStore.getPersistedVersion(completed.versionId);
+  assert.ok(persistedVersion?.canonicalSourceEvidence);
+  const canonicalSource = canonicalSourceEvidenceToSnapshotResult(
+    persistedVersion.canonicalSourceEvidence
+  );
 
   assert.equal(firstCompleteResponse.status, 202);
   assert.equal(secondCompleteResponse.status, 202);
   assert.deepEqual(replayedCompletion.workflowDispatch, completed.workflowDispatch);
-  assert.equal(sourceRepository.snapshotRequests.length, 1);
+  assert.equal(canonicalSource.repositoryEngine, 'xet');
+  assert.equal(canonicalSource.canonicalSourceId, 'xet_ver_001');
 
   const dispatchStore = new InMemoryWorkflowDispatchStore({
     dispatches: [
@@ -268,16 +286,28 @@ test('image lifecycle conformance covers issue, complete, dispatch, deterministi
   assert.equal(dispatchRuns.length, 1);
   assert.equal(dispatchRuns[0].workflowId, completed.workflowDispatch.workflowKey);
 
+  const restoredSource = await sourceRepository.restoreToPath({
+    canonicalSourceId: canonicalSource.canonicalSourceId,
+    destinationPath: 'C:\\replay\\hero-banner.png',
+    snapshot: canonicalSource
+  });
+
+  assert.equal(restoredSource.restoredPath, 'C:\\replay\\hero-banner.png');
+  assert.equal(xetMaterializations.length, 1);
+  assert.equal(xetMaterializations[0]?.snapshot.canonicalSourceId, canonicalSource.canonicalSourceId);
+  assert.equal(xetMaterializations[0]?.destinationPath, 'C:\\replay\\hero-banner.png');
+
   const publicationStore = new InMemoryImagePublicationStore({
     versions: [
       {
         assetId: completed.assetId,
-        canonicalLogicalPath: sourceRepository.snapshotResult.logicalPath,
-        canonicalSourceId: sourceRepository.snapshotResult.canonicalSourceId,
+        canonicalLogicalPath: canonicalSource.logicalPath,
+        canonicalSourceId: canonicalSource.canonicalSourceId,
         detectedContentType: 'image/png',
         serviceNamespaceId: 'media-platform',
-        sourceByteLength: 1843921n,
-        sourceChecksumValue: 'abc123',
+        sourceByteLength: canonicalSource.logicalByteLength ?? 1843921n,
+        sourceChecksumValue:
+          canonicalSource.digests.find((digest) => digest.algorithm === 'sha256')?.value ?? 'abc123',
         sourceFilename: 'hero-banner.png',
         versionId: completed.versionId,
         versionNumber: 1

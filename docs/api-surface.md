@@ -113,6 +113,10 @@ Clients should not need to know which bucket, prefix, cache, or repository path 
 - `POST /v1/operator/assets/{assetId}/versions/{versionId}/release`
 - `POST /v1/operator/assets/{assetId}/versions/{versionId}/purge`
 - `GET /v1/operator/assets/{assetId}/versions/{versionId}/diagnostics`
+- `npm run source:migration -- inventory`
+- `npm run source:migration -- recanonicalize`
+
+The current source-engine migration surface is intentionally an operator CLI rather than a public or product-facing HTTP API. It inventories legacy `repositoryEngine = kopia` rows, flags canonical rows that are missing `repositoryEngine`, and can perform an explicit Xet re-canonicalization rehearsal that leaves the original registry evidence untouched.
 
 ## 6. Public contract guarantees
 
@@ -197,7 +201,7 @@ The public API and public SDKs should not expose the upstream stack directly.
 That means product-facing consumers should not need to know about:
 
 - SeaweedFS S3 or filer endpoints
-- Kopia repository commands or snapshot IDs beyond CDNgine-owned source identity fields
+- canonical-source engine commands or engine-native reconstruction handles beyond CDNgine-owned source identity fields
 - ORAS CLI or OCI registry internals
 - Nydus runtime details
 - Alluxio cache-control APIs

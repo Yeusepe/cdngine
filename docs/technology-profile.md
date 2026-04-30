@@ -36,7 +36,7 @@ Default choices should optimize for:
 | cache and coordination | Redis | mature hot-path primitives without inventing ephemeral coordination systems |
 | image transform and delivery | imgproxy + libvips | proven, fast image server instead of building our own resizing service |
 | video and image-to-video | FFmpeg | broad codec and pipeline support, hardware acceleration, deep ecosystem |
-| canonical source repository | Kopia | run the repository directly instead of inventing a custom chunk store |
+| canonical source repository | Xet for new canonicalizations, with temporary Kopia dual-read support during migration | run the repository directly instead of inventing a custom chunk store |
 | storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | tiered storage and object-backed workspaces are better than writing bespoke placement logic |
 | lazy hot-read path | Nydus plus optional Alluxio | consume the lazy-read and cache layers directly instead of materializing every large asset eagerly |
 | artifact graph | ORAS | immutable bundles and artifact references are better than inventing a custom registry |
@@ -227,12 +227,13 @@ The source stack should separate three jobs that are often wrongly collapsed int
 The default posture is:
 
 - use **SeaweedFS** as the default S3-compatible substrate so the platform can control tiered storage rather than leaving every byte in one undifferentiated class
-- run **Kopia** on top of that substrate for immutable uploaded originals, chunk deduplication, snapshot history, and replay provenance
+- run **Xet** on top of that substrate for immutable uploaded originals, chunk deduplication, and replay provenance for new canonicalizations
 - use **RustFS** for fast-start and simple one-bucket profiles because it preserves the same S3-compatible adapter shape while keeping local bring-up easy
 - use **JuiceFS** when tools or workers need a shared POSIX workspace
 - use **Nydus** and optional **Alluxio** only where repeated package-like reads justify them
+- keep **Kopia** available only as the temporary legacy-read engine until migration/backfill/signoff retire it
 
-This lets the platform stay mathematically efficient for large iterative binaries without forcing browser delivery or public ingest to speak chunk semantics directly.
+This lets the platform stay mathematically efficient for large iterative binaries without forcing browser delivery or public ingest to speak chunk semantics directly. Byte-level source dedupe remains universal for every canonicalized upload, while semantic normalization stays capability-owned and optional. **Xet** is now the default source engine for new canonicalizations, while **Kopia** remains only for the temporary dual-read migration window.
 
 The important implementation rule is: **consume these upstream systems directly**. CDNgine should not reimplement chunking, snapshot packing, lazy chunk fetch, distributed cache coordination, or OCI artifact graph semantics in application code.
 

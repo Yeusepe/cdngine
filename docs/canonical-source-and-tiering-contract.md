@@ -40,6 +40,21 @@ When canonicalization succeeds and the version moves from `canonicalizing` to `c
 - substrate placement metadata such as storage namespace, tier, or repository path
 - canonicalization timestamp
 
+Those byte-level source facts are required for every canonicalized upload, even when the platform has no capability-specific parser for the format.
+
+The current `AssetVersion` field mapping for that durable evidence is:
+
+- `repositoryEngine`
+- `canonicalSourceId`
+- `canonicalSnapshotId`
+- `canonicalLogicalPath`
+- `canonicalDigestSet`
+- `canonicalLogicalByteLength`
+- `canonicalStoredByteLength`
+- `sourceReconstructionHandles`
+- `sourceSubstrateHints`
+- `dedupeMetrics`
+
 Raw object-storage keys beneath the source repository are not public or control-plane identities.
 
 ### 3.1 Backing bucket or prefix
@@ -51,7 +66,24 @@ Typical deployments use either:
 - a dedicated source bucket such as `cdngine-source`
 - or a shared bucket with a `source/` prefix alongside `ingest/`, `derived/`, and `exports/`
 
-In both cases, the registry persists the **Kopia identity** plus deployment metadata such as the backing bucket or prefix. It does not promote raw object keys into the public or control-plane contract.
+In both cases, the registry persists the selected source-repository identity—**Xet** by default for new canonicalizations, with **Kopia** still valid for legacy migrated versions—plus deployment metadata such as the backing bucket or prefix. It does not promote raw object keys into the public or control-plane contract.
+
+### 3.2 Dual-read migration contract
+
+The source-plane migration away from Kopia is intentionally additive and durable:
+
+- new canonicalizations write **Xet** identities and reconstruction handles by default
+- existing `AssetVersion` rows with `repositoryEngine = 'kopia'` remain valid read and replay inputs
+- migration or backfill jobs may create new Xet-backed canonical records for legacy content, but they must preserve auditable evidence of the original Kopia-backed version history
+- **Kopia is not retired** until legacy readability, any required backfill, and operator signoff are complete
+
+The checked-in migration tooling for the current schema lives behind:
+
+- `npm run source:migration -- inventory` to report legacy Kopia rows and canonical rows that are still missing `repositoryEngine`
+- `npm run source:migration -- recanonicalize` to produce a dry-run plan
+- `npm run source:migration -- recanonicalize --apply` to restore legacy Kopia rows and snapshot them into Xet as **candidate** evidence without rewriting the original `AssetVersion` fields
+
+That last command is intentionally explicit about the current persistence limit: it proves the dual-read migration path and creates Xet-side evidence for operator review, but it does **not** silently replace the original Kopia-backed audit record.
 
 ## 4. Tiering posture
 
@@ -89,7 +121,7 @@ Selected immutable evidence may be retained alongside the canonical source when 
 
 This evidence remains separate from delivery artifacts and must not turn the source repository into the hot delivery origin.
 
-Unknown formats must not force semantic guesses. The safe default is preserve-original plus digests, with container inventory only when the platform can prove container structure.
+Unknown formats must not force semantic guesses. The safe default is preserve-original plus digests, with container inventory only when the platform can prove container structure. Semantic normalization remains optional capability evidence, not a prerequisite for canonical storage.
 
 ## 7. Lazy-read and materialization posture
 
@@ -145,6 +177,7 @@ The client should not treat staging objects or raw underlying storage keys as th
 - [Service Architecture](./service-architecture.md)
 - [State Machines](./state-machines.md)
 - [Storage Tiering And Materialization](./storage-tiering-and-materialization.md)
+- [Xet deduplication](https://huggingface.co/docs/xet/en/deduplication)
 - [Kopia features](https://kopia.io/docs/features/)
 - [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
 - [JuiceFS architecture](https://juicefs.com/docs/community/architecture)

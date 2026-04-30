@@ -90,6 +90,21 @@ One transaction should:
 6. create `WorkflowDispatch` in `pending`
 7. emit an `AuditEvent`
 
+The current `AssetVersion` persistence shape for that source evidence is:
+
+- `repositoryEngine`
+- `canonicalSourceId`
+- `canonicalSnapshotId`
+- `canonicalLogicalPath`
+- `canonicalDigestSet`
+- `canonicalLogicalByteLength`
+- `canonicalStoredByteLength`
+- `sourceReconstructionHandles`
+- `sourceSubstrateHints`
+- `dedupeMetrics`
+
+Those fields are engine-neutral. They preserve byte-level provenance and replay evidence without turning capability-owned semantic normalization into registry truth. Every canonicalization success should populate this byte-level evidence set regardless of file type; unknown formats may stop there with generic fallback evidence while capability-owned semantic adapters add separate references later.
+
 ### 3.4 Publication
 
 One transaction should:

@@ -138,9 +138,22 @@ Should include:
 - optional canonicalization and deduplication metrics for observability
 - optional normalization evidence summary, clearly separated between generic fallback evidence and capability-scoped semantic evidence
 
+The current registry field set for that evidence is:
+
+- `repositoryEngine`
+- `canonicalSourceId`
+- `canonicalSnapshotId`
+- `canonicalLogicalPath`
+- `canonicalDigestSet`
+- `canonicalLogicalByteLength`
+- `canonicalStoredByteLength`
+- `sourceReconstructionHandles`
+- `sourceSubstrateHints`
+- `dedupeMetrics`
+
 Once a version reaches `canonical`, the source identity must be immutable.
 
-Sibling versions under the same `Asset` may share deduplicated storage underneath in the canonical source plane, but they remain distinct business identities with separate lifecycle state, workflow dispatch, derivatives, manifests, and audit history.
+Those fields capture universal byte-level provenance even when a version only follows the generic preserve-original fallback. Sibling versions under the same `Asset` may share deduplicated storage underneath in the canonical source plane, but they remain distinct business identities with separate lifecycle state, workflow dispatch, derivatives, manifests, and audit history. Semantic normalization evidence stays optional and capability-scoped.
 
 ### 4.5 `DeliveryScope`
 

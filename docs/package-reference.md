@@ -22,7 +22,7 @@ That is the easiest way to read the stack list below.
 | authentication and bearer sessions | `@cdngine/auth` contract + Better Auth default adapter | vendor-neutral bearer-token validation boundary with server-side actor resolution, plus a default Better Auth implementation for this repository |
 | resumable ingest endpoint | tus + tusd | reusable resumable upload protocol and mature server instead of inventing custom chunk upload behavior |
 | telemetry | OpenTelemetry | vendor-neutral traces, metrics, and logs |
-| canonical source repository | Kopia | chunk-deduplicated canonical asset history and replay provenance without custom repository code |
+| canonical source repository | Xet for new canonicalizations, with temporary Kopia dual-read support during migration | chunk-deduplicated canonical asset history and replay provenance without custom repository code |
 | tiered storage substrate | SeaweedFS by default, JuiceFS when POSIX semantics matter | explicit byte placement and shared-workspace options |
 | local or simple S3-compatible backend | RustFS | active S3-compatible object store for fast-start and one-bucket profiles |
 | metadata registry | PostgreSQL + JSONB | durable relational state plus flexible structured metadata |
@@ -53,7 +53,7 @@ That is the easiest way to read the stack list below.
 | libvips | `libvips/libvips` | fast, low-memory image processing engine |
 | Gotenberg | `gotenberg/gotenberg` | document conversion service architecture |
 | Kopia | `kopia/kopia` | snapshot repository layout, deduplication, and source-history management |
-| Xet Core | `huggingface/xet-core` | benchmark challenger for Xet-like chunk dedupe and reconstruction metadata |
+| Xet Core | `huggingface/xet-core` | default canonical-source engine target for new canonicalizations and the source of Xet reconstruction metadata |
 | restic | `restic/restic` | object-store-friendly repository design and benchmark baseline |
 | BorgBackup | `borgbackup/borg` | content-defined chunking and cross-version repository reuse reference |
 | casync | `systemd/casync` | chunk-store plus index design, especially for package-like payloads |
@@ -200,6 +200,7 @@ Use it deliberately:
 - treat SeaweedFS or JuiceFS as the physical substrate while the source repository remains the canonical addressing layer
 - use lazy-read or hot-cache layers only where repeated source reconstruction justifies them
 - keep semantic normalization behind capability-owned contracts so unknown formats still fall back to preserve-original plus digest evidence
+- keep universal byte-level dedupe as the floor for every canonicalized upload, even when no capability-specific normalizer exists
 
 Do not reimplement:
 
@@ -211,8 +212,8 @@ Do not reimplement:
 
 Current strategy note:
 
-- keep **Kopia** as the default implemented source repository
-- use **xet-core** as the primary benchmark challenger before any backend replacement
+- use **Xet** as the default source repository for new canonicalizations
+- keep **Kopia** available only for legacy reads, migration, and backfill until signoff retires it
 - treat **restic**, **borg**, **casync**, **OSTree**, **git-annex**, and **IPFS** mainly as design and benchmark references unless a later evaluation changes the decision
 
 ### 3.7.1 ORAS

@@ -34,6 +34,7 @@ The platform should explicitly test:
 - upload completion idempotency
 - replay from the canonical source identity
 - source snapshotting and deduplication behavior for repeated binary revisions
+- benchmark-matrix behavior across large-file, multi-file, and small-file source workloads when a change claims better dedupe or reconstruction efficiency
 - canonical-source evidence persistence for repository engine, digests, and logical-versus-stored size reporting
 - unknown-format fallback behavior that preserves originals, digests, and optional container inventory without semantic overclaim
 - deterministic derivative key generation

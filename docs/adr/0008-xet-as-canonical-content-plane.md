@@ -2,9 +2,9 @@
 
 ## Status
 
-Superseded by [ADR 0010](./0010-canonical-source-repository-and-tiered-storage.md)
+Superseded by [ADR 0010](./0010-canonical-source-repository-and-tiered-storage.md) and later rollout guidance in [ADR 0012](./0012-xet-default-rollout-and-kopia-dual-read-migration.md)
 
-> Historical record only. Do **not** implement from this ADR. It captures an earlier Xet-based direction that has been replaced by the canonical-source-repository and tiered-storage model in ADR 0010.
+> Historical record only. Do **not** implement from this ADR. It captures an earlier Xet-based direction that was replaced first by the canonical-source-repository and tiered-storage model in ADR 0010 and later by the migration-aware Xet rollout contract in ADR 0012.
 
 ## Historical context
 

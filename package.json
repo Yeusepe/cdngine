@@ -13,6 +13,15 @@
     "packages/*"
   ],
   "scripts": {
+    "benchmark:source-plane-compare": "node scripts/source-plane-compare.mjs",
+    "benchmark:source-plane-proof": "node scripts/source-plane-benchmark-proof.mjs",
+    "benchmark:source-plane-proof:borg": "node scripts/borg-benchmark-proof.mjs",
+    "benchmark:source-plane-proof:kopia": "node scripts/kopia-benchmark-proof.mjs",
+    "benchmark:source-plane-proof:oxen": "node scripts/oxen-benchmark-proof.mjs",
+    "benchmark:source-plane-suite:borg": "node scripts/borg-benchmark-suite.mjs",
+    "benchmark:source-plane-suite:kopia": "node scripts/kopia-benchmark-suite.mjs",
+    "benchmark:source-plane-suite:oxen": "node scripts/oxen-benchmark-suite.mjs",
+    "benchmark:source-plane-suite:xet": "node scripts/xet-benchmark-suite.mjs",
     "build": "tsc -b tsconfig.json",
     "clean": "node scripts/clean.mjs",
     "contracts:bundle": "node scripts/bundle-contracts.mjs",
@@ -30,6 +39,7 @@
     "stop": "node scripts/local-dev.mjs stop",
     "sdk:generate": "node scripts/bundle-contracts.mjs && node scripts/generate-typescript-sdk.mjs",
     "sdk:check": "node scripts/bundle-contracts.mjs && node scripts/generate-typescript-sdk.mjs --check",
+    "source:migration": "node scripts/source-migration.mjs",
     "lint": "npm run docs:check && npm run contracts:check && npm run sdk:check && npm run lint --workspaces --if-present",
     "test": "npm run docs:check && node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
     "typecheck": "tsc -b tsconfig.json --pretty false",

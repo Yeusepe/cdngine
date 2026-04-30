@@ -17,6 +17,8 @@ The supported fast-start profile currently brings up:
 7. Kopia repository server backed by a RustFS bucket and source prefix
 8. OCI registry for ORAS-compatible artifact publication tests
 
+This checked-in fast-start stack is the current **migration-era local profile**, not the long-term steady state. The governing docs now make **Xet** the default canonical source engine for new canonicalizations, while this local Kopia service remains available until the runtime rollout and legacy-read migration slices are complete.
+
 This profile intentionally uses **RustFS** for local simplicity even though the broader reference architecture still prefers **SeaweedFS** as the default substrate in fuller environments. When contributors need to exercise tiered placement, filer semantics, or more production-like substrate behavior, the next step is to move from this RustFS profile to a SeaweedFS-backed environment instead of changing the public platform contract.
 
 The current fast-start profile is best described as **single-node + multi-bucket**:
@@ -61,13 +63,36 @@ The `.env.example` file documents the defaults. The important local values are:
 - RustFS access key: `rustfsadmin`
 - RustFS secret key: `rustfsadmin`
 - staging bucket: `cdngine-staging`
+- source bucket: `cdngine-source`
 - derived bucket: `cdngine-derived`
 - exports bucket: `cdngine-exports`
-- Kopia bucket: `cdngine-kopia`
+- legacy Kopia bucket: `cdngine-kopia`
 - Kopia repository prefix: `source/`
 - application database URL: `postgresql://cdngine:cdngine@localhost:5432/cdngine`
 
 Copy `.env.example` to `.env` before changing any local values. The local `.env` file is ignored by Git.
+
+## App and worker runtime example for the Xet default
+
+The checked-in Compose stack still provisions **Kopia** for the migration lane only. It does **not** spin up a dedicated Xet bridge or sidecar.
+
+Use `deploy/local-platform/runtime.xet-default.env.example` as the checked-in example for application and worker processes that should target the local fast-start stack while treating **Xet** as the default canonical source engine for new canonicalizations.
+
+Important expectations:
+
+- leave `CDNGINE_SOURCE_ENGINE` unset to follow the current default-engine switch to **Xet**
+- provide `CDNGINE_XET_COMMAND` plus any optional `CDNGINE_XET_COMMAND_ARGS_JSON`, `CDNGINE_XET_WORKSPACE_PATH`, and `CDNGINE_XET_WORKING_DIRECTORY` values for the command-backed bridge you install locally
+- use `CDNGINE_XET_SERVICE_ENDPOINT` only when you intentionally want the service-backed Xet bridge; otherwise keep following the checked-in command-backed local example
+- use the checked-in `SOURCE_BUCKET` for Xet-default runtime examples instead of pointing new canonicalizations at the Kopia bucket by habit
+- keep the Kopia bucket, prefix, and executable settings available locally only while legacy `repositoryEngine = kopia` rows or rollback rehearsals still matter
+- the local readiness default remains `postgres,redis,temporal,tusd,source-repository,oci-registry`; `source-repository` readiness means the Xet bridge command is runnable and the temporary Kopia lane remains reachable when you still depend on it
+
+For migration inventory or backfill rehearsal, use:
+
+```bash
+npm run source:migration -- inventory
+npm run source:migration -- recanonicalize
+```
 
 ## One-command variants
 

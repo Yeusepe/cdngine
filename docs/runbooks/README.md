@@ -35,6 +35,7 @@ Current files:
 - `processor-outage.md`
 - `derived-store-degradation.md`
 - `canonical-source-availability.md`
+- `source-engine-migration.md`
 - `replay-operations.md`
 - `quarantine-and-release.md`
 

@@ -74,6 +74,8 @@ The important distinction is:
 
 Clients do **not** upload directly to the source repository by default.
 
+At this boundary, byte-level source dedupe is universal: every successfully canonicalized upload should produce engine-neutral source evidence whether or not CDNgine has semantic understanding of the format. Semantic normalization remains optional and capability-owned after canonicalization, and unknown formats must still proceed through the generic asset workflow with preserve-original plus digest evidence.
+
 The critical boundary is between:
 
 - **staged bytes**
@@ -96,7 +98,7 @@ The intended flow for a new revision is:
 3. create a new `UploadSession`
 4. return a new **tusd** upload target
 5. accept completion for that version only
-6. snapshot that version into **Kopia**
+6. snapshot that version into the canonical source repository, using **Xet** by default for new canonicalizations
 7. dispatch a **Temporal** workflow keyed by `(service namespace, asset ID, version ID, workflow template)`
 
 This is where the separation of responsibilities matters:
@@ -104,10 +106,12 @@ This is where the separation of responsibilities matters:
 - **CDNgine** owns the logical asset and version model
 - **tusd** owns resumable upload behavior
 - **RustFS**, **SeaweedFS**, or another S3-compatible substrate hold staged and published objects
-- **Kopia** owns canonical source snapshotting and deduplicated source storage
+- **Xet** owns default canonical source snapshotting and deduplicated source storage for new canonicalizations, while **Kopia** remains a temporary legacy-read path during migration
 - **Temporal** owns durable processing execution
 
 If a caller is only retrying the same mutation, durable idempotency should converge on the original upload session and version. If the caller is intentionally creating a new revision, the result must be a new `AssetVersion` even when the filename is unchanged.
+
+**Xet** is the default source engine for this flow. The temporary migration rule is explicit: versions already canonicalized into **Kopia** remain readable and replayable until backfill, migration validation, and operator signoff retire the legacy engine. The checked-in operator migration path is `npm run source:migration -- inventory` plus the explicit `recanonicalize` dry-run or apply commands described in the runbooks.
 
 ## 4. Recommended service ownership
 
@@ -135,7 +139,8 @@ The intended posture is:
 - **RustFS** is the default fast-start S3-compatible backend for local development and simple single-bucket deployments
 - **SeaweedFS** is the richer default substrate when explicit tiering, filer semantics, and hot/warm/cold placement matter
 - **SeaweedFS filer** is consumed through internal HTTP only where filer semantics are actually needed
-- **Kopia** is consumed through a managed repository server plus controlled CLI adapter
+- **Xet** is consumed through a controlled service or command boundary for default canonicalization and reconstruction
+- **Kopia** is consumed through a managed repository server plus controlled CLI adapter only for legacy-read migration and backfill support
 - **ORAS** is consumed through ORAS CLI and OCI registry semantics
 - **Nydus** is consumed as a worker/runtime layer, not as a public API dependency
 - **Alluxio** is consumed only as an optional cache/control service
@@ -267,6 +272,19 @@ Persist at minimum:
 - source size, stored size when exposed, and detected media metadata when relevant
 - reconstruction handles and dedupe metrics when the repository exposes them
 - generic fallback normalization evidence or capability-owned semantic evidence references when that slice exists
+
+The current registry-aligned field names for that persistence set are:
+
+- `repositoryEngine`
+- `canonicalSourceId`
+- `canonicalSnapshotId`
+- `canonicalLogicalPath`
+- `canonicalDigestSet`
+- `canonicalLogicalByteLength`
+- `canonicalStoredByteLength`
+- `sourceReconstructionHandles`
+- `sourceSubstrateHints`
+- `dedupeMetrics`
 
 That gives replay, operator diagnostics, and provenance review a stable source identity that matches the repository's chunked reconstruction model.
 

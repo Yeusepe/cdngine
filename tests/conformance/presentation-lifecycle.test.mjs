@@ -39,6 +39,9 @@ import {
   createJsonBearerHeaders,
   provisionPublicActor
 } from '../auth-fixture.mjs';
+import {
+  canonicalSourceEvidenceToSnapshotResult
+} from '../../packages/storage/dist/index.js';
 
 class FakeStagingBlobStore {
   constructor(descriptors = {}) {
@@ -61,11 +64,19 @@ class FakeStagingBlobStore {
 
 class FakeSourceRepository {
   constructor(snapshotResult) {
+    this.restoreRequests = [];
     this.snapshotResult = snapshotResult;
   }
 
   async snapshotFromPath() {
     return this.snapshotResult;
+  }
+
+  async restoreToPath(input) {
+    this.restoreRequests.push(input);
+    return {
+      restoredPath: input.destinationPath
+    };
   }
 }
 
@@ -100,23 +111,24 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
     generateId: createIdGenerator(),
     now
   });
+  const sourceRepository = new FakeSourceRepository({
+    repositoryEngine: 'kopia',
+    canonicalSourceId: 'src_001',
+    digests: [
+      {
+        algorithm: 'sha256',
+        value: 'deck-sha'
+      }
+    ],
+    logicalPath: 'source/media-platform/ast_001/ver_001/original',
+    snapshotId: 'snap_001'
+  });
   const uploadApp = createApiApp({
     auth,
     registerPublicRoutes(publicApp) {
       registerUploadSessionRoutes(publicApp, {
         now,
-        sourceRepository: new FakeSourceRepository({
-          repositoryEngine: 'kopia',
-          canonicalSourceId: 'src_001',
-          digests: [
-            {
-              algorithm: 'sha256',
-              value: 'deck-sha'
-            }
-          ],
-          logicalPath: 'source/media-platform/ast_001/ver_001/original',
-          snapshotId: 'snap_001'
-        }),
+        sourceRepository,
         stagingBlobStore: new FakeStagingBlobStore({
           'ingest/media-platform/event-deck.pdf': {
             bucket: 'cdngine-ingest',
@@ -176,23 +188,44 @@ test('presentation lifecycle conformance covers workflow selection, deterministi
     }
   );
   const completed = await completeResponse.json();
+  const persistedVersion = uploadStore.getPersistedVersion(completed.versionId);
+  assert.ok(persistedVersion?.canonicalSourceEvidence);
+  const canonicalSource = canonicalSourceEvidenceToSnapshotResult(
+    persistedVersion.canonicalSourceEvidence
+  );
 
   assert.equal(completeResponse.status, 202);
   assert.equal(
     completed.workflowDispatch.workflowKey,
     'media-platform:ast_001:ver_001:presentation-normalization-v1'
   );
+  assert.equal(canonicalSource.repositoryEngine, 'kopia');
+  assert.equal(canonicalSource.canonicalSourceId, 'src_001');
+
+  const restoredSource = await sourceRepository.restoreToPath({
+    canonicalSourceId: canonicalSource.canonicalSourceId,
+    destinationPath: 'C:\\replay\\event-deck.pdf'
+  });
+
+  assert.deepEqual(sourceRepository.restoreRequests, [
+    {
+      canonicalSourceId: canonicalSource.canonicalSourceId,
+      destinationPath: 'C:\\replay\\event-deck.pdf'
+    }
+  ]);
+  assert.equal(restoredSource.restoredPath, 'C:\\replay\\event-deck.pdf');
 
   const publicationStore = new InMemoryPresentationPublicationStore({
     versions: [
       {
         assetId: completed.assetId,
-        canonicalLogicalPath: 'source/media-platform/ast_001/ver_001/original',
-        canonicalSourceId: 'src_001',
+        canonicalLogicalPath: canonicalSource.logicalPath,
+        canonicalSourceId: canonicalSource.canonicalSourceId,
         detectedContentType: 'application/pdf',
         serviceNamespaceId: 'media-platform',
-        sourceByteLength: 4096n,
-        sourceChecksumValue: 'deck-sha',
+        sourceByteLength: canonicalSource.logicalByteLength ?? 4096n,
+        sourceChecksumValue:
+          canonicalSource.digests.find((digest) => digest.algorithm === 'sha256')?.value ?? 'deck-sha',
         sourceFilename: 'event-deck.pdf',
         versionId: completed.versionId,
         versionNumber: 1

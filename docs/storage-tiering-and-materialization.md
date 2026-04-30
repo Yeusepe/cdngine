@@ -15,7 +15,7 @@ Those goals should not be solved by one undifferentiated bucket.
 
 | Layer | Primary concern | Default reference |
 | --- | --- | --- |
-| canonical source repository | deduplicated snapshot history for immutable source versions | Kopia |
+| canonical source repository | deduplicated snapshot history for immutable source versions | Xet for new canonicalizations; Kopia only during migration |
 | tiered operational substrate | local and cloud placement, disk classes, S3 access, replication | SeaweedFS by default, JuiceFS when POSIX semantics matter |
 | worker hot cache | repeated chunk or file reads close to compute | worker-local cache, optional Alluxio |
 | lazy-read representation | on-demand reads for package-like or rebuildable assets | Nydus |
@@ -65,7 +65,7 @@ Preferred policy:
 
 The default product posture is:
 
-- **source assets**: always snapshot into **Kopia**
+- **source assets**: snapshot into **Xet** by default for new canonicalizations, while preserving read access to legacy **Kopia** versions during migration
 - **published web outputs**: materialize into the derived store and serve via CDN
 - **package-like internal hot reads**: prefer **Nydus** when compatible with the consumer
 - **artifact bundles and manifests**: publish through ORAS where an immutable bundle graph is helpful
@@ -91,7 +91,7 @@ The storage topology may use one S3-compatible namespace or several.
 Example one-bucket layout:
 
 - `{bucket}/ingest/` for resumable upload staging
-- `{bucket}/source/` for the Kopia-backed canonical source repository
+- `{bucket}/source/` for the canonical source repository backing store
 - `{bucket}/derived/` for deterministic CDN-facing derivatives
 - `{bucket}/exports/` for repeated original-source downloads when export mode is enabled
 
@@ -142,7 +142,7 @@ flowchart LR
     Origin -. lifecycle / tiering .-> ColderOrigin["colder origin media\nRustFS or SeaweedFS"]
 
     Worker["Worker"] --> Cache["worker cache / Alluxio / Nydus"]
-    Cache --> SourceRepo["Kopia source repository"]
+    Cache --> SourceRepo["canonical source repository"]
     SourceRepo --> SourceOrigin["source backing storage"]
     SourceOrigin -. lifecycle / tiering .-> ColderSource["colder source media\nRustFS or SeaweedFS"]
 

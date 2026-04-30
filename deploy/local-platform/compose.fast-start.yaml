@@ -119,6 +119,7 @@ services:
       AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
       AWS_EC2_METADATA_DISABLED: "true"
       STAGING_BUCKET: ${STAGING_BUCKET:-cdngine-staging}
+      SOURCE_BUCKET: ${SOURCE_BUCKET:-cdngine-source}
       DERIVED_BUCKET: ${DERIVED_BUCKET:-cdngine-derived}
       EXPORTS_BUCKET: ${EXPORTS_BUCKET:-cdngine-exports}
       KOPIA_BUCKET: ${KOPIA_BUCKET:-cdngine-kopia}
@@ -130,6 +131,7 @@ services:
           sleep 2
         done
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$STAGING_BUCKET" >/dev/null 2>&1 || true
+        aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$SOURCE_BUCKET" >/dev/null 2>&1 || true
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$DERIVED_BUCKET" >/dev/null 2>&1 || true
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$EXPORTS_BUCKET" >/dev/null 2>&1 || true
         aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$KOPIA_BUCKET" >/dev/null 2>&1 || true

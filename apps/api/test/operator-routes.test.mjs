@@ -10,6 +10,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 import { createApiApp } from '../dist/api-app.js';
 import {
@@ -44,6 +46,9 @@ async function createOperatorApp(store) {
     secondaryOperator
   };
 }
+
+const operatorMaterializationRoot =
+  'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\operator-restores';
 
 test('readyz returns a readiness payload', async () => {
   const app = createApiApp();
@@ -166,4 +171,176 @@ test('operator routes reject invalid state transitions with audited problem deta
 
   assert.equal(response.status, 409);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/operator-action-rejected');
+});
+
+test('operator reprocess restores Xet-backed canonical evidence before queueing replay', async () => {
+  await rm(operatorMaterializationRoot, { force: true, recursive: true });
+
+  const sourceRestores = [];
+  const store = new InMemoryOperatorControlStore({
+    generateId: () => 'op_replay_001',
+    sourceReplays: {
+      materializationRootPath: operatorMaterializationRoot,
+      sourceRepository: {
+        async listSnapshots() {
+          return [];
+        },
+        async restoreToPath(input) {
+          sourceRestores.push(input);
+          await mkdir(dirname(input.destinationPath), { recursive: true });
+          await writeFile(input.destinationPath, Buffer.from('xet-replay-bytes'));
+          return {
+            restoredPath: input.destinationPath
+          };
+        },
+        async snapshotFromPath() {
+          throw new Error('snapshotFromPath should not run in operator replay tests.');
+        }
+      }
+    },
+    versions: [
+      {
+        assetId: 'ast_900',
+        canonicalSourceEvidence: {
+          repositoryEngine: 'xet',
+          canonicalSourceId: 'xet_file_900',
+          canonicalSnapshotId: 'xet_file_900',
+          canonicalLogicalPath: 'source/ml-platform/ast_900/ver_900/original/model.bin',
+          canonicalDigestSet: [],
+          sourceReconstructionHandles: [
+            {
+              kind: 'manifest',
+              value: 'xet_file_900'
+            }
+          ]
+        },
+        lifecycleState: 'canonical',
+        sourceFilename: 'model.bin',
+        versionId: 'ver_900',
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, defaultOperator } = await createOperatorApp(store);
+
+  const reprocessResponse = await app.request(
+    'http://localhost/v1/operator/assets/ast_900/versions/ver_900/reprocess',
+    {
+      method: 'POST',
+      headers: createJsonBearerHeaders(defaultOperator.token)
+    }
+  );
+  const diagnosticsResponse = await app.request(
+    'http://localhost/v1/operator/assets/ast_900/versions/ver_900/diagnostics',
+    {
+      headers: createJsonBearerHeaders(defaultOperator.token)
+    }
+  );
+
+  assert.equal(reprocessResponse.status, 202);
+  assert.equal(sourceRestores[0]?.snapshot?.repositoryEngine, 'xet');
+  assert.equal(sourceRestores[0]?.snapshot?.canonicalSourceId, 'xet_file_900');
+  assert.deepEqual(await diagnosticsResponse.json(), {
+    assetId: 'ast_900',
+    lifecycleState: 'processing',
+    sourceRestore: {
+      repositoryEngine: 'xet',
+      restoredPath: 'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\operator-restores\\ast_900\\ver_900\\model.bin'
+    },
+    versionId: 'ver_900',
+    workflow: {
+      state: 'queued',
+      workflowId: 'ast_900:ver_900:reprocess:op_replay_001'
+    }
+  });
+
+  await rm(operatorMaterializationRoot, { force: true, recursive: true });
+});
+
+test('operator reprocess sanitizes persisted source filenames before restoring into the replay root', async () => {
+  await rm(operatorMaterializationRoot, { force: true, recursive: true });
+
+  const sourceRestores = [];
+  const store = new InMemoryOperatorControlStore({
+    generateId: () => 'op_replay_unsafe',
+    sourceReplays: {
+      materializationRootPath: operatorMaterializationRoot,
+      sourceRepository: {
+        async listSnapshots() {
+          return [];
+        },
+        async restoreToPath(input) {
+          sourceRestores.push(input);
+          await mkdir(dirname(input.destinationPath), { recursive: true });
+          await writeFile(input.destinationPath, Buffer.from('unsafe-replay-bytes'));
+          return {
+            restoredPath: input.destinationPath
+          };
+        },
+        async snapshotFromPath() {
+          throw new Error('snapshotFromPath should not run in operator replay tests.');
+        }
+      }
+    },
+    versions: [
+      {
+        assetId: 'ast_unsafe',
+        canonicalSourceEvidence: {
+          repositoryEngine: 'kopia',
+          canonicalSourceId: 'unsafe_src_001',
+          canonicalSnapshotId: 'snap_unsafe_001',
+          canonicalLogicalPath:
+            'source/media-platform/ast_unsafe/ver_unsafe/original/..\\unsafe\\operator-source.zip',
+          canonicalDigestSet: [],
+          sourceReconstructionHandles: [
+            {
+              kind: 'snapshot',
+              value: 'snap_unsafe_001'
+            }
+          ]
+        },
+        lifecycleState: 'canonical',
+        sourceFilename: '..\\..\\unsafe\\operator-source.zip',
+        versionId: 'ver_unsafe',
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, defaultOperator } = await createOperatorApp(store);
+
+  const reprocessResponse = await app.request(
+    'http://localhost/v1/operator/assets/ast_unsafe/versions/ver_unsafe/reprocess',
+    {
+      method: 'POST',
+      headers: createJsonBearerHeaders(defaultOperator.token)
+    }
+  );
+  const diagnosticsResponse = await app.request(
+    'http://localhost/v1/operator/assets/ast_unsafe/versions/ver_unsafe/diagnostics',
+    {
+      headers: createJsonBearerHeaders(defaultOperator.token)
+    }
+  );
+
+  assert.equal(reprocessResponse.status, 202);
+  assert.match(
+    sourceRestores[0]?.destinationPath ?? '',
+    /operator-restores\\ast_unsafe\\ver_unsafe\\operator-source\.zip$/
+  );
+  assert.deepEqual(await diagnosticsResponse.json(), {
+    assetId: 'ast_unsafe',
+    lifecycleState: 'processing',
+    sourceRestore: {
+      repositoryEngine: 'kopia',
+      restoredPath:
+        'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\operator-restores\\ast_unsafe\\ver_unsafe\\operator-source.zip'
+    },
+    versionId: 'ver_unsafe',
+    workflow: {
+      state: 'queued',
+      workflowId: 'ast_unsafe:ver_unsafe:reprocess:op_replay_unsafe'
+    }
+  });
+
+  await rm(operatorMaterializationRoot, { force: true, recursive: true });
 });

@@ -12,6 +12,17 @@
  * - apps/api/test/operator-routes.test.mjs
  */
 
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+import {
+  buildMaterializedSourcePath,
+  clonePersistedCanonicalSourceEvidence,
+  materializeCanonicalSourceToPath,
+  type PersistedCanonicalSourceEvidence,
+  type SourceRepository
+} from '@cdngine/storage';
+
 export type OperatorLifecycleState =
   | 'canonical'
   | 'processing'
@@ -35,6 +46,10 @@ export interface VersionDiagnostics {
   publication?: {
     derivativeCount?: number;
     manifestType?: string;
+  };
+  sourceRestore?: {
+    repositoryEngine: string;
+    restoredPath: string;
   };
   versionId: string;
   workflow: {
@@ -83,13 +98,18 @@ export class OperatorActionRejectedError extends Error {
   }
 }
 
-interface OperatorVersionRecord extends VersionDiagnostics {}
+interface OperatorVersionRecord extends VersionDiagnostics {
+  canonicalSourceEvidence?: PersistedCanonicalSourceEvidence;
+  sourceFilename?: string;
+}
 
 export interface SeedOperatorVersionRecord {
   assetId: string;
+  canonicalSourceEvidence?: PersistedCanonicalSourceEvidence;
   derivativeCount?: number;
   lifecycleState: OperatorLifecycleState;
   manifestType?: string;
+  sourceFilename?: string;
   versionId: string;
   workflowId?: string;
   workflowState: string;
@@ -98,6 +118,10 @@ export interface SeedOperatorVersionRecord {
 export interface InMemoryOperatorControlStoreOptions {
   generateId?: (prefix: 'op') => string;
   now?: () => Date;
+  sourceReplays?: {
+    materializationRootPath: string;
+    sourceRepository: SourceRepository;
+  };
   versions?: SeedOperatorVersionRecord[];
 }
 
@@ -129,6 +153,14 @@ function cloneDiagnostics(record: OperatorVersionRecord): VersionDiagnostics {
           }
         }
       : {}),
+    ...(record.sourceRestore
+      ? {
+          sourceRestore: {
+            repositoryEngine: record.sourceRestore.repositoryEngine,
+            restoredPath: record.sourceRestore.restoredPath
+          }
+        }
+      : {}),
     versionId: record.versionId,
     workflow: {
       state: record.workflow.state,
@@ -143,7 +175,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
   private readonly now: () => Date;
   private readonly versions = new Map<string, OperatorVersionRecord>();
 
-  constructor(options: InMemoryOperatorControlStoreOptions = {}) {
+  constructor(private readonly options: InMemoryOperatorControlStoreOptions = {}) {
     this.generateId =
       options.generateId ??
       ((prefix) => `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`);
@@ -152,6 +184,13 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
     for (const version of options.versions ?? []) {
       this.versions.set(this.buildKey(version.assetId, version.versionId), {
         assetId: version.assetId,
+        ...(version.canonicalSourceEvidence
+          ? {
+              canonicalSourceEvidence: clonePersistedCanonicalSourceEvidence(
+                version.canonicalSourceEvidence
+              )
+            }
+          : {}),
         lifecycleState: version.lifecycleState,
         ...(version.derivativeCount || version.manifestType
           ? {
@@ -164,6 +203,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
             }
           : {}),
         versionId: version.versionId,
+        ...(version.sourceFilename ? { sourceFilename: version.sourceFilename } : {}),
         workflow: {
           state: version.workflowState,
           ...(version.workflowId ? { workflowId: version.workflowId } : {})
@@ -190,6 +230,27 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
 
     if (!['canonical', 'published', 'failed_retryable'].includes(record.lifecycleState)) {
       throw new OperatorActionRejectedError('reprocess', assetId, versionId, record.lifecycleState);
+    }
+
+    if (this.options.sourceReplays && record.canonicalSourceEvidence) {
+      const destinationPath = buildMaterializedSourcePath({
+        rootPath: this.options.sourceReplays.materializationRootPath,
+        pathSegments: [assetId, versionId],
+        ...(record.sourceFilename ? { sourceFilename: record.sourceFilename } : {}),
+        canonicalLogicalPath: record.canonicalSourceEvidence.canonicalLogicalPath
+      });
+      await mkdir(dirname(destinationPath), { recursive: true });
+      const restored = await materializeCanonicalSourceToPath(
+        this.options.sourceReplays.sourceRepository,
+        {
+          canonicalSource: record.canonicalSourceEvidence,
+          destinationPath
+        }
+      );
+      record.sourceRestore = {
+        repositoryEngine: record.canonicalSourceEvidence.repositoryEngine,
+        restoredPath: restored.restoredPath
+      };
     }
 
     const operationId = this.generateId('op');

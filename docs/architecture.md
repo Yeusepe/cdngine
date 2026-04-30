@@ -53,7 +53,7 @@ flowchart TB
 
     subgraph Source["Ingest and source plane"]
         Tusd["tusd / staging"]
-        SourceRepo["Kopia canonical source repository"]
+        SourceRepo["canonical source repository"]
         SourceBacking["source backing storage"]
     end
 
@@ -85,7 +85,7 @@ The point of this diagram is to show the platform shape:
 
 - the **API and registry** are the control plane
 - **tusd** handles resumable staging
-- **Kopia plus backing storage** hold canonical source truth
+- **the canonical source repository plus backing storage** hold canonical source truth, with **Xet** as the default engine for new canonicalizations and **Kopia** retained temporarily for legacy reads during migration
 - **Temporal plus workers** perform durable processing
 - **derived and exports stores behind the CDN** handle delivery
 
@@ -210,7 +210,7 @@ The logical flow is:
 1. the API looks up or creates the logical `Asset`
 2. the API creates a **new** `AssetVersion` and `UploadSession`
 3. **tusd** accepts the bytes into staging on the configured S3-compatible substrate
-4. completion verification snapshots that staged object into the **Kopia** canonical source repository
+4. completion verification snapshots that staged object into the canonical source repository, using **Xet** by default for new canonicalizations
 5. the registry persists canonical source identity for that version
 6. the workflow dispatcher starts a **Temporal** workflow keyed to that exact version
 7. workers publish derivatives and manifests for that version only
@@ -221,7 +221,7 @@ The important distinction is:
 - **duplicate request retry** = converge on the same upload session and version
 - **intentional new revision** = create a new version and repeat canonicalize -> process -> publish for that version
 
-Underlying deduplication may still reuse shared bytes in the canonical source plane, but CDNgine keeps the business identity of each version separate. The current backend-selection posture is repository-engine neutral: **Kopia** remains the implemented default, while richer source-evidence fields and benchmark gates keep a future Xet-like swap possible without changing the `AssetVersion` contract.
+Underlying deduplication may still reuse shared bytes in the canonical source plane, but CDNgine keeps the business identity of each version separate. The current backend-selection posture is repository-engine neutral in the control plane while the rollout target is explicit in operations: **Xet** is the default engine for new canonicalizations, and **legacy Kopia-backed versions remain readable** until migration, backfill, and signoff retire the old path. That universal byte-level dedupe posture applies to every file type; semantic normalization remains capability-owned and optional, and unknown formats still fall back to preserve-original plus digest evidence and only proven container inventory.
 
 ## 4. What is truth, and where does it live?
 
@@ -514,7 +514,7 @@ Adding a new file type should require:
 3. a processor implementation
 4. a workflow binding
 
-Every capability registration should also declare a safe normalization fallback. Unknown formats must still preserve the original, retain strong digests, and only add generic container inventory when container detection is proven.
+Every capability registration should also declare a safe normalization fallback. Byte-level source dedupe is universal, but semantic normalization is not: unknown formats must still preserve the original, retain strong digests, and only add generic container inventory when container detection is proven.
 
 ### 12.1 Registration model
 
@@ -610,7 +610,7 @@ The current reference stack is:
 | short-lived coordination | Redis |
 | resumable ingest | tus / tusd |
 | durable orchestration | Temporal |
-| canonical source repository | Kopia |
+| canonical source repository | Xet for new canonicalizations; Kopia retained temporarily for legacy dual-read migration |
 | richer substrate for explicit tiering | SeaweedFS |
 | optional POSIX-style workspace substrate | JuiceFS |
 | lazy internal hot reads | Nydus plus optional Alluxio |
@@ -644,6 +644,7 @@ It should **not** rebuild:
 
 ## 19. References
 
+- [Xet deduplication](https://huggingface.co/docs/xet/en/deduplication)
 - [Kopia features](https://kopia.io/docs/features/)
 - [SeaweedFS tiered storage](https://github.com/seaweedfs/seaweedfs/wiki/Tiered-Storage)
 - [JuiceFS architecture](https://juicefs.com/docs/community/architecture)

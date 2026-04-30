@@ -17,7 +17,7 @@ function walk(directory) {
     const fullPath = join(directory, entry.name);
 
     if (entry.isDirectory()) {
-      if (entry.name === 'dist' || entry.name === 'node_modules') {
+      if (entry.name === 'dist' || entry.name === 'generated' || entry.name === 'node_modules') {
         continue;
       }
 

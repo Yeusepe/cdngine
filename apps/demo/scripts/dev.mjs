@@ -1,5 +1,5 @@
 /**
- * Purpose: Launches the demo API server and Vite dev server in parallel for local development.
+ * Purpose: Launches the local public runtime server and Vite dev server in parallel for local development.
  * Governing docs:
  * - docs/repository-layout.md
  * - docs/testing-strategy.md
@@ -20,7 +20,7 @@ function run(cmd, args, cwd) {
   return spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: 'inherit' });
 }
 
-const api = run('node', ['./scripts/start-demo-api.mjs'], root);
+const api = run('node', ['./scripts/start-public-runtime.mjs'], root);
 const vite = run('node', ['./node_modules/.bin/vite', '--host'], root);
 
 function exit(code) {

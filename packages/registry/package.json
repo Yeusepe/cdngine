@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run prisma:validate && tsc -p tsconfig.json",
+    "build": "npm run prisma:validate && npm run prisma:generate && tsc -p tsconfig.json",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "lint": "tsc -p tsconfig.json --noEmit",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
@@ -35,6 +35,7 @@
     ]
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0"
   },
   "devDependencies": {

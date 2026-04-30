@@ -107,6 +107,7 @@ export interface DeliveryAuthorizationRecord {
 }
 
 export interface PublicAuthorizationRequest {
+  callerScopeKey: string;
   idempotencyKey: string;
   now: Date;
   oneTime?: boolean;

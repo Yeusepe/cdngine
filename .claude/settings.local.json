@@ -7,9 +7,9 @@
       "Bash(nohup npm:*)",
       "Bash(echo \"PID: $!\")",
       "Bash(npx tsc:*)",
-      "Bash(node ./scripts/start-demo-api.mjs)",
+      "Bash(node ./scripts/start-public-runtime.mjs)",
       "Bash(curl -s http://localhost:4000/healthz)",
-      "Bash(curl -s -X POST http://localhost:4000/_demo/upload -F \"file=@C:/Windows/System32/drivers/etc/hosts\")",
+      "Bash(curl -s -X POST http://localhost:4000/v1/upload-sessions -H \"Content-Type: application/json\" -H \"Idempotency-Key: claude-local-upload\" -d '{\"assetOwner\":\"local:product-client\",\"serviceNamespaceId\":\"media-platform\",\"source\":{\"filename\":\"hosts\",\"contentType\":\"text/plain\"},\"upload\":{\"objectKey\":\"media-platform/hosts\",\"byteLength\":20,\"checksum\":{\"algorithm\":\"sha256\",\"value\":\"7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9\"}}}')",
       "Bash(npx vite:*)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
       "Bash(curl:*)"

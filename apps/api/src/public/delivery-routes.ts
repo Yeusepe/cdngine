@@ -75,6 +75,25 @@ function getIdempotencyKey(appContext: { req: { header: (name: string) => string
   return idempotencyKey;
 }
 
+function buildCallerScopeKey(context: {
+  get: <TKey extends keyof ApiEnv['Variables']>(key: TKey) => ApiEnv['Variables'][TKey];
+}) {
+  const actor = context.get('actor');
+  const surface = context.get('surface');
+
+  if (!actor || !surface) {
+    throw new ProblemDetailError({
+      type: problemTypes.unauthorized,
+      title: 'Unauthorized',
+      status: 401,
+      detail: 'Authenticated actor context is required before authorizing public reads.',
+      retryable: false
+    });
+  }
+
+  return `${surface}:${actor.subject}`;
+}
+
 function mapPublicReadError(error: unknown): never {
   if (error instanceof PublicAssetVersionNotFoundError) {
     throw new ProblemDetailError({
@@ -250,6 +269,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
           versionId,
           body.preferredDisposition,
           {
+            callerScopeKey: buildCallerScopeKey(context),
             idempotencyKey,
             now,
             ...(body.oneTime ? { oneTime: true } : {})
@@ -302,6 +322,7 @@ export function registerDeliveryRoutes(app: Hono<ApiEnv>, dependencies: Delivery
           deliveryScopeId,
           body.variant,
           {
+            callerScopeKey: buildCallerScopeKey(context),
             idempotencyKey,
             now,
             ...(body.oneTime ? { oneTime: true } : {})

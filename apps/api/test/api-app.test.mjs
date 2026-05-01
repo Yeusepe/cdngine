@@ -18,6 +18,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { z } from 'zod';
+import {
+  InMemoryApiObservability,
+  RuntimeReadinessMonitor
+} from '@cdngine/observability';
 
 import { createApiApp, requireRequestedScope } from '../dist/api-app.js';
 import { getRequestLogContext } from '../dist/request-context.js';
@@ -165,4 +169,105 @@ test('request timeouts become retryable problem responses', async () => {
   assert.equal(response.status, 503);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/upstream-dependency-failed');
   assert.equal(payload.retryable, true);
+});
+
+test('readyz reports dependency details and metrics expose request outcomes', async () => {
+  const telemetry = new InMemoryApiObservability({ service: 'api-test' });
+  const readiness = new RuntimeReadinessMonitor({
+    deploymentProfile: 'production-default',
+    requiredDependencies: ['auth', 'postgres', 'redis'],
+    checks: {
+      auth: async () => ({
+        boundary: 'auth',
+        detail: 'Bearer token validation adapter is healthy.',
+        status: 'ok'
+      }),
+      postgres: async () => ({
+        boundary: 'postgres',
+        detail: 'Primary registry is reachable.',
+        status: 'ok'
+      }),
+      redis: async () => ({
+        boundary: 'redis',
+        detail: 'Cache latency is above target but still serving traffic.',
+        status: 'degraded'
+      })
+    }
+  });
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth);
+  const app = createApiApp({
+    auth,
+    readiness,
+    serviceName: 'api-test',
+    serviceVersion: '2026.01.0',
+    telemetry,
+    registerPublicRoutes(publicApp) {
+      publicApp.get('/probe', (context) =>
+        context.json({
+          traceId: context.get('trace').traceId
+        })
+      );
+    }
+  });
+
+  const readyResponse = await app.request('http://localhost/readyz');
+  const readyPayload = await readyResponse.json();
+  const probeResponse = await app.request('http://localhost/v1/probe', {
+    headers: createJsonBearerHeaders(publicActor.token)
+  });
+  const metricsResponse = await app.request('http://localhost/metrics');
+  const metricsPayload = await metricsResponse.text();
+
+  assert.equal(readyResponse.status, 200);
+  assert.equal(readyPayload.status, 'degraded');
+  assert.equal(readyPayload.deploymentProfile, 'production-default');
+  assert.deepEqual(readyPayload.degradedBoundaries, ['redis']);
+  assert.deepEqual(
+    readyPayload.dependencies.map((dependency) => dependency.boundary),
+    ['auth', 'postgres', 'redis']
+  );
+  assert.equal(probeResponse.status, 200);
+  assert.match(metricsPayload, /cdngine_http_requests_total\{[^}]*path="\/readyz"[^}]*status_code="200"/);
+  assert.match(
+    metricsPayload,
+    /cdngine_readiness_dependency_status\{[^}]*dependency="redis"[^}]*status="degraded"/
+  );
+  assert.match(metricsPayload, /cdngine_readiness_status\{[^}]*status="degraded"/);
+});
+
+test('request telemetry propagates traceparent and redacts bearer values from logs', async () => {
+  const telemetry = new InMemoryApiObservability({ service: 'api-test' });
+  const auth = createAuthFixture();
+  const publicActor = await provisionPublicActor(auth);
+  const app = createApiApp({
+    auth,
+    telemetry,
+    registerPublicRoutes(publicApp) {
+      publicApp.get('/probe', (context) =>
+        context.json({
+          traceId: context.get('trace').traceId
+        })
+      );
+    }
+  });
+
+  const response = await app.request('http://localhost/v1/probe', {
+    headers: createJsonBearerHeaders(publicActor.token, {
+      traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+    })
+  });
+  const payload = await response.json();
+  const [entry] = telemetry.listRequestLogs();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.traceId, '4bf92f3577b34da6a3ce929d0e0e4736');
+  assert.match(
+    response.headers.get('traceparent') ?? '',
+    /^00-4bf92f3577b34da6a3ce929d0e0e4736-[0-9a-f]{16}-01$/
+  );
+  assert.equal(entry.traceId, '4bf92f3577b34da6a3ce929d0e0e4736');
+  assert.equal(entry.actorSubject, publicActor.actor.subject);
+  assert.equal(entry.authorization, undefined);
+  assert.equal(entry.headers, undefined);
 });

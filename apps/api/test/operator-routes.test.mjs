@@ -12,6 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { RuntimeReadinessMonitor } from '@cdngine/observability';
 
 import { createApiApp } from '../dist/api-app.js';
 import {
@@ -51,12 +52,30 @@ const operatorMaterializationRoot =
   'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\operator-restores';
 
 test('readyz returns a readiness payload', async () => {
-  const app = createApiApp();
+  const app = createApiApp({
+    readiness: new RuntimeReadinessMonitor({
+      deploymentProfile: 'production-default',
+      requiredDependencies: ['auth', 'postgres'],
+      checks: {
+        auth: async () => ({
+          boundary: 'auth',
+          detail: 'Auth adapter is healthy.',
+          status: 'ok'
+        }),
+        postgres: async () => ({
+          boundary: 'postgres',
+          detail: 'Registry is healthy.',
+          status: 'ok'
+        })
+      }
+    })
+  });
   const response = await app.request('http://localhost/readyz');
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(payload.status, 'ready');
+  assert.equal(payload.dependencies.length, 2);
 });
 
 test('operator routes accept reprocess, quarantine, release, and diagnostics flows', async () => {
@@ -87,25 +106,43 @@ test('operator routes accept reprocess, quarantine, release, and diagnostics flo
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/reprocess',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'incident://INC-123',
+        reason: 'Rebuild the published asset from canonical source after worker drift.'
+      })
     }
   );
   const quarantineResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/quarantine',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(secondaryOperator.token)
+      headers: createJsonBearerHeaders(secondaryOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'malware://scan-456',
+        reason: 'Block delivery while the suspicious derivative set is reviewed.'
+      })
     }
   );
   const releaseResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_002/versions/ver_002/release',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'review://security-approve-789',
+        reason: 'Release after security review cleared the quarantined version.'
+      })
     }
   );
   const diagnosticsResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/diagnostics',
+    {
+      headers: createJsonBearerHeaders(defaultOperator.token)
+    }
+  );
+  const auditResponse = await app.request(
+    'http://localhost/v1/operator/assets/ast_001/versions/ver_001/audit',
     {
       headers: createJsonBearerHeaders(defaultOperator.token)
     }
@@ -145,6 +182,32 @@ test('operator routes accept reprocess, quarantine, release, and diagnostics flo
       workflowId: 'ast_001:ver_001:reprocess:op_001'
     }
   });
+  assert.equal(auditResponse.status, 200);
+  assert.deepEqual(await auditResponse.json(), {
+    events: [
+      {
+        action: 'reprocess',
+        actorSubject: 'operator_123',
+        assetId: 'ast_001',
+        evidenceReference: 'incident://INC-123',
+        operationId: 'op_001',
+        reason: 'Rebuild the published asset from canonical source after worker drift.',
+        recordedAt: '2026-01-15T18:30:00.000Z',
+        versionId: 'ver_001',
+        workflowId: 'ast_001:ver_001:reprocess:op_001'
+      },
+      {
+        action: 'quarantine',
+        actorSubject: 'operator_456',
+        assetId: 'ast_001',
+        evidenceReference: 'malware://scan-456',
+        operationId: 'op_001',
+        reason: 'Block delivery while the suspicious derivative set is reviewed.',
+        recordedAt: '2026-01-15T18:30:00.000Z',
+        versionId: 'ver_001'
+      }
+    ]
+  });
 });
 
 test('operator routes reject invalid state transitions with audited problem details', async () => {
@@ -164,13 +227,43 @@ test('operator routes reject invalid state transitions with audited problem deta
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/release',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        reason: 'Attempted release without quarantine.'
+      })
     }
   );
   const payload = await response.json();
 
   assert.equal(response.status, 409);
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/operator-action-rejected');
+});
+
+test('operator routes require an explicit recorded reason for privileged actions', async () => {
+  const store = new InMemoryOperatorControlStore({
+    versions: [
+      {
+        assetId: 'ast_400',
+        lifecycleState: 'published',
+        versionId: 'ver_400',
+        workflowState: 'completed'
+      }
+    ]
+  });
+  const { app, defaultOperator } = await createOperatorApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/operator/assets/ast_400/versions/ver_400/reprocess',
+    {
+      method: 'POST',
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({})
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.type, 'https://docs.cdngine.dev/problems/invalid-request');
 });
 
 test('operator reprocess restores Xet-backed canonical evidence before queueing replay', async () => {
@@ -227,7 +320,11 @@ test('operator reprocess restores Xet-backed canonical evidence before queueing 
     'http://localhost/v1/operator/assets/ast_900/versions/ver_900/reprocess',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'replay://xet-source-restore',
+        reason: 'Replay the canonical Xet snapshot into the worker publication flow.'
+      })
     }
   );
   const diagnosticsResponse = await app.request(
@@ -312,7 +409,11 @@ test('operator reprocess sanitizes persisted source filenames before restoring i
     'http://localhost/v1/operator/assets/ast_unsafe/versions/ver_unsafe/reprocess',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'replay://unsafe-filename',
+        reason: 'Replay the canonical source while keeping the restored filename inside the replay root.'
+      })
     }
   );
   const diagnosticsResponse = await app.request(

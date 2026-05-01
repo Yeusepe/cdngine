@@ -41,7 +41,7 @@
     "sdk:check": "node scripts/bundle-contracts.mjs && node scripts/generate-typescript-sdk.mjs --check",
     "source:migration": "node scripts/source-migration.mjs",
     "lint": "npm run docs:check && npm run contracts:check && npm run sdk:check && npm run lint --workspaces --if-present",
-    "test": "npm run docs:check && node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
+    "test": "npm run docs:check && node --test scripts/*.test.mjs && npm run test --workspaces --if-present && node --test tests/conformance/*.test.mjs",
     "typecheck": "tsc -b tsconfig.json --pretty false",
     "verify": "npm run lint && npm run typecheck && npm run test"
   },

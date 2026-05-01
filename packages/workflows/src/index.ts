@@ -13,6 +13,7 @@
 
 export const workflowsPackageName = '@cdngine/workflows';
 export * from './dispatch-runtime.js';
+export * from './generic-asset-publication-workflow.js';
 export * from './image-publication-workflow.js';
 export * from './output-workflow-templates.js';
 export * from './presentation-publication-workflow.js';

@@ -103,6 +103,8 @@ At minimum, keep scenario coverage for:
 4. archive upload to inspection and policy decision
 5. replay of an already-processed asset version
 
+The checked-in root `npm run test` path should execute `tests/conformance/*.test.mjs` after workspace builds so production-facing lifecycle and control-plane assertions cannot silently drift out of CI.
+
 ## 7. Failure-injection expectations
 
 The platform should eventually exercise:

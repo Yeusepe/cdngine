@@ -12,6 +12,7 @@
  */
 
 export const readinessDependencies = [
+  'auth',
   'postgres',
   'redis',
   'temporal',
@@ -74,7 +75,16 @@ export function loadReadinessProfileFromEnvironment(
     deploymentProfile,
     requiredDependencies:
       deploymentProfile === 'local-fast-start'
-        ? ['postgres', 'redis', 'temporal', 'tusd', 'source-repository', 'oci-registry']
-        : ['postgres', 'redis', 'temporal', 'tusd', 'source-repository', 'derived-store', 'exports-store']
+        ? ['auth', 'postgres', 'redis', 'temporal', 'tusd', 'source-repository', 'oci-registry']
+        : [
+            'auth',
+            'postgres',
+            'redis',
+            'temporal',
+            'tusd',
+            'source-repository',
+            'derived-store',
+            'exports-store'
+          ]
   };
 }

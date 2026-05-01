@@ -20,3 +20,14 @@ test('vite client proxy only exposes the public upload and read surfaces', async
 
   assert.equal(viteConfigSource.includes("'/_demo'"), false);
 });
+
+test('product client surface exposes configurable scope inputs and public contract explorer actions', async () => {
+  const appSource = await readWorkspaceFile('src/App.tsx');
+
+  assert.equal(appSource.includes("assetOwner: 'product:web-client'"), false);
+  assert.equal(appSource.includes("serviceNamespaceId: 'media-platform'"), false);
+  assert.equal(appSource.includes('Version explorer'), true);
+  assert.equal(appSource.includes('Load version'), true);
+  assert.equal(appSource.includes('Authorize source'), true);
+  assert.equal(appSource.includes('Authorize delivery'), true);
+});

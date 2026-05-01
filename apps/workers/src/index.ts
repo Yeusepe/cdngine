@@ -13,4 +13,6 @@
  */
 
 export const workersAppName = '@cdngine/workers';
+export * from './generic-asset-processor.js';
+export * from './publication-worker-runtime.js';
 export * from './source-materialization.js';

@@ -51,7 +51,7 @@ async function seedScope(prisma, scope) {
   return { deliveryScope, namespace, serviceNamespaceId, tenant, tenantId };
 }
 
-test('Prisma upload-session store persists durable completion evidence and public reads', async () => {
+test('Prisma upload-session store persists durable completion evidence and canonical public reads', async () => {
   await withRegistryTestDatabase(async ({ prisma, schema }) => {
     const now = new Date('2026-02-01T12:00:00.000Z');
     const { deliveryScope, serviceNamespaceId, tenantId } = await seedScope(prisma, schema);
@@ -225,74 +225,23 @@ test('Prisma upload-session store persists durable completion evidence and publi
       )
     );
 
-    await prisma.derivative.create({
-      data: {
-        assetVersionId: issued.versionId,
-        byteLength: 512n,
-        checksumValue: 'sha-webp',
-        contentType: 'image/webp',
-        deliveryScopeId: deliveryScope.id,
-        deterministicKey: `deriv/${serviceNamespaceId}/hero-banner/webp-master/${schema}`,
-        publicationState: 'published',
-        publishedAt: now,
-        recipeId: 'webp-master',
-        schemaVersion: 'v1',
-        storageBucket: 'cdngine-derived',
-        storageKey: 'derived/hero-banner.webp',
-        variantKey: 'webp-master'
-      }
-    });
-    await prisma.assetManifest.create({
-      data: {
-        assetVersionId: issued.versionId,
-        checksumValue: 'manifest-sha',
-        deliveryScopeId: deliveryScope.id,
-        manifestPayload: {
-          manifestType: 'image-default',
-          versionId: issued.versionId
-        },
-        manifestType: 'image-default',
-        objectKey: 'manifests/media-platform/hero-banner/image-default.json',
-        publicationState: 'published',
-        publishedAt: now,
-        schemaVersion: 'v1'
-      }
-    });
-    await prisma.assetVersion.update({
-      where: { id: issued.versionId },
-      data: { lifecycleState: 'published' }
-    });
-
-    const derivatives = await publicReadStore.listDerivatives(issued.assetId, issued.versionId);
-    const manifest = await publicReadStore.getManifest(
-      issued.assetId,
-      issued.versionId,
-      'image-default'
-    );
-    const deliveryAuthorization = await publicReadStore.authorizeDelivery(
-      issued.assetId,
-      issued.versionId,
-      deliveryScope.id,
-      'webp-master',
-      {
-        callerScopeKey,
-        idempotencyKey: `delivery-001-${schema}`,
-        now,
-        oneTime: true
-      }
-    );
-
-    assert.equal(derivatives.length, 1);
-    assert.equal(derivatives[0].variant, 'webp-master');
-    assert.equal(manifest?.objectKey, 'manifests/media-platform/hero-banner/image-default.json');
-    assert.match(deliveryAuthorization.url, /^\/download-links\//u);
-
-    const deliveryToken = deliveryAuthorization.url.split('/').pop();
-    assert.ok(deliveryToken);
-    const consumedDelivery = await publicReadStore.consumeDownloadLink(deliveryToken, now);
-    assert.equal(
-      consumedDelivery.url,
-      'https://cdn.cdngine.local/media/derived/hero-banner.webp'
+    await assert.rejects(
+      () =>
+        publicReadStore.authorizeDelivery(
+          issued.assetId,
+          issued.versionId,
+          deliveryScope.id,
+          'webp-master',
+          {
+            callerScopeKey,
+            idempotencyKey: `delivery-001-${schema}`,
+            now,
+            oneTime: true
+          }
+        ),
+      (error) =>
+        error?.name === 'RegistryPublicVersionNotReadyError' &&
+        error.lifecycleState === 'canonical'
     );
   });
 });

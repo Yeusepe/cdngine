@@ -124,6 +124,26 @@ const DEFAULT_TEST_AUTH_SECRET =
   'cdngine-test-auth-secret-cdngine-test-auth-secret-cdngine-test-auth-secret';
 const DEFAULT_TEST_PASSWORD = 'cdngine-demo-password-123';
 
+export interface BetterAuthRuntimeConfig {
+  baseURL: string;
+  secret: string;
+  session: {
+    deferSessionRefresh: boolean;
+    disableSessionRefresh: boolean;
+    expiresInSeconds: number;
+    freshAgeSeconds: number;
+    updateAgeSeconds: number;
+  };
+  trustedOrigins: string[];
+}
+
+export class BetterAuthRuntimeConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BetterAuthRuntimeConfigError';
+  }
+}
+
 function toHeaders(headers: Headers | Record<string, string>): Headers {
   return headers instanceof Headers ? headers : new Headers(headers);
 }
@@ -142,6 +162,81 @@ function normalizeActorDescriptor(
     allowedServiceNamespaces: normalizeStringArray(descriptor?.allowedServiceNamespaces),
     allowedTenantIds: normalizeStringArray(descriptor?.allowedTenantIds)
   };
+}
+
+function readRequiredRuntimeValue(environment: NodeJS.ProcessEnv, key: string): string {
+  const value = environment[key]?.trim();
+
+  if (!value) {
+    throw new BetterAuthRuntimeConfigError(`${key} is required for runtime auth configuration.`);
+  }
+
+  return value;
+}
+
+function readPositiveIntegerRuntimeValue(
+  environment: NodeJS.ProcessEnv,
+  key: string,
+  fallback: number
+): number {
+  const rawValue = environment[key]?.trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new BetterAuthRuntimeConfigError(`${key} must be a positive integer. Received "${rawValue}".`);
+  }
+
+  return parsed;
+}
+
+function readBooleanRuntimeValue(
+  environment: NodeJS.ProcessEnv,
+  key: string,
+  fallback: boolean
+): boolean {
+  const rawValue = environment[key]?.trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  if (rawValue === 'true') {
+    return true;
+  }
+
+  if (rawValue === 'false') {
+    return false;
+  }
+
+  throw new BetterAuthRuntimeConfigError(`${key} must be "true" or "false". Received "${rawValue}".`);
+}
+
+function readJsonStringArray(environment: NodeJS.ProcessEnv, key: string): string[] {
+  const rawValue = environment[key]?.trim();
+
+  if (!rawValue) {
+    return [];
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawValue);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown parse failure.';
+    throw new BetterAuthRuntimeConfigError(`${key} must be a JSON array of strings: ${message}`);
+  }
+
+  if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== 'string' || value.trim().length === 0)) {
+    throw new BetterAuthRuntimeConfigError(`${key} must be a JSON array of non-empty strings.`);
+  }
+
+  return [...new Set(parsed.map((value) => value.trim()))];
 }
 
 export function buildBearerHeaders(token: string, headers: Record<string, string> = {}) {
@@ -274,6 +369,68 @@ export function createCDNgineAuth(options: CreateCDNgineAuthOptions): CDNgineAut
 }
 
 export const createBetterAuthAuthenticator = createCDNgineAuth;
+
+export function loadBetterAuthRuntimeConfigFromEnvironment(
+  environment: NodeJS.ProcessEnv
+): BetterAuthRuntimeConfig {
+  return {
+    baseURL: readRequiredRuntimeValue(environment, 'CDNGINE_AUTH_BASE_URL'),
+    secret: readRequiredRuntimeValue(environment, 'CDNGINE_AUTH_SECRET'),
+    session: {
+      deferSessionRefresh: readBooleanRuntimeValue(
+        environment,
+        'CDNGINE_AUTH_DEFER_SESSION_REFRESH',
+        true
+      ),
+      disableSessionRefresh: readBooleanRuntimeValue(
+        environment,
+        'CDNGINE_AUTH_DISABLE_SESSION_REFRESH',
+        false
+      ),
+      expiresInSeconds: readPositiveIntegerRuntimeValue(
+        environment,
+        'CDNGINE_AUTH_SESSION_EXPIRES_IN_SECONDS',
+        60 * 60 * 24 * 7
+      ),
+      freshAgeSeconds: readPositiveIntegerRuntimeValue(
+        environment,
+        'CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS',
+        60 * 5
+      ),
+      updateAgeSeconds: readPositiveIntegerRuntimeValue(
+        environment,
+        'CDNGINE_AUTH_SESSION_UPDATE_AGE_SECONDS',
+        60 * 60 * 24
+      )
+    },
+    trustedOrigins: readJsonStringArray(environment, 'CDNGINE_AUTH_TRUSTED_ORIGINS_JSON')
+  };
+}
+
+export function createCDNgineAuthFromEnvironment(
+  options: Omit<CreateCDNgineAuthOptions, 'baseURL' | 'secret'>,
+  environment: NodeJS.ProcessEnv = process.env
+): CDNgineAuthService {
+  const runtime = loadBetterAuthRuntimeConfigFromEnvironment(environment);
+
+  return createCDNgineAuth({
+    ...options,
+    baseURL: runtime.baseURL,
+    betterAuthOptions: {
+      ...(options.betterAuthOptions ?? {}),
+      session: {
+        ...(options.betterAuthOptions?.session ?? {}),
+        deferSessionRefresh: runtime.session.deferSessionRefresh,
+        disableSessionRefresh: runtime.session.disableSessionRefresh,
+        expiresIn: runtime.session.expiresInSeconds,
+        freshAge: runtime.session.freshAgeSeconds,
+        updateAge: runtime.session.updateAgeSeconds
+      },
+      trustedOrigins: runtime.trustedOrigins
+    },
+    secret: runtime.secret
+  });
+}
 
 export function createInMemoryCDNgineAuth(
   options: Partial<Omit<CreateCDNgineAuthOptions, 'database' | 'resolveActor'>> = {}

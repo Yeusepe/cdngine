@@ -15,6 +15,7 @@ Runbooks should exist for:
 - security quarantine flows
 - CDN or delivery-origin degradation
 - canonical source availability, snapshotting, or replay-source failure
+- production cutover and hardening verification
 
 ## 2. What every runbook should contain
 
@@ -38,6 +39,7 @@ Current files:
 - `source-engine-migration.md`
 - `replay-operations.md`
 - `quarantine-and-release.md`
+- `production-cutover-verification.md`
 
 ## 4. Relationship to other docs
 

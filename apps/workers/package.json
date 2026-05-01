@@ -8,7 +8,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build -w @cdngine/registry && npm run build -w @cdngine/storage && npm run build -w @cdngine/workflows && npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@cdngine/registry": "^0.1.0",
+    "@cdngine/storage": "^0.1.0",
+    "@cdngine/workflows": "^0.1.0"
   },
   "cdngine": {
     "governingDocs": [

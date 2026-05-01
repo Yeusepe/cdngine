@@ -33,6 +33,11 @@ export type OperatorLifecycleState =
 
 export type OperatorAction = 'reprocess' | 'quarantine' | 'release' | 'purge';
 
+export interface OperatorActionRequest {
+  evidenceReference?: string;
+  reason: string;
+}
+
 export interface OperatorActionAccepted {
   action: OperatorAction;
   operationId: string;
@@ -62,19 +67,41 @@ export interface OperatorAuditEvent {
   action: OperatorAction;
   actorSubject: string;
   assetId: string;
+  evidenceReference?: string;
   operationId: string;
+  reason: string;
   recordedAt: Date;
   versionId: string;
   workflowId?: string;
 }
 
 export interface OperatorControlStore {
-  getAuditEvents(versionId: string): Promise<OperatorAuditEvent[]>;
+  getAuditEvents(assetId: string, versionId: string): Promise<OperatorAuditEvent[]>;
   getDiagnostics(assetId: string, versionId: string): Promise<VersionDiagnostics | null>;
-  purgeVersion(assetId: string, versionId: string, actorSubject: string): Promise<OperatorActionAccepted>;
-  quarantineVersion(assetId: string, versionId: string, actorSubject: string): Promise<OperatorActionAccepted>;
-  releaseVersion(assetId: string, versionId: string, actorSubject: string): Promise<OperatorActionAccepted>;
-  reprocessVersion(assetId: string, versionId: string, actorSubject: string): Promise<OperatorActionAccepted>;
+  purgeVersion(
+    assetId: string,
+    versionId: string,
+    actorSubject: string,
+    request: OperatorActionRequest
+  ): Promise<OperatorActionAccepted>;
+  quarantineVersion(
+    assetId: string,
+    versionId: string,
+    actorSubject: string,
+    request: OperatorActionRequest
+  ): Promise<OperatorActionAccepted>;
+  releaseVersion(
+    assetId: string,
+    versionId: string,
+    actorSubject: string,
+    request: OperatorActionRequest
+  ): Promise<OperatorActionAccepted>;
+  reprocessVersion(
+    assetId: string,
+    versionId: string,
+    actorSubject: string,
+    request: OperatorActionRequest
+  ): Promise<OperatorActionAccepted>;
 }
 
 export class OperatorVersionNotFoundError extends Error {
@@ -130,7 +157,9 @@ function cloneAuditEvent(event: OperatorAuditEvent): OperatorAuditEvent {
     action: event.action,
     actorSubject: event.actorSubject,
     assetId: event.assetId,
+    ...(event.evidenceReference ? { evidenceReference: event.evidenceReference } : {}),
     operationId: event.operationId,
+    reason: event.reason,
     recordedAt: new Date(event.recordedAt),
     versionId: event.versionId,
     ...(event.workflowId ? { workflowId: event.workflowId } : {})
@@ -212,8 +241,10 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
     }
   }
 
-  async getAuditEvents(versionId: string): Promise<OperatorAuditEvent[]> {
-    return (this.auditEvents.get(versionId) ?? []).map((event) => cloneAuditEvent(event));
+  async getAuditEvents(assetId: string, versionId: string): Promise<OperatorAuditEvent[]> {
+    return (this.auditEvents.get(this.buildKey(assetId, versionId)) ?? []).map((event) =>
+      cloneAuditEvent(event)
+    );
   }
 
   async getDiagnostics(assetId: string, versionId: string): Promise<VersionDiagnostics | null> {
@@ -224,7 +255,8 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
   async reprocessVersion(
     assetId: string,
     versionId: string,
-    actorSubject: string
+    actorSubject: string,
+    request: OperatorActionRequest
   ): Promise<OperatorActionAccepted> {
     const record = this.getMutableVersion(assetId, versionId);
 
@@ -260,7 +292,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
       state: 'queued',
       workflowId
     };
-    this.recordAudit('reprocess', assetId, versionId, actorSubject, operationId, workflowId);
+    this.recordAudit('reprocess', assetId, versionId, actorSubject, request, operationId, workflowId);
 
     return {
       action: 'reprocess',
@@ -273,7 +305,8 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
   async quarantineVersion(
     assetId: string,
     versionId: string,
-    actorSubject: string
+    actorSubject: string,
+    request: OperatorActionRequest
   ): Promise<OperatorActionAccepted> {
     const record = this.getMutableVersion(assetId, versionId);
 
@@ -287,7 +320,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
       state: 'waiting',
       ...(record.workflow.workflowId ? { workflowId: record.workflow.workflowId } : {})
     };
-    this.recordAudit('quarantine', assetId, versionId, actorSubject, operationId);
+    this.recordAudit('quarantine', assetId, versionId, actorSubject, request, operationId);
 
     return {
       action: 'quarantine',
@@ -299,7 +332,8 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
   async releaseVersion(
     assetId: string,
     versionId: string,
-    actorSubject: string
+    actorSubject: string,
+    request: OperatorActionRequest
   ): Promise<OperatorActionAccepted> {
     const record = this.getMutableVersion(assetId, versionId);
 
@@ -314,7 +348,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
       state: 'queued',
       workflowId
     };
-    this.recordAudit('release', assetId, versionId, actorSubject, operationId, workflowId);
+    this.recordAudit('release', assetId, versionId, actorSubject, request, operationId, workflowId);
 
     return {
       action: 'release',
@@ -327,7 +361,8 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
   async purgeVersion(
     assetId: string,
     versionId: string,
-    actorSubject: string
+    actorSubject: string,
+    request: OperatorActionRequest
   ): Promise<OperatorActionAccepted> {
     const record = this.getMutableVersion(assetId, versionId);
 
@@ -341,7 +376,7 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
       state: 'cancelled',
       ...(record.workflow.workflowId ? { workflowId: record.workflow.workflowId } : {})
     };
-    this.recordAudit('purge', assetId, versionId, actorSubject, operationId);
+    this.recordAudit('purge', assetId, versionId, actorSubject, request, operationId);
 
     return {
       action: 'purge',
@@ -369,19 +404,23 @@ export class InMemoryOperatorControlStore implements OperatorControlStore {
     assetId: string,
     versionId: string,
     actorSubject: string,
+    request: OperatorActionRequest,
     operationId: string,
     workflowId?: string
   ) {
-    const events = this.auditEvents.get(versionId) ?? [];
+    const key = this.buildKey(assetId, versionId);
+    const events = this.auditEvents.get(key) ?? [];
     events.push({
       action,
       actorSubject,
       assetId,
+      ...(request.evidenceReference ? { evidenceReference: request.evidenceReference } : {}),
       operationId,
+      reason: request.reason,
       recordedAt: this.now(),
       versionId,
       ...(workflowId ? { workflowId } : {})
     });
-    this.auditEvents.set(versionId, events);
+    this.auditEvents.set(key, events);
   }
 }

@@ -117,6 +117,12 @@ These fields are more important than verbose free-text logs. Operators need mach
 
 Route-level request IDs must be propagated from the API surface into workflow start, storage operations, and audit events so a single upload or replay request can be reconstructed later.
 
+The checked-in API shell now also treats W3C Trace Context as part of that contract:
+
+- incoming `traceparent` headers are parsed and propagated
+- response headers echo the active `traceparent` plus `x-trace-id`
+- request logs and metrics carry trace IDs, request IDs, surface, scope, and outcome without logging raw bearer values
+
 ## 5. Trace boundaries
 
 The expected top-level trace path is:
@@ -128,6 +134,16 @@ Delivery requests should form a different trace family:
 `metadata lookup or signed URL generation` -> `CDN request` -> `derived origin fetch on miss`
 
 The delivery path must not appear to depend on the canonical source repository during ordinary derivative fetches.
+
+## 5.1 Built-in control-plane observability endpoints
+
+The shared API runtime should expose these unambiguous operational endpoints:
+
+- `/healthz` for liveness plus request and trace correlation proof
+- `/readyz` for dependency-backed readiness with per-boundary status and detail
+- `/metrics` for Prometheus text exposition of request counts, request duration totals, readiness status, and dependency status
+
+Those endpoints are part of the production contract. They must not return synthetic success when required dependencies are missing or unchecked.
 
 ## 6. Asset lineage observability
 
@@ -207,6 +223,20 @@ High-priority alerts include:
 
 Separate audit signals from routine application logs.
 
+Routine request logs should stay structured and machine-filterable. Minimum fields:
+
+- `service`
+- `surface`
+- `method`
+- `path`
+- `status_code`
+- `outcome`
+- `request_id`
+- `trace_id`
+- `tenant_id` and `service_namespace_id` where present
+
+Do not log raw `Authorization` headers, session cookies, or equivalent bearer values.
+
 Audit events should include:
 
 - upload session creation
@@ -228,6 +258,7 @@ A finished slice should show:
 - asset-lineage correlation fields
 - dashboard definitions or equivalent operational views
 - alert definitions for core failure modes
+- executable tests that prove `/healthz`, `/readyz`, `/metrics`, trace propagation, and log redaction behave as documented
 
 ## 11. References
 

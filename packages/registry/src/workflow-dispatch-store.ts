@@ -306,14 +306,30 @@ export class InMemoryWorkflowDispatchStore implements WorkflowDispatchStore {
     dispatch.lastAttemptAt = cloneDate(input.startedAt);
     dispatch.versionToken += 1;
 
+    const existingWorkflowRunId = this.workflowRunsByWorkflowId.get(input.workflowId);
+    const existingWorkflowRun = existingWorkflowRunId
+      ? this.workflowRunsById.get(existingWorkflowRunId)
+      : undefined;
+
     this.upsertWorkflowRun({
       assetVersionId: dispatch.assetVersionId,
-      createdAt: cloneDate(input.startedAt),
-      ...(input.currentPhase ? { currentPhase: input.currentPhase } : {}),
-      startedAt: cloneDate(input.startedAt),
-      state: 'queued',
+      createdAt: existingWorkflowRun?.createdAt
+        ? cloneDate(existingWorkflowRun.createdAt)
+        : cloneDate(input.startedAt),
+      ...(existingWorkflowRun?.state !== 'queued' && existingWorkflowRun?.currentPhase
+        ? { currentPhase: existingWorkflowRun.currentPhase }
+        : input.currentPhase
+          ? { currentPhase: input.currentPhase }
+          : {}),
+      startedAt: existingWorkflowRun?.startedAt
+        ? cloneDate(existingWorkflowRun.startedAt)
+        : cloneDate(input.startedAt),
+      state:
+        existingWorkflowRun && existingWorkflowRun.state !== 'queued'
+          ? existingWorkflowRun.state
+          : 'queued',
       updatedAt: cloneDate(input.startedAt),
-      workflowDispatchId: dispatch.dispatchId,
+      workflowDispatchId: existingWorkflowRun?.workflowDispatchId ?? dispatch.dispatchId,
       workflowId: input.workflowId,
       workflowTemplateId: dispatch.workflowTemplateId
     });

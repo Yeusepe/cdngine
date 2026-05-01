@@ -47,7 +47,7 @@ The registration flow maps onto the lifecycle like this:
 
 The important architectural rule is that processors and workflows run **after** canonicalization. They consume canonical source identity, not staging objects.
 
-Capability-owned normalization adapters follow the same rule. They may extract container inventory, canonical intermediates, fingerprints, or semantic relations after canonicalization, but unknown formats must still degrade to preserve-original plus digest evidence without blocking workflow dispatch. The generic asset workflow is the required floor: semantic normalization may enrich later steps, but it must not be required for strange formats to reach a safe canonical and processing-ready state.
+Capability-owned normalization adapters follow the same rule. They may extract container inventory, canonical intermediates, fingerprints, or semantic relations after canonicalization, but unknown formats must still degrade to preserve-original plus digest evidence without blocking workflow dispatch. The generic asset workflow is the required floor: semantic normalization may enrich later steps, but it must not be required for strange formats to reach a safe canonical and processing-ready state. In the worker runtime, that floor is a real preserve-original publish path: `asset-derivation-v1` materializes canonical source evidence, republishes the preserved original into the derived store, and writes a `generic-asset-default` manifest through the durable registry.
 
 ## 3. Template model
 

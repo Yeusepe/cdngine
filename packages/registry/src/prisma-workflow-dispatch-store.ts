@@ -277,28 +277,48 @@ export class PrismaWorkflowDispatchStore implements WorkflowDispatchStore {
         where: { id: input.dispatchId },
         select: { assetVersionId: true, workflowTemplateId: true }
       });
-
-      await tx.workflowRun.upsert({
-        where: { workflowId: input.workflowId },
-        update: {
-          assetVersionId: dispatch.assetVersionId,
-          currentPhase: input.currentPhase ?? null,
-          startedAt: input.startedAt,
-          state: WorkflowRunState.queued,
-          updatedAt: input.startedAt,
-          workflowDispatchId: input.dispatchId
-        },
-        create: {
-          assetVersionId: dispatch.assetVersionId,
-          currentPhase: input.currentPhase ?? null,
-          startedAt: input.startedAt,
-          state: WorkflowRunState.queued,
-          updatedAt: input.startedAt,
-          workflowDispatchId: input.dispatchId,
-          workflowId: input.workflowId,
-          workflowTemplateId: dispatch.workflowTemplateId
-        }
+      const existingRun = await tx.workflowRun.findUnique({
+        where: { workflowId: input.workflowId }
       });
+      const nextState =
+        existingRun &&
+        existingRun.state !== WorkflowRunState.queued
+          ? existingRun.state
+          : WorkflowRunState.queued;
+      const nextCurrentPhase =
+        existingRun &&
+        existingRun.state !== WorkflowRunState.queued &&
+        existingRun.currentPhase
+          ? existingRun.currentPhase
+          : input.currentPhase ?? null;
+      const nextStartedAt = existingRun?.startedAt ?? input.startedAt;
+
+      if (existingRun) {
+        await tx.workflowRun.update({
+          where: { workflowId: input.workflowId },
+          data: {
+            assetVersionId: dispatch.assetVersionId,
+            currentPhase: nextCurrentPhase,
+            startedAt: nextStartedAt,
+            state: nextState,
+            updatedAt: input.startedAt,
+            workflowDispatchId: existingRun.workflowDispatchId ?? input.dispatchId
+          }
+        });
+      } else {
+        await tx.workflowRun.create({
+          data: {
+            assetVersionId: dispatch.assetVersionId,
+            currentPhase: input.currentPhase ?? null,
+            startedAt: input.startedAt,
+            state: WorkflowRunState.queued,
+            updatedAt: input.startedAt,
+            workflowDispatchId: input.dispatchId,
+            workflowId: input.workflowId,
+            workflowTemplateId: dispatch.workflowTemplateId
+          }
+        });
+      }
     }, input.startedAt);
   }
 

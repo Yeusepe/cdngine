@@ -60,6 +60,17 @@ The minimum supported auth posture is:
 - server-side token or session validation through a pluggable authenticator adapter
 - server-side mapping from the validated identity into CDNgine subject, role, namespace, and tenant claims
 
+For deployments using the default Better Auth adapter, the runtime config surface should be explicit and secret-managed:
+
+- `CDNGINE_AUTH_BASE_URL`
+- `CDNGINE_AUTH_SECRET`
+- `CDNGINE_AUTH_TRUSTED_ORIGINS_JSON`
+- `CDNGINE_AUTH_SESSION_EXPIRES_IN_SECONDS`
+- `CDNGINE_AUTH_SESSION_UPDATE_AGE_SECONDS`
+- `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
+- `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
+- `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
+
 Authorization scope must come from the authenticated session and server-side policy mapping, not from ad hoc request headers supplied by the caller.
 
 Typical privileged operations that require tighter policy:

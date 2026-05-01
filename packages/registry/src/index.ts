@@ -14,11 +14,19 @@
  */
 
 export const registryPackageName = '@cdngine/registry';
+export * from './generic-asset-publication-store.js';
 export * from './image-publication-store.js';
+export * from './publication-target-store.js';
 export * from './prisma-client.js';
+export * from './prisma-generic-asset-publication-store.js';
+export * from './prisma-image-publication-store.js';
+export * from './prisma-publication-target-store.js';
 export * from './prisma-public-version-read-store.js';
+export * from './prisma-presentation-publication-store.js';
 export * from './prisma-upload-session-store.js';
+export * from './prisma-workflow-execution-store.js';
 export * from './prisma-workflow-dispatch-store.js';
 export * from './presentation-publication-store.js';
 export * from './schema-metadata.js';
+export * from './workflow-execution-store.js';
 export * from './workflow-dispatch-store.js';

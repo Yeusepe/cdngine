@@ -19,6 +19,8 @@ tags:
     description: Operator-initiated replay, quarantine, release, and purge actions.
   - name: diagnostics
     description: Workflow, publication, and storage diagnostics for a concrete version.
+  - name: audit
+    description: Operator-visible intervention history with recorded reasons and evidence references.
 paths:
   /v1/operator/assets/{assetId}/versions/{versionId}/reprocess:
     post:
@@ -30,6 +32,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AssetId'
         - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorActionRequest'
       responses:
         '202':
           description: Operator action accepted.
@@ -51,6 +59,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AssetId'
         - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorActionRequest'
       responses:
         '202':
           description: Operator action accepted.
@@ -72,6 +86,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AssetId'
         - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorActionRequest'
       responses:
         '202':
           description: Operator action accepted.
@@ -93,6 +113,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AssetId'
         - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorActionRequest'
       responses:
         '202':
           description: Operator action accepted.
@@ -125,6 +151,27 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/operator/assets/{assetId}/versions/{versionId}/audit:
+    get:
+      tags:
+        - audit
+      summary: Get operator audit history for an immutable version
+      description: Returns operator-visible intervention history with recorded reasons and evidence references.
+      operationId: getAssetVersionAudit
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Audit payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorAuditFeed'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     AssetId:
@@ -142,6 +189,20 @@ components:
       schema:
         type: string
   schemas:
+    OperatorActionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 600
+        evidenceReference:
+          type: string
+          minLength: 1
+          maxLength: 200
     OperatorActionAccepted:
       type: object
       additionalProperties: false
@@ -204,6 +265,56 @@ components:
             derivativeCount:
               type: integer
               minimum: 0
+    OperatorAuditEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+        - actorSubject
+        - assetId
+        - operationId
+        - reason
+        - recordedAt
+        - versionId
+      properties:
+        action:
+          type: string
+          enum:
+            - reprocess
+            - quarantine
+            - release
+            - purge
+        actorSubject:
+          type: string
+        assetId:
+          type: string
+        operationId:
+          type: string
+        reason:
+          type: string
+        evidenceReference:
+          type:
+            - string
+            - 'null'
+        recordedAt:
+          type: string
+          format: date-time
+        versionId:
+          type: string
+        workflowId:
+          type:
+            - string
+            - 'null'
+    OperatorAuditFeed:
+      type: object
+      additionalProperties: false
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperatorAuditEvent'
   responses:
     Problem:
       description: RFC 9457 problem detail.

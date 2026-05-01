@@ -13,3 +13,4 @@
  */
 
 export const operatorAppName = '@cdngine/operator';
+export * from './operator-app.js';

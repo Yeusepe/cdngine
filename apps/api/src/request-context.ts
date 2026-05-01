@@ -13,6 +13,7 @@
  */
 
 import type { MiddlewareHandler } from 'hono';
+import { resolveTraceContext } from '@cdngine/observability';
 
 import type { ApiEnv, RequestCorrelation, RequestedScope } from './api-types.js';
 import { ProblemDetailError, problemTypes } from './problem-details.js';
@@ -89,11 +90,13 @@ export function requestContextMiddleware(options: RequestContextOptions): Middle
     const assetId = readHeader(context.req.header('x-cdngine-asset-id'));
     const versionId = readHeader(context.req.header('x-cdngine-version-id'));
     const workflowId = readHeader(context.req.header('x-cdngine-workflow-id'));
+    const trace = resolveTraceContext(context.req.raw.headers);
 
     context.set('requestId', requestId);
     context.set('requestStartedAt', startedAt);
     context.set('requestDeadlineAt', deadlineAt);
     context.set('requestSignal', controller.signal);
+    context.set('trace', trace);
     const requestedScope = createRequestedScope(serviceNamespaceId, tenantId);
     const correlation = createCorrelation(
       requestId,
@@ -107,6 +110,8 @@ export function requestContextMiddleware(options: RequestContextOptions): Middle
     context.set('requestedScope', requestedScope);
     context.set('correlation', correlation);
     context.header('x-request-id', requestId);
+    context.header('traceparent', trace.traceparent);
+    context.header('x-trace-id', trace.traceId);
 
     let timeoutId: NodeJS.Timeout | undefined;
 
@@ -141,6 +146,8 @@ export function getRequestLogContext(context: {
 }) {
   return {
     ...context.get('correlation'),
-    surface: context.get('surface')
+    spanId: context.get('trace').spanId,
+    surface: context.get('surface'),
+    traceId: context.get('trace').traceId
   };
 }

@@ -115,6 +115,14 @@ Those files are the checked-in answer to "how does one-bucket versus multi-bucke
 
 The intended environment variables are:
 
+- `CDNGINE_AUTH_BASE_URL`
+- `CDNGINE_AUTH_SECRET`
+- `CDNGINE_AUTH_TRUSTED_ORIGINS_JSON`
+- `CDNGINE_AUTH_SESSION_EXPIRES_IN_SECONDS`
+- `CDNGINE_AUTH_SESSION_UPDATE_AGE_SECONDS`
+- `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
+- `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
+- `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` or the split-bucket variables `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET`
 - `CDNGINE_INGEST_PREFIX`, `CDNGINE_SOURCE_PREFIX`, `CDNGINE_DERIVED_PREFIX`, `CDNGINE_EXPORTS_PREFIX`
@@ -126,6 +134,12 @@ The intended environment variables are:
 - `CDNGINE_KOPIA_EXECUTABLE`, `CDNGINE_KOPIA_WORKING_DIRECTORY`, `CDNGINE_KOPIA_TIMEOUT_MS`
 - `CDNGINE_DEPLOYMENT_PROFILE`
 - `CDNGINE_READINESS_REQUIRED`
+
+The runtime health surface for the API tier should expose:
+
+- `/healthz` for process liveness and request-correlation proof
+- `/readyz` for dependency-backed readiness, including auth, registry, cache, workflow, and storage checks
+- `/metrics` for Prometheus-compatible request and readiness metrics
 
 ### 2.1.2 Xet bridge rollout posture
 
@@ -218,12 +232,14 @@ Owns:
 - metadata and manifest APIs
 - signed delivery URL generation
 - operator command surfaces
+- `/healthz`, `/readyz`, and `/metrics`
 
 Expected properties:
 
 - stateless horizontal scaling
 - strict request timeouts
 - structured logging and trace propagation
+- real dependency-backed readiness rather than placeholder always-ready responses
 
 ### 4.1.1 Ingest tier
 
@@ -387,14 +403,20 @@ At minimum:
 
 The checked-in readiness loader currently models two default profiles:
 
-- `local-fast-start`: `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `oci-registry`
-- `production-default`: `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `derived-store`, `exports-store`
+- `local-fast-start`: `auth`, `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `oci-registry`
+- `production-default`: `auth`, `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `derived-store`, `exports-store`
 
 `source-repository` readiness should be interpreted as:
 
 - the configured Xet bridge command is runnable within `CDNGINE_XET_TIMEOUT_MS` when the deployment is following the Xet default
 - the backing source bucket or prefix is reachable
 - the temporary Kopia lane is still restorable anywhere legacy reads or emergency fallback still matter
+
+`auth` readiness should be interpreted as:
+
+- the configured bearer-token validator or Better Auth session path can validate a request without falling back to anonymous access
+- runtime auth secrets and trusted-origins settings are present through the deployment system rather than ad hoc local defaults
+- request logs and metrics stay free of raw bearer-token material
 
 `CDNGINE_READINESS_REQUIRED` may narrow or widen those gates, but operators should not drop the source-plane checks casually during migration.
 

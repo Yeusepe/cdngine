@@ -17,8 +17,16 @@ The goal is not to freeze one orchestrator or one hosting product. The goal is t
 
 ## Runtime config surface
 
-The storage package now resolves these environment variables into one typed logical storage layout:
+The auth and storage packages now resolve these environment variables into the checked-in runtime config surface:
 
+- `CDNGINE_AUTH_BASE_URL`
+- `CDNGINE_AUTH_SECRET`
+- `CDNGINE_AUTH_TRUSTED_ORIGINS_JSON`
+- `CDNGINE_AUTH_SESSION_EXPIRES_IN_SECONDS`
+- `CDNGINE_AUTH_SESSION_UPDATE_AGE_SECONDS`
+- `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
+- `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
+- `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` for one-bucket deployments
 - `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET` for multi-bucket deployments
@@ -72,11 +80,12 @@ The readiness loader has two built-in profiles:
 
 | Profile | Default required dependencies |
 | --- | --- |
-| `local-fast-start` | `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `oci-registry` |
-| `production-default` | `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `derived-store`, `exports-store` |
+| `local-fast-start` | `auth`, `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `oci-registry` |
+| `production-default` | `auth`, `postgres`, `redis`, `temporal`, `tusd`, `source-repository`, `derived-store`, `exports-store` |
 
 `CDNGINE_READINESS_REQUIRED` can override either profile, but the normal production examples should still prove:
 
+- the configured auth adapter can validate bearer-backed sessions with deployment-managed secrets and trusted origins
 - the Xet bridge command is runnable within the configured timeout
 - the source backing bucket or prefix is reachable for canonicalization and reconstruction
 - derived and exports origins are reachable in the `production-default` profile
@@ -84,11 +93,22 @@ The readiness loader has two built-in profiles:
 
 Treat `source-repository` readiness as a runtime-factory contract, not as a promise that the repo already ships a dedicated Xet service.
 
+## Runtime verification endpoints
+
+Production API deployments should expose:
+
+- `/healthz`
+- `/readyz`
+- `/metrics`
+
+Cutover is incomplete if those endpoints are missing or if `/readyz` is backed only by placeholder success.
+
 ## Secrets posture
 
 These example files intentionally exclude secrets. Real deployments still need:
 
 - database credentials
+- auth secret material
 - Redis credentials when enabled
 - Temporal credentials or mTLS material when managed Temporal is used
 - object-storage access keys or IAM-based equivalents

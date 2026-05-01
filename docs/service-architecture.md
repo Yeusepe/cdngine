@@ -74,7 +74,7 @@ The important distinction is:
 
 Clients do **not** upload directly to the source repository by default.
 
-At this boundary, byte-level source dedupe is universal: every successfully canonicalized upload should produce engine-neutral source evidence whether or not CDNgine has semantic understanding of the format. Semantic normalization remains optional and capability-owned after canonicalization, and unknown formats must still proceed through the generic asset workflow with preserve-original plus digest evidence.
+At this boundary, byte-level source dedupe is universal: every successfully canonicalized upload should produce engine-neutral source evidence whether or not CDNgine has semantic understanding of the format. Semantic normalization remains optional and capability-owned after canonicalization, and unknown formats must still proceed through the generic asset workflow with preserve-original plus digest evidence. The worker path for that fallback is now explicit: canonical source evidence is materialized inside the worker, the preserved original is republished into the derived store, and the registry advances the version with a `generic-asset-default` manifest rather than a route-local shortcut.
 
 The critical boundary is between:
 

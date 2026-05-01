@@ -541,18 +541,26 @@ test('operator conformance preserves audited quarantine and release behavior', a
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/quarantine',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(defaultOperator.token)
+      headers: createJsonBearerHeaders(defaultOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'security://scan-123',
+        reason: 'Quarantine the published asset while suspicious output is investigated.'
+      })
     }
   );
   const releaseResponse = await app.request(
     'http://localhost/v1/operator/assets/ast_001/versions/ver_001/release',
     {
       method: 'POST',
-      headers: createJsonBearerHeaders(secondaryOperator.token)
+      headers: createJsonBearerHeaders(secondaryOperator.token),
+      body: JSON.stringify({
+        evidenceReference: 'review://operator-approve-456',
+        reason: 'Release the asset after operator review cleared the prior quarantine.'
+      })
     }
   );
   const diagnostics = await store.getDiagnostics('ast_001', 'ver_001');
-  const auditEvents = await store.getAuditEvents('ver_001');
+  const auditEvents = await store.getAuditEvents('ast_001', 'ver_001');
 
   assert.equal(quarantineResponse.status, 202);
   assert.equal(releaseResponse.status, 202);

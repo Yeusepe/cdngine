@@ -113,10 +113,12 @@ Clients should not need to know which bucket, prefix, cache, or repository path 
 - `POST /v1/operator/assets/{assetId}/versions/{versionId}/release`
 - `POST /v1/operator/assets/{assetId}/versions/{versionId}/purge`
 - `GET /v1/operator/assets/{assetId}/versions/{versionId}/diagnostics`
+- `GET /v1/operator/assets/{assetId}/versions/{versionId}/audit`
 - `npm run source:migration -- inventory`
 - `npm run source:migration -- recanonicalize`
 
 The current source-engine migration surface is intentionally an operator CLI rather than a public or product-facing HTTP API. It inventories legacy `repositoryEngine = kopia` rows, flags canonical rows that are missing `repositoryEngine`, and can perform an explicit Xet re-canonicalization rehearsal that leaves the original registry evidence untouched.
+Operator mutation requests should carry an explicit recorded reason, and may attach an incident, review, or evidence reference that the operator audit surface can render later.
 
 ## 6. Public contract guarantees
 

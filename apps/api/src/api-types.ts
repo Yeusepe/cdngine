@@ -14,6 +14,7 @@
 
 import type { Hono } from 'hono';
 import type { AuthenticatedActor as SharedAuthenticatedActor } from '@cdngine/auth';
+import type { TraceContext } from '@cdngine/observability';
 
 export type ApiSurface = 'public' | 'platform-admin' | 'operator';
 export type AuthenticatedActor = SharedAuthenticatedActor;
@@ -41,6 +42,7 @@ export interface ApiVariables {
   requestStartedAt: Date;
   requestedScope: RequestedScope;
   surface?: ApiSurface;
+  trace: TraceContext;
   validatedBody?: unknown;
 }
 

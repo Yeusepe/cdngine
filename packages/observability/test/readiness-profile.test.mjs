@@ -20,6 +20,7 @@ test('loadReadinessProfileFromEnvironment provides local fast-start defaults', (
   assert.deepEqual(loadReadinessProfileFromEnvironment({}), {
     deploymentProfile: 'local-fast-start',
     requiredDependencies: [
+      'auth',
       'postgres',
       'redis',
       'temporal',
@@ -34,11 +35,18 @@ test('loadReadinessProfileFromEnvironment accepts explicit dependency overrides'
   assert.deepEqual(
     loadReadinessProfileFromEnvironment({
       CDNGINE_DEPLOYMENT_PROFILE: 'production-default',
-      CDNGINE_READINESS_REQUIRED: 'postgres,redis,temporal,derived-store,exports-store'
+      CDNGINE_READINESS_REQUIRED: 'auth,postgres,redis,temporal,derived-store,exports-store'
     }),
     {
       deploymentProfile: 'production-default',
-      requiredDependencies: ['postgres', 'redis', 'temporal', 'derived-store', 'exports-store']
+      requiredDependencies: [
+        'auth',
+        'postgres',
+        'redis',
+        'temporal',
+        'derived-store',
+        'exports-store'
+      ]
     }
   );
 });

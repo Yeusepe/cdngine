@@ -17,6 +17,12 @@
 
 import { Hono } from 'hono';
 import type { RequestActorAuthenticator } from '@cdngine/auth';
+import {
+  InMemoryApiObservability,
+  type ApiObservability,
+  type RuntimeReadinessMonitor,
+  type RuntimeReadinessReport
+} from '@cdngine/observability';
 
 import { assertAuthorizedScope, authenticationMiddleware } from './auth.js';
 import type { ApiEnv, ApiSurface, SurfaceRouteRegistrar } from './api-types.js';
@@ -25,11 +31,28 @@ import { requestContextMiddleware } from './request-context.js';
 
 export interface CreateApiAppOptions {
   auth?: RequestActorAuthenticator;
+  readiness?: RuntimeReadinessMonitor;
   registerCapabilityRoutes?: SurfaceRouteRegistrar;
   registerOperatorRoutes?: SurfaceRouteRegistrar;
   registerPlatformAdminRoutes?: SurfaceRouteRegistrar;
   registerPublicRoutes?: SurfaceRouteRegistrar;
   requestTimeoutMs?: number;
+  serviceName?: string;
+  serviceVersion?: string;
+  telemetry?: ApiObservability;
+}
+
+const defaultApiServiceName = '@cdngine/api';
+
+function createDefaultReadinessReport(): RuntimeReadinessReport {
+  return {
+    checkedAt: new Date(),
+    degradedBoundaries: [],
+    dependencies: [],
+    deploymentProfile: 'local-fast-start',
+    failedBoundaries: [],
+    status: 'ready'
+  };
 }
 
 function createSurfaceApp(
@@ -56,20 +79,98 @@ function createSurfaceApp(
 
 export function createApiApp(options: CreateApiAppOptions = {}) {
   const app = new Hono<ApiEnv>();
+  const serviceName = options.serviceName?.trim() || defaultApiServiceName;
+  const serviceVersion = options.serviceVersion?.trim() || process.env.npm_package_version || '0.1.0';
+  const telemetry = options.telemetry ?? new InMemoryApiObservability({ service: serviceName });
+  const bootedAt = new Date();
 
   app.use('*', requestContextMiddleware({ timeoutMs: options.requestTimeoutMs ?? 5_000 }));
+  app.use('*', async (context, next) => {
+    let mappedProblem:
+      | ReturnType<typeof mapUnknownErrorToProblem>
+      | undefined;
+
+    try {
+      await next();
+    } catch (error) {
+      mappedProblem = mapUnknownErrorToProblem(error);
+      throw error;
+    } finally {
+      const actorSubject = context.get('actor')?.subject;
+      const correlation = context.get('correlation');
+
+      await telemetry.recordRequest({
+        durationMs: Date.now() - context.get('requestStartedAt').getTime(),
+        method: context.req.method.toUpperCase(),
+        path: context.req.path,
+        requestId: context.get('requestId'),
+        requestStartedAt: context.get('requestStartedAt'),
+        service: serviceName,
+        statusCode: context.res?.status ?? mappedProblem?.status ?? 500,
+        surface: context.get('surface') ?? 'system',
+        traceId: context.get('trace').traceId,
+        ...(actorSubject ? { actorSubject } : {}),
+        ...(correlation.assetId ? { assetId: correlation.assetId } : {}),
+        ...(correlation.serviceNamespaceId
+          ? { serviceNamespaceId: correlation.serviceNamespaceId }
+          : {}),
+        ...(correlation.tenantId ? { tenantId: correlation.tenantId } : {}),
+        ...(correlation.versionId ? { versionId: correlation.versionId } : {}),
+        ...(correlation.workflowId ? { workflowId: correlation.workflowId } : {})
+      });
+    }
+  });
 
   app.get('/healthz', (context) =>
-    context.json({
-      status: 'ok',
-      requestId: context.get('requestId')
-    })
+    context.json(
+      {
+        requestId: context.get('requestId'),
+        service: serviceName,
+        status: 'ok',
+        traceId: context.get('trace').traceId,
+        uptimeSeconds: Math.max(0, Math.round((Date.now() - bootedAt.getTime()) / 1_000)),
+        version: serviceVersion
+      },
+      200,
+      {
+        'cache-control': 'no-store'
+      }
+    )
   );
 
-  app.get('/readyz', (context) =>
-    context.json({
-      status: 'ready',
-      requestId: context.get('requestId')
+  app.get('/readyz', async (context) => {
+    const report = options.readiness ? await options.readiness.check() : createDefaultReadinessReport();
+
+    telemetry.recordReadiness(report);
+    return context.json(
+      {
+        checkedAt: report.checkedAt.toISOString(),
+        degradedBoundaries: report.degradedBoundaries,
+        dependencies: report.dependencies.map((dependency) => ({
+          ...dependency,
+          checkedAt: dependency.checkedAt.toISOString()
+        })),
+        deploymentProfile: report.deploymentProfile,
+        failedBoundaries: report.failedBoundaries,
+        requestId: context.get('requestId'),
+        service: serviceName,
+        status: report.status,
+        traceId: context.get('trace').traceId
+      },
+      report.status === 'not-ready' ? 503 : 200,
+      {
+        'cache-control': 'no-store'
+      }
+    );
+  });
+
+  app.get('/metrics', () =>
+    new Response(telemetry.renderPrometheus(), {
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'text/plain; version=0.0.4; charset=utf-8'
+      },
+      status: 200
     })
   );
 

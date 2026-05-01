@@ -16,6 +16,7 @@ Primary exports:
 - `extractBearerToken(...)` for custom integrations that need the raw bearer token
 - `buildBearerHeaders(...)` for callers that need a request header helper
 - `createCDNgineAuth(...)` and `createBetterAuthAuthenticator(...)` for runtime integration with the default Better Auth adapter
+- `loadBetterAuthRuntimeConfigFromEnvironment(...)` and `createCDNgineAuthFromEnvironment(...)` for deployment-managed Better Auth bootstrapping
 - `createInMemoryCDNgineAuth(...)` and `createInMemoryBetterAuthAuthenticator(...)` for tests and the demo scenario generator
 
 CDNgine does **not** require Better Auth specifically. The public API only requires a `RequestActorAuthenticator` that can:

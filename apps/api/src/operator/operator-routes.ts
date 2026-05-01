@@ -13,12 +13,15 @@
  */
 
 import type { Hono } from 'hono';
+import { z } from 'zod';
 
 import type { ApiEnv } from '../api-types.js';
 import { ProblemDetailError, problemTypes } from '../problem-details.js';
+import { validateJsonBody } from '../validation.js';
 import {
   InMemoryOperatorControlStore,
   OperatorActionRejectedError,
+  type OperatorActionRequest,
   OperatorVersionNotFoundError,
   type OperatorControlStore
 } from './operator-service.js';
@@ -26,6 +29,11 @@ import {
 export interface OperatorRouteDependencies {
   store: OperatorControlStore;
 }
+
+export const operatorActionRequestSchema = z.object({
+  evidenceReference: z.string().trim().min(1).max(200).optional(),
+  reason: z.string().trim().min(1, 'Operator actions require a recorded reason.').max(600)
+});
 
 function getOperatorActor(context: {
   get: <TKey extends keyof ApiEnv['Variables']>(key: TKey) => ApiEnv['Variables'][TKey];
@@ -57,16 +65,17 @@ async function performOperatorAction(
   const actor = getOperatorActor(context);
   const assetId = context.req.param('assetId');
   const versionId = context.req.param('versionId');
+  const body = context.get('validatedBody') as OperatorActionRequest;
 
   try {
     const accepted =
       action === 'reprocess'
-        ? await store.reprocessVersion(assetId, versionId, actor.subject)
+        ? await store.reprocessVersion(assetId, versionId, actor.subject, body)
         : action === 'quarantine'
-          ? await store.quarantineVersion(assetId, versionId, actor.subject)
+          ? await store.quarantineVersion(assetId, versionId, actor.subject, body)
           : action === 'release'
-            ? await store.releaseVersion(assetId, versionId, actor.subject)
-            : await store.purgeVersion(assetId, versionId, actor.subject);
+            ? await store.releaseVersion(assetId, versionId, actor.subject, body)
+            : await store.purgeVersion(assetId, versionId, actor.subject, body);
 
     return context.json(accepted, 202);
   } catch (error) {
@@ -95,16 +104,16 @@ async function performOperatorAction(
 }
 
 export function registerOperatorRoutes(app: Hono<ApiEnv>, dependencies: OperatorRouteDependencies) {
-  app.post('/assets/:assetId/versions/:versionId/reprocess', (context) =>
+  app.post('/assets/:assetId/versions/:versionId/reprocess', validateJsonBody(operatorActionRequestSchema), (context) =>
     performOperatorAction(context, 'reprocess', dependencies.store)
   );
-  app.post('/assets/:assetId/versions/:versionId/quarantine', (context) =>
+  app.post('/assets/:assetId/versions/:versionId/quarantine', validateJsonBody(operatorActionRequestSchema), (context) =>
     performOperatorAction(context, 'quarantine', dependencies.store)
   );
-  app.post('/assets/:assetId/versions/:versionId/release', (context) =>
+  app.post('/assets/:assetId/versions/:versionId/release', validateJsonBody(operatorActionRequestSchema), (context) =>
     performOperatorAction(context, 'release', dependencies.store)
   );
-  app.post('/assets/:assetId/versions/:versionId/purge', (context) =>
+  app.post('/assets/:assetId/versions/:versionId/purge', validateJsonBody(operatorActionRequestSchema), (context) =>
     performOperatorAction(context, 'purge', dependencies.store)
   );
   app.get('/assets/:assetId/versions/:versionId/diagnostics', async (context) => {
@@ -123,6 +132,37 @@ export function registerOperatorRoutes(app: Hono<ApiEnv>, dependencies: Operator
     }
 
     return context.json(diagnostics);
+  });
+  app.get('/assets/:assetId/versions/:versionId/audit', async (context) => {
+    const assetId = context.req.param('assetId');
+    const versionId = context.req.param('versionId');
+    const diagnostics = await dependencies.store.getDiagnostics(assetId, versionId);
+
+    if (!diagnostics) {
+      throw new ProblemDetailError({
+        type: problemTypes.notFound,
+        title: 'Not found',
+        status: 404,
+        detail: `Version "${versionId}" for asset "${assetId}" does not exist.`,
+        retryable: false
+      });
+    }
+
+    const events = await dependencies.store.getAuditEvents(assetId, versionId);
+
+    return context.json({
+      events: events.map((event) => ({
+        action: event.action,
+        actorSubject: event.actorSubject,
+        assetId: event.assetId,
+        ...(event.evidenceReference ? { evidenceReference: event.evidenceReference } : {}),
+        operationId: event.operationId,
+        reason: event.reason,
+        recordedAt: event.recordedAt.toISOString(),
+        versionId: event.versionId,
+        ...(event.workflowId ? { workflowId: event.workflowId } : {})
+      }))
+    });
   });
 }
 

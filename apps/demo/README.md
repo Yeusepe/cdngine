@@ -1,6 +1,6 @@
 # Public Upload Client
 
-This workspace hosts the CDNgine public upload client for authenticated, multi-tenant uploads and downloads.
+This workspace hosts the CDNgine public product client for authenticated, multi-tenant uploads and public-read inspection.
 
 Its local runtime assembles the production public routes with one shared in-memory backing state for:
 
@@ -65,6 +65,8 @@ If you do not configure any storage buckets, the local stack generates its own b
 
 ## What the client now shows
 
+- configurable public upload scope inputs for `serviceNamespaceId`, `assetOwner`, and optional `tenantId`
 - the production upload lifecycle: issue session, PATCH upload target, complete session, and read the version
+- a version explorer that calls the public SDK methods for version reads, source authorization, manifest reads, derivative listing, and delivery authorization
 - raw API examples using generic bearer tokens against the public contract directly
 - SDK examples using `createCDNgineClient`, `client.withDefaults(...)`, `scopedClient.upload(...)`, `client.assets.get(...)`, and fluent `asset(...).version(...).delivery(...).authorize(...)` helpers

@@ -106,9 +106,10 @@ interface OutputWorkflowStore {
 Every implementation must:
 
 1. **Be idempotent within the scope of `idempotencyKey`.** Repeated calls with the same `idempotencyKey` must return the same `runId` and, once `state === 'complete'`, the same `url`.
-2. **Respect scope.** Output workflows receive the same authorization context as the base authorization step and must not serve content outside the authorized scope.
-3. **Declare async behavior explicitly.** If the implementation cannot complete synchronously within the authorization timeout, it must return `state: 'pending'` or `state: 'running'` — not block indefinitely.
-4. **Throw `UnknownOutputWorkflowError`** when `outputWorkflowId` is not registered. This maps to a 404 problem response.
+2. **Reject same-key semantic drift.** Reusing the same `idempotencyKey` with a different asset, version, authorization kind, delivery scope, output workflow ID, or output parameters must return `https://docs.cdngine.dev/problems/idempotency-key-conflict`.
+3. **Respect scope.** Output workflows receive the same authorization context as the base authorization step and must not serve content outside the authorized scope.
+4. **Declare async behavior explicitly.** If the implementation cannot complete synchronously within the authorization timeout, it must return `state: 'pending'` or `state: 'running'` — not block indefinitely.
+5. **Throw `UnknownOutputWorkflowError`** when `outputWorkflowId` is not registered. This maps to a 404 problem response.
 
 ## 5. Using `InMemoryOutputWorkflowStore` in tests
 

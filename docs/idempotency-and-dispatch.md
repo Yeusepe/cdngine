@@ -20,6 +20,8 @@ Durable idempotency evidence belongs in PostgreSQL. Redis may help with short de
 | --- | --- |
 | `POST /v1/upload-sessions` | caller scope + namespace + asset identity intent |
 | `POST /v1/upload-sessions/{id}/complete` | upload session + caller scope |
+| `POST /v1/assets/{assetId}/versions/{versionId}/source/authorize` | caller scope + asset version + source authorization posture |
+| `POST /v1/assets/{assetId}/versions/{versionId}/deliveries/{deliveryScopeId}/authorize` | caller scope + asset version + delivery scope + variant |
 | operator replay | asset version + replay reason |
 | operator quarantine | asset version + quarantine reason |
 | operator release | quarantine case + asset version |
@@ -51,6 +53,12 @@ Return a typed conflict response. This should map to a problem type such as `ide
 ### 4.3 Duplicate completion after workflow already exists
 
 Converge on the existing `WorkflowDispatch` or business-keyed Temporal workflow instead of starting parallel work.
+
+### 4.4 Duplicate public-read authorization
+
+Source and delivery authorization endpoints are mutating boundaries because they write grant and audit evidence. Durable public-read implementations must record authorization idempotency in PostgreSQL and replay the first response for the same semantic request.
+
+For one-time delivery or source links, a retry with the same idempotency key must return the same one-time URL, not mint a second grant. Reusing the same key with a different source disposition, delivery variant, delivery scope, asset, or version must return an idempotency-key conflict.
 
 ## 5. Dispatch contract
 

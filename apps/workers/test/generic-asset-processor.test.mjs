@@ -11,18 +11,17 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   WorkerGenericAssetProcessor,
   WorkerSourceMaterializer
 } from '../dist/index.js';
 
-const materializationRootPath =
-  'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\workers\\test-output';
-
 test('WorkerGenericAssetProcessor restores the canonical source and returns a publishable stream with canonical checksum evidence', async () => {
-  await rm(materializationRootPath, { force: true, recursive: true });
+  const materializationRootPath = await mkdtemp(join(tmpdir(), 'cdngine-worker-generic-'));
 
   const processor = new WorkerGenericAssetProcessor({
     materializer: new WorkerSourceMaterializer({
@@ -83,5 +82,5 @@ test('WorkerGenericAssetProcessor restores the canonical source and returns a pu
   assert.equal(result.byteLength, 23n);
   assert.equal(result.checksum?.value, 'source-sha');
 
-  await rm(materializationRootPath, { force: true, recursive: true });
+  await rm(materializationRootPath, { force: true, recursive: true, maxRetries: 3 });
 });

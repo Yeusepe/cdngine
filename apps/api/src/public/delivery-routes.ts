@@ -27,6 +27,7 @@ import {
   type PublicVersionReadStore
 } from './delivery-service.js';
 import {
+  OutputWorkflowIdempotencyConflictError,
   UnknownOutputWorkflowError,
   type OutputWorkflowStore,
   type OutputWorkflowTriggerContext
@@ -94,33 +95,55 @@ function buildCallerScopeKey(context: {
   return `${surface}:${actor.subject}`;
 }
 
+function hasErrorName(error: unknown, name: string) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === name
+  );
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'The public read operation failed.';
+}
+
 function mapPublicReadError(error: unknown): never {
-  if (error instanceof PublicAssetVersionNotFoundError) {
+  if (
+    error instanceof PublicAssetVersionNotFoundError ||
+    hasErrorName(error, 'RegistryPublicAssetVersionNotFoundError')
+  ) {
     throw new ProblemDetailError({
       type: problemTypes.notFound,
       title: 'Not found',
       status: 404,
-      detail: error.message,
+      detail: getErrorMessage(error),
       retryable: false
     });
   }
 
-  if (error instanceof PublicDownloadLinkNotFoundError) {
+  if (
+    error instanceof PublicDownloadLinkNotFoundError ||
+    hasErrorName(error, 'RegistryPublicDownloadLinkNotFoundError')
+  ) {
     throw new ProblemDetailError({
       type: problemTypes.notFound,
       title: 'Not found',
       status: 404,
-      detail: error.message,
+      detail: getErrorMessage(error),
       retryable: false
     });
   }
 
-  if (error instanceof PublicVersionNotReadyError) {
+  if (
+    error instanceof PublicVersionNotReadyError ||
+    hasErrorName(error, 'RegistryPublicVersionNotReadyError')
+  ) {
     throw new ProblemDetailError({
       type: problemTypes.versionNotReady,
       title: 'Version not ready',
       status: 409,
-      detail: error.message,
+      detail: getErrorMessage(error),
       retryable: true
     });
   }
@@ -131,6 +154,19 @@ function mapPublicReadError(error: unknown): never {
       title: 'Output workflow not found',
       status: 404,
       detail: error.message,
+      retryable: false
+    });
+  }
+
+  if (
+    error instanceof OutputWorkflowIdempotencyConflictError ||
+    hasErrorName(error, 'RegistryPublicReadIdempotencyConflictError')
+  ) {
+    throw new ProblemDetailError({
+      type: problemTypes.idempotencyKeyConflict,
+      title: 'Idempotency key conflict',
+      status: 409,
+      detail: getErrorMessage(error),
       retryable: false
     });
   }

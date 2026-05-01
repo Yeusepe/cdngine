@@ -11,8 +11,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, normalize } from 'node:path';
 
 import { createApiApp } from '../dist/api-app.js';
 import {
@@ -62,8 +63,16 @@ async function createPublicApp(store, { principalOverrides = {}, outputWorkflowS
   };
 }
 
-const sourceMaterializationRoot =
-  'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\api\\test-output\\source-materializations';
+async function createSourceMaterializationRoot() {
+  return mkdtemp(join(tmpdir(), 'cdngine-api-source-materializations-'));
+}
+
+function expectPathSuffix(path, segments) {
+  assert.ok(
+    normalize(path).endsWith(join(...segments)),
+    `expected ${path} to end with ${join(...segments)}`
+  );
+}
 
 test('public delivery routes expose published versions, derivatives, manifests, and authorization handles', async () => {
   const store = new InMemoryPublicVersionReadStore({
@@ -190,7 +199,7 @@ test('public delivery routes expose published versions, derivatives, manifests, 
 });
 
 test('source authorization materializes legacy Kopia-backed canonical evidence into the export path during migration', async () => {
-  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+  const sourceMaterializationRoot = await createSourceMaterializationRoot();
 
   const sourceRestores = [];
   const exportPublications = [];
@@ -310,11 +319,11 @@ test('source authorization materializes legacy Kopia-backed canonical evidence i
   );
   assert.equal(exportPublications[0]?.streamedBody, 'legacy-source-bytes');
 
-  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+  await rm(sourceMaterializationRoot, { force: true, recursive: true, maxRetries: 3 });
 });
 
 test('source authorization sanitizes persisted filenames for materialization and streams exports without buffering', async () => {
-  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+  const sourceMaterializationRoot = await createSourceMaterializationRoot();
 
   const sourceRestores = [];
   const exportPublications = [];
@@ -427,14 +436,15 @@ test('source authorization sanitizes persisted filenames for materialization and
     url: 'https://downloads.cdngine.local/source-downloads/media-platform/ast_legacy_unsafe/ver_legacy_unsafe/legacy-source.psd',
     versionId: 'ver_legacy_unsafe'
   });
-  assert.match(
-    sourceRestores[0]?.destinationPath ?? '',
-    /source-materializations\\ast_legacy_unsafe\\ver_legacy_unsafe\\legacy-source\.psd$/
-  );
+  expectPathSuffix(sourceRestores[0]?.destinationPath ?? '', [
+    'ast_legacy_unsafe',
+    'ver_legacy_unsafe',
+    'legacy-source.psd'
+  ]);
   assert.equal(typeof exportPublications[0]?.body?.pipe, 'function');
   assert.equal(exportPublications[0]?.streamedBody, 'streamed-legacy-source');
 
-  await rm(sourceMaterializationRoot, { force: true, recursive: true });
+  await rm(sourceMaterializationRoot, { force: true, recursive: true, maxRetries: 3 });
 });
 
 test('delivery routes can issue and consume one-time download links', async () => {
@@ -712,6 +722,64 @@ test('delivery routes deny callers outside the version tenant scope', async () =
   assert.equal(payload.type, 'https://docs.cdngine.dev/problems/scope-not-allowed');
 });
 
+test('delivery routes map durable registry idempotency conflicts to public problem details', async () => {
+  const registryConflict = new Error('Idempotency key was reused for different delivery parameters.');
+  registryConflict.name = 'RegistryPublicReadIdempotencyConflictError';
+  const store = {
+    async authorizeDelivery() {
+      throw registryConflict;
+    },
+    async authorizeSource() {
+      throw new Error('authorizeSource should not run in this test.');
+    },
+    async consumeDownloadLink() {
+      throw new Error('consumeDownloadLink should not run in this test.');
+    },
+    async getManifest() {
+      return null;
+    },
+    async getVersion() {
+      return {
+        assetId: 'ast_registry_conflict',
+        assetOwner: 'customer:acme',
+        lifecycleState: 'published',
+        serviceNamespaceId: 'media-platform',
+        source: {
+          byteLength: 128n,
+          contentType: 'application/zip',
+          filename: 'package.zip'
+        },
+        tenantId: 'tenant-acme',
+        versionId: 'ver_registry_conflict',
+        versionNumber: 1,
+        workflowState: 'completed'
+      };
+    },
+    async listDerivatives() {
+      return [];
+    }
+  };
+  const { app, headers } = await createPublicApp(store);
+
+  const response = await app.request(
+    'http://localhost/v1/assets/ast_registry_conflict/versions/ver_registry_conflict/deliveries/paid-downloads/authorize',
+    {
+      method: 'POST',
+      headers: headers({
+        'idempotency-key': 'idem-registry-conflict'
+      }),
+      body: JSON.stringify({
+        variant: 'preserve-original'
+      })
+    }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.type, 'https://docs.cdngine.dev/problems/idempotency-key-conflict');
+  assert.equal(payload.retryable, false);
+});
+
 // ---------------------------------------------------------------------------
 // Output-workflow tests
 // ---------------------------------------------------------------------------
@@ -815,6 +883,102 @@ test('source authorization with output workflow store replaces url and adds outp
   assert.equal(payload.outputWorkflowRun.state, 'complete');
   assert.equal(payload.outputWorkflowRun.url, 'https://transforms.cdngine.local/output/owrun_001');
   assert.equal(payload.outputWorkflowRun.outputWorkflowId, 'license-inject-v1');
+});
+
+test('source authorization with output workflow store replays the same run for the same idempotency key', async () => {
+  const store = buildOutputWorkflowStore();
+  const runIds = ['owrun_retry_001', 'owrun_retry_002'];
+  const outputWorkflowStore = new InMemoryOutputWorkflowStore({
+    handlers: new Map([
+      [
+        'license-inject-v1',
+        createImmediateOutputWorkflowHandler(
+          (_ctx, runId) => `https://transforms.cdngine.local/output/${runId}`
+        )
+      ]
+    ]),
+    runIdFactory: () => runIds.shift() ?? 'owrun_unexpected'
+  });
+  const { app, headers } = await createPublicApp(store, { outputWorkflowStore });
+  const request = {
+    method: 'POST',
+    headers: headers({ 'idempotency-key': 'idem-output-retry' }),
+    body: JSON.stringify({
+      outputWorkflow: {
+        outputWorkflowId: 'license-inject-v1',
+        outputParameters: { licenseKey: 'XXXX-YYYY', licensee: 'Acme Corp' }
+      }
+    })
+  };
+
+  const firstResponse = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    request
+  );
+  const secondResponse = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    request
+  );
+  const firstPayload = await firstResponse.json();
+  const secondPayload = await secondResponse.json();
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  assert.equal(firstPayload.outputWorkflowRun.runId, 'owrun_retry_001');
+  assert.equal(secondPayload.outputWorkflowRun.runId, 'owrun_retry_001');
+  assert.equal(secondPayload.url, 'https://transforms.cdngine.local/output/owrun_retry_001');
+  assert.deepEqual(runIds, ['owrun_retry_002']);
+});
+
+test('source authorization with output workflow store rejects idempotency key reuse for different output parameters', async () => {
+  const store = buildOutputWorkflowStore();
+  const outputWorkflowStore = new InMemoryOutputWorkflowStore({
+    handlers: new Map([
+      [
+        'license-inject-v1',
+        createImmediateOutputWorkflowHandler(
+          (_ctx, runId) => `https://transforms.cdngine.local/output/${runId}`
+        )
+      ]
+    ]),
+    runIdFactory: () => 'owrun_conflict_001'
+  });
+  const { app, headers } = await createPublicApp(store, { outputWorkflowStore });
+
+  const firstResponse = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers({ 'idempotency-key': 'idem-output-conflict' }),
+      body: JSON.stringify({
+        outputWorkflow: {
+          outputWorkflowId: 'license-inject-v1',
+          outputParameters: { licenseKey: 'XXXX-YYYY' }
+        }
+      })
+    }
+  );
+  const secondResponse = await app.request(
+    'http://localhost/v1/assets/ast_ow1/versions/ver_ow1/source/authorize',
+    {
+      method: 'POST',
+      headers: headers({ 'idempotency-key': 'idem-output-conflict' }),
+      body: JSON.stringify({
+        outputWorkflow: {
+          outputWorkflowId: 'license-inject-v1',
+          outputParameters: { licenseKey: 'DIFFERENT-KEY' }
+        }
+      })
+    }
+  );
+  const secondPayload = await secondResponse.json();
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 409);
+  assert.equal(
+    secondPayload.type,
+    'https://docs.cdngine.dev/problems/idempotency-key-conflict'
+  );
 });
 
 test('delivery authorization with output workflow store replaces url and adds outputWorkflowRun', async () => {

@@ -12,7 +12,7 @@
  * - packages/registry/test/prisma-upload-session-store.test.mjs
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { AssetVersionState, ResolvedOrigin } from './generated/prisma/enums.js';
 import type { Prisma } from './generated/prisma/client.js';
@@ -170,6 +170,136 @@ function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
   return String(value);
 }
 
+function stableJson(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === 'number') {
+    return JSON.stringify(Number.isFinite(value) ? value : String(value));
+  }
+
+  if (typeof value === 'bigint') {
+    return JSON.stringify(value.toString());
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  }
+
+  if (typeof value === 'object' && value !== undefined) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(String(value));
+}
+
+function hashAuthorizationRequest(value: Record<string, unknown>) {
+  return createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function buildDeliveryAuthorizationOperationKey(input: {
+  assetId: string;
+  deliveryScopeId: string;
+  versionId: string;
+}) {
+  return `delivery:authorize:${input.assetId}:${input.versionId}:${input.deliveryScopeId}`;
+}
+
+function buildSourceAuthorizationOperationKey(input: { assetId: string; versionId: string }) {
+  return `source:authorize:${input.assetId}:${input.versionId}`;
+}
+
+function buildAuthorizationResponsePayload(
+  record: RegistryDeliveryAuthorizationRecord | RegistrySourceAuthorizationRecord
+) {
+  return {
+    ...record,
+    expiresAt: record.expiresAt.toISOString()
+  };
+}
+
+function readReplayRecord(
+  value: Prisma.JsonValue | null | undefined
+): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readReplayString(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Authorization idempotency replay is missing "${key}".`);
+  }
+  return value;
+}
+
+function readReplayBoolean(record: Record<string, unknown>, key: string) {
+  return record[key] === true ? true : undefined;
+}
+
+function readReplayNumber(record: Record<string, unknown>, key: string) {
+  return typeof record[key] === 'number' ? record[key] : undefined;
+}
+
+function buildDeliveryAuthorizationReplay(
+  payload: Prisma.JsonValue | null | undefined
+): RegistryDeliveryAuthorizationRecord {
+  const record = readReplayRecord(payload);
+  if (!record) {
+    throw new Error('Delivery authorization idempotency record is missing a replay payload.');
+  }
+  const remainingUses = readReplayNumber(record, 'remainingUses');
+
+  return {
+    assetId: readReplayString(record, 'assetId'),
+    authorizationMode: readReplayString(record, 'authorizationMode') as RegistryDeliveryAuthorizationMode,
+    deliveryScopeId: readReplayString(record, 'deliveryScopeId'),
+    expiresAt: new Date(readReplayString(record, 'expiresAt')),
+    ...(readReplayBoolean(record, 'oneTime') ? { oneTime: true } : {}),
+    ...(remainingUses !== undefined ? { remainingUses } : {}),
+    resolvedOrigin: readReplayString(record, 'resolvedOrigin') as Extract<
+      RegistryDeliveryResolvedOrigin,
+      'cdn-derived' | 'origin-derived'
+    >,
+    url: readReplayString(record, 'url'),
+    versionId: readReplayString(record, 'versionId')
+  };
+}
+
+function buildSourceAuthorizationReplay(
+  payload: Prisma.JsonValue | null | undefined
+): RegistrySourceAuthorizationRecord {
+  const record = readReplayRecord(payload);
+  if (!record) {
+    throw new Error('Source authorization idempotency record is missing a replay payload.');
+  }
+  const remainingUses = readReplayNumber(record, 'remainingUses');
+
+  return {
+    assetId: readReplayString(record, 'assetId'),
+    authorizationMode: readReplayString(record, 'authorizationMode') as RegistryDeliveryAuthorizationMode,
+    expiresAt: new Date(readReplayString(record, 'expiresAt')),
+    ...(readReplayBoolean(record, 'oneTime') ? { oneTime: true } : {}),
+    ...(remainingUses !== undefined ? { remainingUses } : {}),
+    resolvedOrigin: readReplayString(record, 'resolvedOrigin') as Extract<
+      RegistryDeliveryResolvedOrigin,
+      'source-export' | 'source-proxy' | 'lazy-read-cache'
+    >,
+    ...(typeof record.tenantId === 'string' ? { tenantId: record.tenantId } : {}),
+    url: readReplayString(record, 'url'),
+    versionId: readReplayString(record, 'versionId')
+  };
+}
+
 function mapLifecycleState(state: string): RegistryPublicLifecycleState {
   switch (state) {
     case AssetVersionState.canonical:
@@ -220,6 +350,13 @@ export class RegistryPublicDownloadLinkNotFoundError extends Error {
   }
 }
 
+export class RegistryPublicReadIdempotencyConflictError extends Error {
+  constructor(readonly idempotencyKey: string) {
+    super(`Idempotency key "${idempotencyKey}" was reused for a different public-read authorization request.`);
+    this.name = 'RegistryPublicReadIdempotencyConflictError';
+  }
+}
+
 export class PrismaPublicVersionReadStore {
   constructor(
     private readonly options: {
@@ -238,6 +375,31 @@ export class PrismaPublicVersionReadStore {
     variant: string,
     request: RegistryPublicAuthorizationRequest
   ): Promise<RegistryDeliveryAuthorizationRecord> {
+    const operationKey = buildDeliveryAuthorizationOperationKey({
+      assetId,
+      deliveryScopeId,
+      versionId
+    });
+    const normalizedOperationKey = `${operationKey}:${variant}:${request.oneTime === true ? 'one-time' : 'reusable'}`;
+    const normalizedRequestHash = hashAuthorizationRequest({
+      assetId,
+      authorizationFamily: 'delivery',
+      deliveryScopeId,
+      oneTime: request.oneTime === true,
+      variant,
+      versionId
+    });
+    const replay = await this.loadDeliveryAuthorizationReplay({
+      callerScopeKey: request.callerScopeKey,
+      idempotencyKey: request.idempotencyKey,
+      normalizedRequestHash,
+      operationKey
+    });
+
+    if (replay) {
+      return replay;
+    }
+
     const derivative = await this.prisma.derivative.findFirst({
       where: {
         assetVersionId: versionId,
@@ -267,27 +429,7 @@ export class PrismaPublicVersionReadStore {
     const expiresAt = new Date(request.now.getTime() + 15 * 60_000);
     const directUrl = this.buildDeliveryUrl(derivative.deliveryScope, derivative.storageKey);
     const token = request.oneTime ? randomUUID() : undefined;
-
-    await this.prisma.deliveryAuthorizationAudit.create({
-      data: {
-        actorScopeKey: request.callerScopeKey,
-        assetVersionId: versionId,
-        authorizationFamily: 'delivery',
-        authorizationMode: 'signed_url',
-        deliveryScopeId,
-        expiresAt,
-        ...(token ? { grantId: token } : {}),
-        requestMetadata: toInputJsonValue({
-          idempotencyKey: request.idempotencyKey,
-          oneTime: request.oneTime ?? false,
-          url: directUrl,
-          variant
-        }),
-        resolvedOrigin: 'cdn_derived'
-      }
-    });
-
-    return {
+    const authorization: RegistryDeliveryAuthorizationRecord = {
       assetId,
       authorizationMode: 'signed-url',
       deliveryScopeId,
@@ -297,6 +439,55 @@ export class PrismaPublicVersionReadStore {
       url: token ? `/download-links/${token}` : directUrl,
       versionId
     };
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.deliveryAuthorizationAudit.create({
+          data: {
+            actorScopeKey: request.callerScopeKey,
+            assetVersionId: versionId,
+            authorizationFamily: 'delivery',
+            authorizationMode: 'signed_url',
+            deliveryScopeId,
+            expiresAt,
+            ...(token ? { grantId: token } : {}),
+            requestMetadata: toInputJsonValue({
+              idempotencyKey: request.idempotencyKey,
+              oneTime: request.oneTime ?? false,
+              url: directUrl,
+              variant
+            }),
+            resolvedOrigin: 'cdn_derived'
+          }
+        });
+        await this.persistAuthorizationIdempotencyRecord(tx, {
+          callerScopeKey: request.callerScopeKey,
+          completedAt: request.now,
+          idempotencyKey: request.idempotencyKey,
+          normalizedOperationKey,
+          normalizedRequestHash,
+          operationKey,
+          responsePayload: buildAuthorizationResponsePayload(authorization)
+        });
+      });
+    } catch (error) {
+      if (this.isUniqueConstraint(error)) {
+        const concurrentReplay = await this.loadDeliveryAuthorizationReplay({
+          callerScopeKey: request.callerScopeKey,
+          idempotencyKey: request.idempotencyKey,
+          normalizedRequestHash,
+          operationKey
+        });
+
+        if (concurrentReplay) {
+          return concurrentReplay;
+        }
+      }
+
+      throw error;
+    }
+
+    return authorization;
   }
 
   async authorizeSource(
@@ -305,6 +496,26 @@ export class PrismaPublicVersionReadStore {
     preferredDisposition: 'attachment' | 'inline' | undefined,
     request: RegistryPublicAuthorizationRequest
   ): Promise<RegistrySourceAuthorizationRecord> {
+    const operationKey = buildSourceAuthorizationOperationKey({ assetId, versionId });
+    const normalizedOperationKey = `${operationKey}:${preferredDisposition ?? 'default'}:${request.oneTime === true ? 'one-time' : 'reusable'}`;
+    const normalizedRequestHash = hashAuthorizationRequest({
+      assetId,
+      authorizationFamily: 'source',
+      oneTime: request.oneTime === true,
+      preferredDisposition: preferredDisposition ?? 'default',
+      versionId
+    });
+    const replay = await this.loadSourceAuthorizationReplay({
+      callerScopeKey: request.callerScopeKey,
+      idempotencyKey: request.idempotencyKey,
+      normalizedRequestHash,
+      operationKey
+    });
+
+    if (replay) {
+      return replay;
+    }
+
     const version = await this.getRequiredVersion(assetId, versionId);
 
     if (version.lifecycleState === 'quarantined' || version.lifecycleState === 'purged') {
@@ -314,39 +525,7 @@ export class PrismaPublicVersionReadStore {
     const expiresAt = new Date(request.now.getTime() + 15 * 60_000);
     const grantId = randomUUID();
     const proxyPath = `/v1/assets/${assetId}/versions/${versionId}/source/proxy?grantId=${grantId}${preferredDisposition ? `&disposition=${preferredDisposition}` : ''}`;
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.sourceAccessGrant.create({
-        data: {
-          actorScopeKey: request.callerScopeKey,
-          assetVersionId: versionId,
-          authorizationMode: 'proxy_url',
-          expiresAt,
-          id: grantId,
-          proxyPath,
-          resolvedOrigin: ResolvedOrigin.source_proxy
-        }
-      });
-      await tx.deliveryAuthorizationAudit.create({
-        data: {
-          actorScopeKey: request.callerScopeKey,
-          assetVersionId: versionId,
-          authorizationFamily: 'source',
-          authorizationMode: 'proxy_url',
-          expiresAt,
-          grantId,
-          requestMetadata: toInputJsonValue({
-            idempotencyKey: request.idempotencyKey,
-            preferredDisposition: preferredDisposition ?? 'default',
-            url: request.oneTime ? `/download-links/${grantId}` : proxyPath
-          }),
-          resolvedOrigin: 'source_proxy',
-          sourceAccessGrantId: grantId
-        }
-      });
-    });
-
-    return {
+    const authorization: RegistrySourceAuthorizationRecord = {
       assetId,
       authorizationMode: 'signed-url',
       expiresAt,
@@ -356,6 +535,65 @@ export class PrismaPublicVersionReadStore {
       url: request.oneTime ? `/download-links/${grantId}` : proxyPath,
       versionId
     };
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.sourceAccessGrant.create({
+          data: {
+            actorScopeKey: request.callerScopeKey,
+            assetVersionId: versionId,
+            authorizationMode: 'proxy_url',
+            expiresAt,
+            id: grantId,
+            proxyPath,
+            resolvedOrigin: ResolvedOrigin.source_proxy
+          }
+        });
+        await tx.deliveryAuthorizationAudit.create({
+          data: {
+            actorScopeKey: request.callerScopeKey,
+            assetVersionId: versionId,
+            authorizationFamily: 'source',
+            authorizationMode: 'proxy_url',
+            expiresAt,
+            grantId,
+            requestMetadata: toInputJsonValue({
+              idempotencyKey: request.idempotencyKey,
+              preferredDisposition: preferredDisposition ?? 'default',
+              url: authorization.url
+            }),
+            resolvedOrigin: 'source_proxy',
+            sourceAccessGrantId: grantId
+          }
+        });
+        await this.persistAuthorizationIdempotencyRecord(tx, {
+          callerScopeKey: request.callerScopeKey,
+          completedAt: request.now,
+          idempotencyKey: request.idempotencyKey,
+          normalizedOperationKey,
+          normalizedRequestHash,
+          operationKey,
+          responsePayload: buildAuthorizationResponsePayload(authorization)
+        });
+      });
+    } catch (error) {
+      if (this.isUniqueConstraint(error)) {
+        const concurrentReplay = await this.loadSourceAuthorizationReplay({
+          callerScopeKey: request.callerScopeKey,
+          idempotencyKey: request.idempotencyKey,
+          normalizedRequestHash,
+          operationKey
+        });
+
+        if (concurrentReplay) {
+          return concurrentReplay;
+        }
+      }
+
+      throw error;
+    }
+
+    return authorization;
   }
 
   async consumeDownloadLink(
@@ -595,5 +833,97 @@ export class PrismaPublicVersionReadStore {
     }
 
     return version;
+  }
+
+  private async loadDeliveryAuthorizationReplay(input: {
+    callerScopeKey: string;
+    idempotencyKey: string;
+    normalizedRequestHash: string;
+    operationKey: string;
+  }) {
+    const replayRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: {
+        apiSurface_callerScopeKey_operationKey_idempotencyKey: {
+          apiSurface: 'public',
+          callerScopeKey: input.callerScopeKey,
+          idempotencyKey: input.idempotencyKey,
+          operationKey: input.operationKey
+        }
+      }
+    });
+
+    if (!replayRecord) {
+      return undefined;
+    }
+
+    if (replayRecord.normalizedRequestHash !== input.normalizedRequestHash) {
+      throw new RegistryPublicReadIdempotencyConflictError(input.idempotencyKey);
+    }
+
+    return buildDeliveryAuthorizationReplay(replayRecord.responsePayload);
+  }
+
+  private async loadSourceAuthorizationReplay(input: {
+    callerScopeKey: string;
+    idempotencyKey: string;
+    normalizedRequestHash: string;
+    operationKey: string;
+  }) {
+    const replayRecord = await this.prisma.idempotencyRecord.findUnique({
+      where: {
+        apiSurface_callerScopeKey_operationKey_idempotencyKey: {
+          apiSurface: 'public',
+          callerScopeKey: input.callerScopeKey,
+          idempotencyKey: input.idempotencyKey,
+          operationKey: input.operationKey
+        }
+      }
+    });
+
+    if (!replayRecord) {
+      return undefined;
+    }
+
+    if (replayRecord.normalizedRequestHash !== input.normalizedRequestHash) {
+      throw new RegistryPublicReadIdempotencyConflictError(input.idempotencyKey);
+    }
+
+    return buildSourceAuthorizationReplay(replayRecord.responsePayload);
+  }
+
+  private async persistAuthorizationIdempotencyRecord(
+    tx: Prisma.TransactionClient,
+    input: {
+      callerScopeKey: string;
+      completedAt: Date;
+      idempotencyKey: string;
+      normalizedOperationKey: string;
+      normalizedRequestHash: string;
+      operationKey: string;
+      responsePayload: Record<string, unknown>;
+    }
+  ) {
+    await tx.idempotencyRecord.create({
+      data: {
+        apiSurface: 'public',
+        callerScopeKey: input.callerScopeKey,
+        completedAt: input.completedAt,
+        idempotencyKey: input.idempotencyKey,
+        isTerminal: true,
+        normalizedOperationKey: input.normalizedOperationKey,
+        normalizedRequestHash: input.normalizedRequestHash,
+        operationKey: input.operationKey,
+        responsePayload: toInputJsonValue(input.responsePayload)
+      }
+    });
+  }
+
+  private isUniqueConstraint(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 }

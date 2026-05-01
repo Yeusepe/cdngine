@@ -114,6 +114,16 @@ One transaction should:
 3. advance publication states
 4. move `AssetVersion` to `published` only when required publication evidence exists
 
+### 3.5 Public-read authorization
+
+One transaction should:
+
+1. create the source grant or delivery authorization audit row
+2. persist the first authorization response in `IdempotencyRecord`
+3. bind the idempotency record to the caller scope, operation key, normalized request hash, and final response payload
+
+Retries with the same semantic request must replay the stored payload. They must not create another one-time grant, source access grant, or delivery audit row.
+
 ## 4. Optimistic concurrency
 
 Mutable control-plane rows use explicit version columns or equivalent concurrency tokens.
@@ -138,6 +148,7 @@ The registry should enforce:
 - one deterministic derivative row per `(asset-version, recipe, schema-version, delivery-scope)`
 - one active manifest publication pointer per `(asset-version, manifest-type, delivery-scope)`
 - one durable authorization audit row per issued delivery or source-download grant when auditing is enabled
+- one public-read idempotency result per `(surface, caller-scope, authorization operation, idempotency-key)`
 
 ## 6. JSONB posture
 

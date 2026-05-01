@@ -56,6 +56,13 @@ export class UnknownOutputWorkflowError extends Error {
   }
 }
 
+export class OutputWorkflowIdempotencyConflictError extends Error {
+  constructor(readonly idempotencyKey: string) {
+    super(`Idempotency key "${idempotencyKey}" was reused for a different output workflow request.`);
+    this.name = 'OutputWorkflowIdempotencyConflictError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // In-memory fake for tests
 // ---------------------------------------------------------------------------
@@ -74,9 +81,54 @@ export interface InMemoryOutputWorkflowStoreOptions {
   runIdFactory?: () => string;
 }
 
+interface StoredOutputWorkflowRun {
+  fingerprint: string;
+  record: OutputWorkflowRunRecord;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .filter(([, entry]) => typeof entry !== 'undefined')
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function fingerprintOutputWorkflowRequest(context: OutputWorkflowTriggerContext) {
+  return stableJson({
+    assetId: context.assetId,
+    authorizationKind: context.authorizationKind,
+    ...(context.deliveryScopeId ? { deliveryScopeId: context.deliveryScopeId } : {}),
+    outputParameters: context.outputParameters ?? null,
+    outputWorkflowId: context.outputWorkflowId,
+    versionId: context.versionId
+  });
+}
+
+function cloneOutputWorkflowRunRecord(
+  record: OutputWorkflowRunRecord
+): OutputWorkflowRunRecord {
+  return {
+    ...(record.expiresAt ? { expiresAt: new Date(record.expiresAt) } : {}),
+    outputWorkflowId: record.outputWorkflowId,
+    runId: record.runId,
+    state: record.state,
+    ...(record.url ? { url: record.url } : {})
+  };
+}
+
 export class InMemoryOutputWorkflowStore implements OutputWorkflowStore {
   private readonly handlers: Map<string, InMemoryOutputWorkflowHandler>;
   private readonly runIdFactory: () => string;
+  private readonly runsByIdempotencyKey = new Map<string, StoredOutputWorkflowRun>();
 
   constructor(options: InMemoryOutputWorkflowStoreOptions = {}) {
     this.handlers = options.handlers ?? new Map();
@@ -86,6 +138,17 @@ export class InMemoryOutputWorkflowStore implements OutputWorkflowStore {
   async triggerOutputWorkflow(
     context: OutputWorkflowTriggerContext
   ): Promise<OutputWorkflowRunRecord> {
+    const fingerprint = fingerprintOutputWorkflowRequest(context);
+    const existing = this.runsByIdempotencyKey.get(context.idempotencyKey);
+
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new OutputWorkflowIdempotencyConflictError(context.idempotencyKey);
+      }
+
+      return cloneOutputWorkflowRunRecord(existing.record);
+    }
+
     const handler = this.handlers.get(context.outputWorkflowId);
 
     if (!handler) {
@@ -93,7 +156,13 @@ export class InMemoryOutputWorkflowStore implements OutputWorkflowStore {
     }
 
     const runId = this.runIdFactory();
-    return handler(context, runId);
+    const record = handler(context, runId);
+    this.runsByIdempotencyKey.set(context.idempotencyKey, {
+      fingerprint,
+      record: cloneOutputWorkflowRunRecord(record)
+    });
+
+    return cloneOutputWorkflowRunRecord(record);
   }
 }
 

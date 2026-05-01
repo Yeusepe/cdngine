@@ -11,7 +11,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, normalize } from 'node:path';
 
 import {
   WorkerSourceMaterializer,
@@ -35,11 +37,15 @@ class FakeRunner {
   }
 }
 
-const materializationRootPath =
-  'C:\\Users\\svalp\\OneDrive\\Documents\\Development\\antiwork\\cdngine\\apps\\workers\\test-output';
+function expectPathSuffix(path, segments) {
+  assert.ok(
+    normalize(path).endsWith(join(...segments)),
+    `expected ${path} to end with ${join(...segments)}`
+  );
+}
 
 test('WorkerSourceMaterializer restores Xet-backed and legacy Kopia-backed evidence through the runtime-selected source repository', async () => {
-  await rm(materializationRootPath, { force: true, recursive: true });
+  const materializationRootPath = await mkdtemp(join(tmpdir(), 'cdngine-worker-source-'));
 
   const runner = new FakeRunner(['{}']);
   const xetMaterializations = [];
@@ -103,9 +109,13 @@ test('WorkerSourceMaterializer restores Xet-backed and legacy Kopia-backed evide
     versionId: 'ver_legacy_001'
   });
 
-  assert.match(xetRestored.restoredPath, /ast_xet_001\\ver_xet_001\\model\.bin$/);
+  expectPathSuffix(xetRestored.restoredPath, ['ast_xet_001', 'ver_xet_001', 'model.bin']);
   assert.equal(xetMaterializations[0]?.snapshot.canonicalSourceId, 'xet_file_001');
-  assert.match(kopiaRestored.restoredPath, /ast_legacy_001\\ver_legacy_001\\legacy\.bin$/);
+  expectPathSuffix(kopiaRestored.restoredPath, [
+    'ast_legacy_001',
+    'ver_legacy_001',
+    'legacy.bin'
+  ]);
   assert.equal(runner.invocations[0]?.command, 'kopia');
   assert.deepEqual(runner.invocations[0]?.args.slice(0, 4), [
     'snapshot',
@@ -114,11 +124,11 @@ test('WorkerSourceMaterializer restores Xet-backed and legacy Kopia-backed evide
     kopiaRestored.restoredPath
   ]);
 
-  await rm(materializationRootPath, { force: true, recursive: true });
+  await rm(materializationRootPath, { force: true, recursive: true, maxRetries: 3 });
 });
 
 test('WorkerSourceMaterializer sanitizes persisted source filenames before materializing into the worker root', async () => {
-  await rm(materializationRootPath, { force: true, recursive: true });
+  const materializationRootPath = await mkdtemp(join(tmpdir(), 'cdngine-worker-source-'));
 
   const restores = [];
   const materializer = new WorkerSourceMaterializer({
@@ -159,8 +169,12 @@ test('WorkerSourceMaterializer sanitizes persisted source filenames before mater
     versionId: 'ver_unsafe'
   });
 
-  assert.match(restores[0]?.destinationPath ?? '', /ast_unsafe\\ver_unsafe\\worker-source\.tar$/);
+  expectPathSuffix(restores[0]?.destinationPath ?? '', [
+    'ast_unsafe',
+    'ver_unsafe',
+    'worker-source.tar'
+  ]);
   assert.equal(restored.restoredPath, restores[0]?.destinationPath);
 
-  await rm(materializationRootPath, { force: true, recursive: true });
+  await rm(materializationRootPath, { force: true, recursive: true, maxRetries: 3 });
 });

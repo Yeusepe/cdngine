@@ -49,6 +49,8 @@ The important architectural rule is that processors and workflows run **after** 
 
 Capability-owned normalization adapters follow the same rule. They may extract container inventory, canonical intermediates, fingerprints, or semantic relations after canonicalization, but unknown formats must still degrade to preserve-original plus digest evidence without blocking workflow dispatch. The generic asset workflow is the required floor: semantic normalization may enrich later steps, but it must not be required for strange formats to reach a safe canonical and processing-ready state. In the worker runtime, that floor is a real preserve-original publish path: `asset-derivation-v1` materializes canonical source evidence, republishes the preserved original into the derived store, and writes a `generic-asset-default` manifest through the durable registry.
 
+Split-history demotion is also post-canonicalization work. A background workflow or maintenance activity may inspect a logical asset stream, keep the current version whole, and demote older adapter-eligible archive versions into split-entry source evidence. That workflow must be idempotent: already split versions are skipped, current versions are never demoted, failed adapter validation records a retryable or terminal split status, and content-equivalent repack verification must pass before the split manifest is marked complete.
+
 ## 3. Template model
 
 The platform should prefer a small number of reusable workflow templates, for example:

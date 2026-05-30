@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && npm run build -w @cdngine/workflows && node ./scripts/dev.mjs",
+    "runtime:start": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && node ./scripts/start-public-runtime.mjs",
+    "ui:start": "npm run build -w @cdngine/sdk && vite --host 0.0.0.0",
     "build": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && npm run build -w @cdngine/workflows && tsc -b && vite build",
     "lint": "tsc -b --pretty false",
     "preview": "vite preview",
@@ -32,6 +34,7 @@
     ]
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
     "@cdngine/sdk": "0.1.0",
     "@fontsource-variable/geist": "^5.2.8",
     "react": "^19.2.4",

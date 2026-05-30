@@ -23,6 +23,7 @@ It should be possible to point from a major architectural promise to the docs, t
 | scoping is enforced programmatically rather than by naming convention | service-architecture docs, scoped repository tests, and security-model rules |
 | the canonical source repository is used as the deduplicated source plane rather than raw object keys | source topology docs, file-identity persistence, replay tests, and operator diagnostics |
 | Xet is the default canonical source engine for new canonicalizations while legacy Kopia-backed versions remain readable until migration/backfill/signoff retire them, and that rollout does not change `AssetVersion` identity semantics | source-plane strategy doc, ADR 0012, deployment and migration notes, implementation-ledger entry `xet-rollout-contract`, `npm run source:migration`, `scripts/source-migration.test.mjs`, storage contract tests, benchmark proof tests, and operator migration signoff evidence |
+| older archive-like versions can be split for source-plane dedupe while the current version remains whole and downloadable | source-plane strategy doc, canonical source and tiering contract, storage tiering docs, workflow-extensibility split demotion rules, implementation-ledger entry `split-history-artifact-policy`, `packages/storage/test/split-artifact-adapters.test.ts`, and `scripts/package-corpus-dedupe.test.mjs` |
 | single-bucket deployments preserve the same platform semantics through prefixes and policy | deployment docs, storage-contract docs, and integration tests against one-bucket fixtures |
 | SDKs feel code-first rather than like thin REST wrappers | OpenAPI and Arazzo artifacts, generated SDK outputs, and end-to-end upload examples |
 | lifecycle transitions are explicit and operator-visible | state-machine docs, API lifecycle fields, and workflow or repository tests |
@@ -33,6 +34,7 @@ It should be possible to point from a major architectural promise to the docs, t
 | contract artifacts are governed instead of ad hoc | spec-governance docs, lint outputs, example validation, and breaking-change review evidence |
 | operational targets are explicit | SLO docs, dashboards, alerts, and runbooks |
 | production control-plane hardening is real rather than demo-shaped | deployment docs, auth runtime config, `/healthz` + `/readyz` + `/metrics` tests, conformance execution in `npm run test`, and the production cutover runbook |
+| a complete local CDNgine runtime can be rebuilt from a checkout, vendored repository copy, or no-checkout GitHub Compose command without changing platform semantics, while the UI demo remains opt-in | `Dockerfile`, `deploy/local-platform/compose.instance.yaml`, `deploy/remote/compose.latest.yaml`, `npm run docker:start`, `npm run docker:start:demo`, `scripts/docker-instance.test.mjs`, and local-platform deployment docs |
 
 ## 2. Evidence categories
 

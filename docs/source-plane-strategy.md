@@ -47,6 +47,36 @@ When no capability-specific normalizer exists, the platform still accepts the fi
 - add generic container inventory only when container detection is proven
 - make no semantic claims beyond that evidence
 
+## 3.1 Split-history artifact policy
+
+CDNgine may use a second representation for older package-like source versions: keep the newest version as one whole downloadable artifact, then split older eligible versions into safe archive entries for source-plane dedupe and replay.
+
+This policy is **format-agnostic**. It is not a Unity-specific rule. A version is eligible only when an adapter can prove the container structure and can reconstruct an equivalent archive from split entries. The first checked-in adapters cover:
+
+- ZIP
+- tar
+- gzip-compressed tar, including `.tgz`
+- Unity `.unitypackage`, treated as a gzip-compressed tar container
+
+The policy rules are:
+
+1. keep the current version whole so the latest upload remains fast to download, mirror, and publish as an original-source export
+2. split only older eligible versions in the same logical asset stream, such as `v1`, `v2`, and `v3`
+3. persist the original archive digest, original archive byte length, entry digests, entry paths, adapter format, and reconstruction fidelity
+4. require content-equivalent reconstruction before treating split evidence as complete
+5. fall back to whole-file source storage for unknown formats, unsupported archive features, unsafe paths, encrypted entries, or adapter failures
+
+The current implementation target is content equivalence, not byte-for-byte archive identity. Repacked ZIP or tar output may differ in compression metadata, ordering details, or container headers while preserving the same normalized entry path and content digest tree.
+
+The benchmark harness `scripts/package-corpus-dedupe.mjs` can compare whole-archive storage with split-entry storage by running:
+
+```bash
+npm run build --workspace @cdngine/storage
+node scripts/package-corpus-dedupe.mjs --mode both
+```
+
+That script writes independent archive and split repositories under `scripts/test-output/package-corpus-xet-repo` so the stored-byte totals are not contaminated by cross-mode reuse.
+
 ## 4. Registry posture
 
 `AssetVersion` remains the business identity even when the source plane reuses bytes underneath.

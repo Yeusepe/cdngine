@@ -61,6 +61,15 @@ Preferred policy:
 4. let workers or trusted tools use lazy chunk-aware reads where it improves throughput
 5. evict materialized outputs when they are cheaper to rebuild than to store forever
 
+For archive-like source streams, CDNgine may apply split-history materialization:
+
+- keep the current source version as a whole artifact for fast original-source delivery and export reuse
+- demote older adapter-eligible versions into split entries inside the canonical source repository
+- reconstruct content-equivalent archives from split manifests when replay, audit, or download policy needs an older whole artifact
+- leave unsupported formats, unsafe archives, and current versions in whole-file form
+
+This policy is a source-plane storage optimization. It does not change the public `AssetVersion` identity, and it does not make split chunks a browser delivery API.
+
 ## 5. Default product posture
 
 The default product posture is:

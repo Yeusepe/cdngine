@@ -19,6 +19,7 @@ test('vite client proxy only exposes the public upload and read surfaces', async
   const viteConfigSource = await readWorkspaceFile('vite.config.ts');
 
   assert.equal(viteConfigSource.includes("'/_demo'"), false);
+  assert.equal(viteConfigSource.includes('CDNGINE_PUBLIC_RUNTIME_PROXY'), true);
 });
 
 test('product client surface exposes configurable scope inputs and public contract explorer actions', async () => {

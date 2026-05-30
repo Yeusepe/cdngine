@@ -1,0 +1,22 @@
+# Purpose: Keeps local build products and secrets out of the portable Docker instance build context.
+# Governing docs:
+# - README.md
+# - deploy/local-platform/README.md
+# - docs/environment-and-deployment.md
+# External references:
+# - https://docs.docker.com/build/concepts/context/#dockerignore-files
+# Tests:
+# - scripts/docker-instance.test.mjs
+
+.git
+.cdngine-public-runtime*/
+coverage
+dist
+node_modules
+test-output
+*.tsbuildinfo
+.env
+.env.local
+deploy/local-platform/.env
+apps/demo/.env
+apps/demo/.env.local

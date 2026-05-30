@@ -1,0 +1,74 @@
+# Purpose: Adds portable CDNgine runtime and optional demo containers to the local fast-start dependency stack.
+# Governing docs:
+# - README.md
+# - deploy/local-platform/README.md
+# - docs/environment-and-deployment.md
+# - docs/service-architecture.md
+# External references:
+# - https://docs.docker.com/compose/
+# - https://docs.docker.com/reference/compose-file/services/
+# - https://vite.dev/guide/cli.html
+# Tests:
+# - scripts/docker-instance.test.mjs
+# - docker compose --env-file deploy/local-platform/.env.example -f deploy/local-platform/compose.fast-start.yaml -f deploy/local-platform/compose.instance.yaml config
+
+services:
+  cdngine-runtime:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: cdngine-local-instance:latest
+    command: ["npm", "run", "runtime:start", "--workspace", "@cdngine/demo"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+      tusd:
+        condition: service_started
+      kopia:
+        condition: service_started
+      registry:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      CDNGINE_DATABASE_URL: postgresql://cdngine:cdngine@postgres:5432/cdngine
+      CDNGINE_PUBLIC_RUNTIME_STATE_DIR: /var/lib/cdngine/public-runtime
+      CDNGINE_PUBLIC_RUNTIME_STORAGE: object-store
+      CDNGINE_S3_FORCE_PATH_STYLE: "true"
+      OCI_REGISTRY_URL: http://registry:5000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      STAGING_BUCKET: ${STAGING_BUCKET:-cdngine-staging}
+      TEMPORAL_ADDRESS: temporal:7233
+      TUSD_ENDPOINT: http://tusd:1080/files/
+      TUSD_OBJECT_PREFIX: ${TUSD_OBJECT_PREFIX:-uploads/}
+    ports:
+      - "${CDNGINE_PUBLIC_RUNTIME_PORT:-4000}:4000"
+    restart: unless-stopped
+    volumes:
+      - cdngine-public-runtime:/var/lib/cdngine/public-runtime
+
+  cdngine-demo:
+    image: cdngine-local-instance:latest
+    command: ["npm", "run", "ui:start", "--workspace", "@cdngine/demo"]
+    depends_on:
+      cdngine-runtime:
+        condition: service_started
+    environment:
+      CDNGINE_PUBLIC_RUNTIME_PROXY: http://cdngine-runtime:4000
+    ports:
+      - "${CDNGINE_DEMO_PORT:-5173}:5173"
+    profiles:
+      - demo
+    restart: unless-stopped
+
+volumes:
+  cdngine-public-runtime:

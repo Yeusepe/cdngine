@@ -1,18 +1,17 @@
-# Purpose: Starts the lowest-friction local CDNgine dependency stack for contributor bring-up.
+# Purpose: Runs the latest CDNgine portable Docker instance directly from the GitHub repository without requiring a local checkout.
 # Governing docs:
 # - README.md
 # - deploy/local-platform/README.md
 # - docs/environment-and-deployment.md
+# - docs/service-architecture.md
 # External references:
-# - https://docs.temporal.io/
-# - https://tus.github.io/tusd/storage-backends/aws-s3/
-# - https://docs.aws.amazon.com/cli/latest/userguide/getting-started-docker.html
-# - https://kopia.io/docs/repositories/
-# - https://docs.rustfs.com/installation/docker/
+# - https://docs.docker.com/reference/cli/docker/compose/
+# - https://docs.docker.com/reference/compose-file/build/
+# - https://docs.docker.com/build/building/context/
 # Tests:
-# - docker compose --env-file deploy/local-platform/.env.example -f deploy/local-platform/compose.fast-start.yaml config
+# - scripts/docker-instance.test.mjs
 
-name: cdngine-local-fast-start
+name: cdngine-latest
 
 services:
   postgres:
@@ -25,12 +24,26 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 20
+
+  cdngine-db-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: temporal
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        psql -h postgres -U temporal -d temporal -tc "SELECT 1 FROM pg_roles WHERE rolname = 'cdngine'" | grep -q 1 || psql -h postgres -U temporal -d temporal -c "CREATE USER cdngine WITH PASSWORD 'cdngine'"
+        psql -h postgres -U temporal -d temporal -tc "SELECT 1 FROM pg_database WHERE datname = 'cdngine'" | grep -q 1 || psql -h postgres -U temporal -d temporal -c "CREATE DATABASE cdngine OWNER cdngine"
+    restart: "no"
 
   redis:
     image: redis:7-alpine
@@ -56,13 +69,10 @@ services:
       POSTGRES_USER: temporal
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: postgres
-      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/development-sql.yaml
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CLI_ADDRESS: temporal:7233
     ports:
       - "${TEMPORAL_PORT:-7233}:7233"
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
 
   temporal-ui:
     image: temporalio/ui:latest
@@ -224,6 +234,65 @@ services:
     volumes:
       - registry-data:/var/lib/registry
 
+  cdngine-runtime:
+    build:
+      context: https://github.com/Yeusepe/cdngine.git#main
+      dockerfile: Dockerfile
+    image: cdngine-latest-instance:latest
+    command: ["npm", "run", "runtime:start", "--workspace", "@cdngine/demo"]
+    depends_on:
+      cdngine-db-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+      tusd:
+        condition: service_started
+      kopia:
+        condition: service_started
+      registry:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      CDNGINE_DATABASE_URL: postgresql://cdngine:cdngine@postgres:5432/cdngine
+      CDNGINE_PUBLIC_RUNTIME_STATE_DIR: /var/lib/cdngine/public-runtime
+      CDNGINE_PUBLIC_RUNTIME_STORAGE: object-store
+      CDNGINE_S3_FORCE_PATH_STYLE: "true"
+      OCI_REGISTRY_URL: http://registry:5000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      STAGING_BUCKET: ${STAGING_BUCKET:-cdngine-staging}
+      TEMPORAL_ADDRESS: temporal:7233
+      TUSD_ENDPOINT: http://tusd:1080/files/
+      TUSD_OBJECT_PREFIX: ${TUSD_OBJECT_PREFIX:-uploads/}
+    ports:
+      - "${CDNGINE_PUBLIC_RUNTIME_PORT:-4000}:4000"
+    restart: unless-stopped
+    volumes:
+      - cdngine-public-runtime:/var/lib/cdngine/public-runtime
+
+  cdngine-demo:
+    image: cdngine-latest-instance:latest
+    command: ["npm", "run", "ui:start", "--workspace", "@cdngine/demo"]
+    depends_on:
+      cdngine-runtime:
+        condition: service_started
+    environment:
+      CDNGINE_PUBLIC_RUNTIME_PROXY: http://cdngine-runtime:4000
+    ports:
+      - "${CDNGINE_DEMO_PORT:-5173}:5173"
+    profiles:
+      - demo
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:
@@ -231,3 +300,4 @@ volumes:
   registry-data:
   kopia-config:
   kopia-cache:
+  cdngine-public-runtime:

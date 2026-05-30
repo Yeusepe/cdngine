@@ -27,5 +27,6 @@ export * from './runtime-storage-config.js';
 export * from './s3-compatible-object-stores.js';
 export * from './source-materialization.js';
 export * from './source-repository-factory.js';
+export * from './split-artifact-adapters.js';
 export * from './storage-role-config.js';
 export * from './xet-source-repository.js';

@@ -45,7 +45,22 @@ The default repository entrypoints are now:
 
 - `npm start` for the dependency stack
 - `npm run start:demo` for the dependency stack plus the demo
+- `npm run docker:start` for the Dockerized public runtime plus the dependency stack
+- `npm run docker:start:demo` when the optional UI demo should run too
 - `npm run stop` to tear the dependency stack back down
+- `npm run docker:stop` to tear the Dockerized runtime, optional demo UI, and dependency stack back down
+
+The Dockerized instance builds the root `Dockerfile`, reuses `compose.fast-start.yaml` for dependencies, and applies `compose.instance.yaml` to add the `cdngine-runtime` service. The `cdngine-demo` service is behind the Compose `demo` profile so the UI demo runs only when explicitly requested. This keeps the single-node + multi-bucket semantics intact while making the whole local runtime easy to rebuild from another checkout or vendored repository copy.
+
+When an adopter does not want a persistent checkout, the latest GitHub-hosted runtime can be started directly with:
+
+```bash
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml up -d --build cdngine-runtime
+```
+
+That remote Compose file is self-contained and uses Docker's Git repository build context support for the application image. It keeps the same logical dependencies as the local fast-start profile, but replaces local bind-mounted init files with containerized init commands so the command works from outside the repository.
+
+The demo public runtime keeps its route-level metadata in a local state directory for fast-start ergonomics, but it can place staged source bytes in the same RustFS/S3-compatible ingest role used by the local platform. Set `CDNGINE_PUBLIC_RUNTIME_STORAGE=object-store` with `RUSTFS_ENDPOINT` or `CDNGINE_S3_ENDPOINT`, an ingest bucket such as `CDNGINE_INGEST_BUCKET`, and the RustFS/S3 credentials when the local trial needs bucket-backed artifact bytes instead of the file-store fallback. The Dockerized instance sets those object-store values to the Compose service names by default.
 
 See [`deploy/local-platform/README.md`](../deploy/local-platform/README.md) for the actual compose-based bring-up and lower-level fallback commands.
 

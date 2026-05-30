@@ -4,3 +4,5 @@ coverage/
 .env
 .env.local
 *.tsbuildinfo
+.cdngine-public-runtime*/
+scripts/test-output/

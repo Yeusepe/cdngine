@@ -42,6 +42,13 @@ When canonicalization succeeds and the version moves from `canonicalizing` to `c
 
 Those byte-level source facts are required for every canonicalized upload, even when the platform has no capability-specific parser for the format.
 
+For archive-like assets with split-history policy enabled, source evidence also records the representation for the version:
+
+- `whole` means the canonical source record reconstructs the uploaded artifact bytes as one logical file
+- `split` means the canonical source record stores safe archive entries plus a split manifest and can rebuild a content-equivalent archive on demand
+
+The latest version in an asset stream should normally stay `whole` for performant original-source download and export. Older eligible versions may become `split` only after adapter validation records the original archive digest, original byte length, entry digest tree, and `reconstructionFidelity = content-equivalent`. The original archive digest remains the identity of the uploaded source; entry digests are supporting reconstruction and dedupe evidence, not a replacement for the uploaded-version audit record.
+
 The current `AssetVersion` field mapping for that durable evidence is:
 
 - `repositoryEngine`

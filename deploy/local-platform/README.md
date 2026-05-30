@@ -102,6 +102,30 @@ Start the stack and the demo together:
 npm run start:demo
 ```
 
+Start the portable Dockerized public runtime together with the dependency stack:
+
+```bash
+npm run docker:start
+```
+
+That path uses the base dependency stack in `compose.fast-start.yaml`, builds the root `Dockerfile`, and applies `compose.instance.yaml` to add the `cdngine-runtime` service. It is the lowest-friction option when this repository is vendored, checked out, or kept current from another repo and the adopter wants one Docker-managed runtime instance without always running the UI demo.
+
+Run the latest repository version without keeping a local checkout:
+
+```bash
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml up -d --build cdngine-runtime
+```
+
+That remote Compose path is self-contained: Docker Compose reads the Compose file from GitHub, builds the runtime image from the Git repository context, creates the app database through a containerized init step, and uses named volumes instead of bind mounts.
+
+Start the optional UI demo explicitly:
+
+```bash
+npm run docker:start:demo
+```
+
+That adds the `cdngine-demo` service through the Compose `demo` profile and exposes the UI at `http://localhost:5173`.
+
 Start from a clean dependency stack first:
 
 ```bash
@@ -118,6 +142,12 @@ Stop the local dependency stack:
 
 ```bash
 npm run stop
+```
+
+Stop the portable Dockerized instance:
+
+```bash
+npm run docker:stop
 ```
 
 ## Direct PowerShell and raw Docker Compose
@@ -141,6 +171,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\local-platform\stop
 ```powershell
 Copy-Item .\deploy\local-platform\.env.example .\deploy\local-platform\.env
 docker compose --env-file .\deploy\local-platform\.env -f .\deploy\local-platform\compose.fast-start.yaml up -d
+```
+
+To run the full Dockerized instance without npm:
+
+```powershell
+Copy-Item .\deploy\local-platform\.env.example .\deploy\local-platform\.env
+docker compose --env-file .\deploy\local-platform\.env -f .\deploy\local-platform\compose.fast-start.yaml -f .\deploy\local-platform\compose.instance.yaml up -d --build cdngine-runtime
+```
+
+To include the optional UI demo without npm:
+
+```powershell
+docker compose --env-file .\deploy\local-platform\.env -f .\deploy\local-platform\compose.fast-start.yaml -f .\deploy\local-platform\compose.instance.yaml --profile demo up -d --build cdngine-runtime cdngine-demo
+```
+
+To run the latest GitHub version without a checkout:
+
+```powershell
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml up -d --build cdngine-runtime
 ```
 
 If a contributor or adopter only has one bucket available, the same platform semantics still work by setting `STAGING_BUCKET`, `DERIVED_BUCKET`, `EXPORTS_BUCKET`, and `KOPIA_BUCKET` to the same bucket name and keeping distinct prefixes such as `uploads/`, `source/`, `derived/`, and `exports/`.

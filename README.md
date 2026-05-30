@@ -73,6 +73,8 @@ CDNgine distinguishes the **logical asset** from each immutable **uploaded sourc
 
 That means `v1`, `v2`, and `v3` remain separately replayable and auditable even when they share bytes underneath. The current source-plane strategy makes **Xet** the default canonical source engine for new canonicalizations, keeps the persisted source-evidence contract engine-neutral, and requires **legacy Kopia-backed versions** to remain readable until migration, backfill, and operator signoff retire the old engine. See [docs/source-plane-strategy.md](./docs/source-plane-strategy.md).
 
+For package-like archive streams, CDNgine can keep the newest version as one whole downloadable artifact while splitting older adapter-eligible versions into entries for stronger source-plane dedupe. This rule is format-agnostic: the first adapters cover ZIP, tar, gzip tar, and Unity `.unitypackage` as a gzip tar container. Rebuilds are content-equivalent by entry digest tree, not byte-identical archive reproduction.
+
 ### Logical roles
 
 ```mermaid
@@ -304,12 +306,22 @@ The important root commands are:
 
 - `npm start` - start the local dependency stack with one cross-platform command
 - `npm run start:demo` - start the local dependency stack and the demo together
+- `npm run docker:start` - build and start the portable Dockerized public runtime plus the local dependency stack
+- `npm run docker:start:demo` - start the Dockerized public runtime and opt-in demo UI
+- `npm run docker:stop` - stop the portable Dockerized runtime, optional demo UI, and local dependency stack
 - `npm run stop` - stop the local dependency stack
 - `npm run docs:check` - verify workspace metadata and source reference headers
 - `npm run typecheck` - run the composite TypeScript workspace typecheck
 - `npm run build` - build the current workspace graph
 - `npm run test` - run repo checks and workspace tests
 - `npm run verify` - run lint, typecheck, and test together
+
+To compare whole-archive storage with split-entry storage on the local package corpus:
+
+```bash
+npm run build --workspace @cdngine/storage
+node scripts/package-corpus-dedupe.mjs --mode both
+```
 
 Each workspace in `apps/*` and `packages/*` carries `cdngine` metadata in its `package.json` so the implementation stays coupled to:
 
@@ -347,6 +359,70 @@ To stop the dependency stack:
 ```bash
 npm run stop
 ```
+
+### Portable Docker instance
+
+For a fresh machine or another repository that needs to run the latest CDNgine directly from GitHub without keeping a local clone, use the remote Compose file:
+
+```bash
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml up -d --build cdngine-runtime
+```
+
+That single command asks Docker Compose to read the Compose file from the GitHub repository and build the runtime image from the same Git branch. It does not require a persistent checkout on the host. The UI demo is not started by default.
+
+To include the optional UI demo:
+
+```bash
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml --profile demo up -d --build cdngine-runtime cdngine-demo
+```
+
+To update later, rerun the same command. To stop the remote-compose deployment:
+
+```bash
+docker compose -f https://github.com/Yeusepe/cdngine.git#main:deploy/remote/compose.latest.yaml down --remove-orphans
+```
+
+For the easiest already-cloned run path, use the checked-in Docker instance:
+
+```bash
+npm run docker:start
+```
+
+That command builds the root `Dockerfile`, starts the existing `deploy/local-platform` dependency stack, and adds the `cdngine-runtime` container from `deploy/local-platform/compose.instance.yaml`. The UI demo is not started by default.
+
+Default endpoints:
+
+- public runtime health: `http://localhost:4000/healthz`
+- Temporal UI: `http://localhost:8080`
+- RustFS console: `http://localhost:9001`
+
+Start the UI demo explicitly with:
+
+```bash
+npm run docker:start:demo
+```
+
+That adds the `cdngine-demo` service and exposes the demo UI at `http://localhost:5173`.
+
+Use a clean dependency stack and rebuilt app container with:
+
+```bash
+npm run docker:start:fresh
+```
+
+For the same clean start with the UI demo:
+
+```bash
+npm run docker:start:demo:fresh
+```
+
+Stop the whole Docker instance with:
+
+```bash
+npm run docker:stop
+```
+
+The instance reads `deploy/local-platform/.env`, creating it from `.env.example` if needed. In another repo, use the remote Compose command above as the no-checkout update-and-run path, or keep this repository as the source of truth and rerun `npm run docker:start -- --fresh` from a checkout.
 
 The underlying `deploy/local-platform/start.ps1` and `stop.ps1` scripts still exist for direct PowerShell use, but the npm entrypoints are now the default path on Windows and Linux.
 

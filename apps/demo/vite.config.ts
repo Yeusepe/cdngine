@@ -13,6 +13,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const publicRuntimeProxy = process.env.CDNGINE_PUBLIC_RUNTIME_PROXY ?? 'http://localhost:4000'
+
 // https://vite.dev/config/
 export default defineConfig({
   build: {
@@ -21,9 +23,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/download-links': 'http://localhost:4000',
-      '/uploads': 'http://localhost:4000',
-      '/v1': 'http://localhost:4000'
+      '/download-links': publicRuntimeProxy,
+      '/uploads': publicRuntimeProxy,
+      '/v1': publicRuntimeProxy
     }
   }
 })

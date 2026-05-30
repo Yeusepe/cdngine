@@ -34,7 +34,7 @@ export function resolveRegistryTestDatabaseUrl() {
   return (
     process.env.CDNGINE_DATABASE_URL ??
     process.env.DATABASE_URL ??
-    'postgresql://cdngine:cdngine@localhost:55432/cdngine'
+    'postgresql://cdngine:cdngine@localhost:5432/cdngine'
   );
 }
 

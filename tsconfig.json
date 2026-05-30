@@ -2,18 +2,6 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/api"
-    },
-    {
-      "path": "./apps/demo"
-    },
-    {
-      "path": "./apps/operator"
-    },
-    {
-      "path": "./apps/workers"
-    },
-    {
       "path": "./packages/auth"
     },
     {
@@ -39,6 +27,18 @@
     },
     {
       "path": "./packages/workflows"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/demo"
+    },
+    {
+      "path": "./apps/operator"
+    },
+    {
+      "path": "./apps/workers"
     }
   ]
 }

@@ -34,7 +34,7 @@ It should be possible to point from a major architectural promise to the docs, t
 | contract artifacts are governed instead of ad hoc | spec-governance docs, lint outputs, example validation, and breaking-change review evidence |
 | operational targets are explicit | SLO docs, dashboards, alerts, and runbooks |
 | production control-plane hardening is real rather than demo-shaped | deployment docs, auth runtime config, `/healthz` + `/readyz` + `/metrics` tests, conformance execution in `npm run test`, and the production cutover runbook |
-| a complete local CDNgine runtime can be rebuilt from a checkout, vendored repository copy, or no-checkout GitHub Compose command without changing platform semantics, while the UI demo remains opt-in | `Dockerfile`, `deploy/local-platform/compose.instance.yaml`, `deploy/remote/compose.latest.yaml`, `npm run docker:start`, `npm run docker:start:demo`, `scripts/docker-instance.test.mjs`, and local-platform deployment docs |
+| a complete local CDNgine runtime can be rebuilt from a checkout, vendored repository copy, or no-checkout GitHub Compose command without changing platform semantics, while the UI demo remains opt-in | `Dockerfile`, `deploy/local-platform/compose.instance.yaml`, `deploy/remote/compose.latest.yaml`, `npm run docker:start`, `npm run docker:start:demo`, `scripts/docker-instance.test.mjs`, `scripts/runtime-start-contract.test.mjs`, and local-platform deployment docs |
 
 ## 2. Evidence categories
 

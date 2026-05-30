@@ -7,6 +7,15 @@
   "references": [
     {
       "path": "../../packages/auth"
+    },
+    {
+      "path": "../../packages/observability"
+    },
+    {
+      "path": "../../packages/capabilities"
+    },
+    {
+      "path": "../../packages/storage"
     }
   ],
   "include": [

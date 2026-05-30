@@ -4,6 +4,17 @@
     "rootDir": "src",
     "outDir": "dist"
   },
+  "references": [
+    {
+      "path": "../../packages/registry"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/workflows"
+    }
+  ],
   "include": [
     "src/**/*.ts"
   ]

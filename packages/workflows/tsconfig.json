@@ -4,6 +4,20 @@
     "rootDir": "src",
     "outDir": "dist"
   },
+  "references": [
+    {
+      "path": "../../packages/capabilities"
+    },
+    {
+      "path": "../../packages/manifests"
+    },
+    {
+      "path": "../../packages/registry"
+    },
+    {
+      "path": "../../packages/storage"
+    }
+  ],
   "include": [
     "src/**/*.ts"
   ]

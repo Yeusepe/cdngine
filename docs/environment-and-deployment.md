@@ -50,7 +50,7 @@ The default repository entrypoints are now:
 - `npm run stop` to tear the dependency stack back down
 - `npm run docker:stop` to tear the Dockerized runtime, optional demo UI, and dependency stack back down
 
-The Dockerized instance builds the root `Dockerfile`, reuses `compose.fast-start.yaml` for dependencies, and applies `compose.instance.yaml` to add the `cdngine-runtime` service. The `cdngine-demo` service is behind the Compose `demo` profile so the UI demo runs only when explicitly requested. This keeps the single-node + multi-bucket semantics intact while making the whole local runtime easy to rebuild from another checkout or vendored repository copy.
+The Dockerized instance builds the root `Dockerfile`, reuses `compose.fast-start.yaml` for dependencies, and applies `compose.instance.yaml` to add the `cdngine-runtime` service. The public runtime startup script builds the API workspace dependencies before building `@cdngine/api`, so a fresh image can start from only the checked-in repository contents. The `cdngine-demo` service is behind the Compose `demo` profile so the UI demo runs only when explicitly requested. This keeps the single-node + multi-bucket semantics intact while making the whole local runtime easy to rebuild from another checkout or vendored repository copy.
 
 When an adopter does not want a persistent checkout, the latest GitHub-hosted runtime can be started directly with:
 

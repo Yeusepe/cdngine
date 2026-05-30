@@ -6,11 +6,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run prisma:validate && npm run prisma:generate && tsc -p tsconfig.json",
+    "build": "npm run build -w @cdngine/storage && npm run prisma:validate && npm run prisma:generate && tsc -p tsconfig.json",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint": "npm run build -w @cdngine/storage && tsc -p tsconfig.json --noEmit",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [
@@ -35,6 +35,7 @@
     ]
   },
   "dependencies": {
+    "@cdngine/storage": "^0.1.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0"
   },

@@ -7,6 +7,7 @@
  * External references:
  * - https://datatracker.ietf.org/doc/html/rfc6750
  * - https://datatracker.ietf.org/doc/html/rfc8725
+ * - https://nodejs.org/api/crypto.html
  * - https://www.better-auth.com/docs/concepts/session-management
  * - https://www.better-auth.com/docs/plugins/bearer
  * - https://www.better-auth.com/docs/concepts/database
@@ -15,6 +16,7 @@
  * - apps/api/test/api-app.test.mjs
  */
 
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { betterAuth, type BetterAuthOptions, type BetterAuthPlugin } from 'better-auth';
 import { memoryAdapter, type MemoryDB } from 'better-auth/adapters/memory';
 import { bearer } from 'better-auth/plugins/bearer';
@@ -50,6 +52,18 @@ export type AuthenticateHeadersHandler = (
 
 export interface CreateRequestActorAuthenticatorOptions {
   authenticateHeaders: AuthenticateHeadersHandler;
+}
+
+export interface StaticServiceAccountRegistration extends ResolvedActorDescriptor {
+  allowedServiceNamespaces?: string[];
+  allowedTenantIds?: string[];
+  roles?: string[];
+  subject: string;
+  tokenSha256: string;
+}
+
+export interface StaticServiceAccountRuntimeConfig {
+  serviceAccounts: StaticServiceAccountRegistration[];
 }
 
 export interface CDNgineBetterAuthApi {
@@ -144,8 +158,27 @@ export class BetterAuthRuntimeConfigError extends Error {
   }
 }
 
+export class StaticServiceAccountConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StaticServiceAccountConfigError';
+  }
+}
+
+interface NormalizedStaticServiceAccount {
+  actor: AuthenticatedActor;
+  tokenDigest: Buffer;
+  tokenSha256: string;
+}
+
 function toHeaders(headers: Headers | Record<string, string>): Headers {
   return headers instanceof Headers ? headers : new Headers(headers);
+}
+
+function readOptionalRuntimeValue(environment: NodeJS.ProcessEnv, key: string): string | null {
+  const value = environment[key]?.trim();
+
+  return value ? value : null;
 }
 
 function normalizeStringArray(values: readonly string[] | null | undefined): string[] {
@@ -271,6 +304,256 @@ export function extractBearerToken(
   }
 
   return token;
+}
+
+function assertStaticServiceAccountSubject(
+  account: StaticServiceAccountRegistration,
+  index: number
+): string {
+  const subject = account.subject?.trim();
+
+  if (!subject) {
+    throw new StaticServiceAccountConfigError(
+      `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON[${index}].subject must be a non-empty string.`
+    );
+  }
+
+  return subject;
+}
+
+function assertStaticServiceAccountTokenHash(
+  account: StaticServiceAccountRegistration,
+  index: number
+): string {
+  const tokenSha256 = account.tokenSha256?.trim().toLowerCase();
+
+  if (!tokenSha256 || !/^[a-f0-9]{64}$/.test(tokenSha256)) {
+    throw new StaticServiceAccountConfigError(
+      `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON[${index}].tokenSha256 must be a 64-character SHA-256 hex digest.`
+    );
+  }
+
+  return tokenSha256;
+}
+
+function normalizeStaticServiceAccount(
+  account: StaticServiceAccountRegistration,
+  index: number
+): NormalizedStaticServiceAccount {
+  if (!account || typeof account !== 'object' || Array.isArray(account)) {
+    throw new StaticServiceAccountConfigError(
+      `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON[${index}] must be a service-account object.`
+    );
+  }
+
+  const subject = assertStaticServiceAccountSubject(account, index);
+  const tokenSha256 = assertStaticServiceAccountTokenHash(account, index);
+
+  return {
+    actor: normalizeActorDescriptor(account, subject),
+    tokenDigest: Buffer.from(tokenSha256, 'hex'),
+    tokenSha256
+  };
+}
+
+function assertUniqueStaticServiceAccountTokenHashes(
+  normalizedAccounts: readonly NormalizedStaticServiceAccount[]
+) {
+  const uniqueTokenHashes = new Set(normalizedAccounts.map((account) => account.tokenSha256));
+
+  if (uniqueTokenHashes.size !== normalizedAccounts.length) {
+    throw new StaticServiceAccountConfigError(
+      'CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON contains duplicate tokenSha256 entries.'
+    );
+  }
+}
+
+function readStaticServiceAccountListValue(
+  environment: NodeJS.ProcessEnv,
+  key: string
+): string[] {
+  const rawValue = readOptionalRuntimeValue(environment, key);
+
+  if (!rawValue) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      rawValue
+        .split(/[|,]/u)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  ];
+}
+
+function hasSingleStaticServiceAccountEnvironment(environment: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_SUBJECT') ||
+      readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256') ||
+      readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_ROLES') ||
+      readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES') ||
+      readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS')
+  );
+}
+
+function loadSingleStaticServiceAccountFromEnvironment(
+  environment: NodeJS.ProcessEnv
+): StaticServiceAccountRegistration | null {
+  if (!hasSingleStaticServiceAccountEnvironment(environment)) {
+    return null;
+  }
+
+  const subject = readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_SUBJECT');
+  const tokenSha256 = readOptionalRuntimeValue(
+    environment,
+    'CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256'
+  );
+
+  if (!subject || !tokenSha256) {
+    throw new StaticServiceAccountConfigError(
+      'CDNGINE_SERVICE_ACCOUNT_SUBJECT and CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256 are required when using single service-account env keys.'
+    );
+  }
+
+  const account: StaticServiceAccountRegistration = {
+    allowedServiceNamespaces: readStaticServiceAccountListValue(
+      environment,
+      'CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES'
+    ),
+    allowedTenantIds: readStaticServiceAccountListValue(
+      environment,
+      'CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS'
+    ),
+    roles: readStaticServiceAccountListValue(environment, 'CDNGINE_SERVICE_ACCOUNT_ROLES'),
+    subject,
+    tokenSha256
+  };
+
+  const normalizedAccount = normalizeStaticServiceAccount(account, 0);
+
+  return {
+    ...normalizedAccount.actor,
+    tokenSha256: normalizedAccount.tokenSha256
+  };
+}
+
+export function hashBearerTokenForServiceAccount(token: string): string {
+  const normalizedToken = token.trim();
+
+  if (!normalizedToken) {
+    throw new StaticServiceAccountConfigError('Bearer token material must be a non-empty string.');
+  }
+
+  return createHash('sha256').update(normalizedToken, 'utf8').digest('hex');
+}
+
+export function createStaticServiceAccountAuthenticator(
+  serviceAccounts: readonly StaticServiceAccountRegistration[]
+): RequestActorAuthenticator {
+  if (!Array.isArray(serviceAccounts) || serviceAccounts.length === 0) {
+    throw new StaticServiceAccountConfigError(
+      'At least one static service account is required for service-account auth.'
+    );
+  }
+
+  const normalizedAccounts = serviceAccounts.map((account, index) =>
+    normalizeStaticServiceAccount(account, index)
+  );
+
+  assertUniqueStaticServiceAccountTokenHashes(normalizedAccounts);
+
+  return {
+    async authenticateHeaders(headers) {
+      const token = extractBearerToken(headers);
+
+      if (!token) {
+        return null;
+      }
+
+      const incomingDigest = Buffer.from(hashBearerTokenForServiceAccount(token), 'hex');
+
+      for (const account of normalizedAccounts) {
+        if (timingSafeEqual(incomingDigest, account.tokenDigest)) {
+          return {
+            allowedServiceNamespaces: [...account.actor.allowedServiceNamespaces],
+            allowedTenantIds: [...account.actor.allowedTenantIds],
+            roles: [...account.actor.roles],
+            subject: account.actor.subject
+          };
+        }
+      }
+
+      return null;
+    }
+  };
+}
+
+export function loadStaticServiceAccountRuntimeConfigFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env
+): StaticServiceAccountRuntimeConfig {
+  const rawValue = readOptionalRuntimeValue(environment, 'CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON');
+  const singleAccount = loadSingleStaticServiceAccountFromEnvironment(environment);
+
+  if (rawValue && singleAccount) {
+    throw new StaticServiceAccountConfigError(
+      'Use either CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON or the single CDNGINE_SERVICE_ACCOUNT_* variables, not both.'
+    );
+  }
+
+  if (!rawValue) {
+    return {
+      serviceAccounts: singleAccount ? [singleAccount] : []
+    };
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawValue);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown parse failure.';
+    throw new StaticServiceAccountConfigError(
+      `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON must be a JSON array of service-account objects: ${message}`
+    );
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new StaticServiceAccountConfigError(
+      'CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON must be a JSON array of service-account objects.'
+    );
+  }
+
+  const serviceAccounts = parsed.map((account, index) =>
+    normalizeStaticServiceAccount(account as StaticServiceAccountRegistration, index)
+  );
+
+  assertUniqueStaticServiceAccountTokenHashes(serviceAccounts);
+
+  return {
+    serviceAccounts: serviceAccounts.map((account) => ({
+      allowedServiceNamespaces: [...account.actor.allowedServiceNamespaces],
+      allowedTenantIds: [...account.actor.allowedTenantIds],
+      roles: [...account.actor.roles],
+      subject: account.actor.subject,
+      tokenSha256: account.tokenSha256
+    }))
+  };
+}
+
+export function createStaticServiceAccountAuthenticatorFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env
+): RequestActorAuthenticator {
+  const runtime = loadStaticServiceAccountRuntimeConfigFromEnvironment(environment);
+
+  if (runtime.serviceAccounts.length === 0) {
+    throw new StaticServiceAccountConfigError(
+      'CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON is required for service-account auth.'
+    );
+  }
+
+  return createStaticServiceAccountAuthenticator(runtime.serviceAccounts);
 }
 
 export function createRequestActorAuthenticator(

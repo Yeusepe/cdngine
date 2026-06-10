@@ -16,8 +16,12 @@ import assert from 'node:assert/strict';
 
 import {
   buildBearerHeaders,
+  createStaticServiceAccountAuthenticator,
+  createStaticServiceAccountAuthenticatorFromEnvironment,
   createRequestActorAuthenticator,
   extractBearerToken,
+  hashBearerTokenForServiceAccount,
+  loadStaticServiceAccountRuntimeConfigFromEnvironment,
   createInMemoryCDNgineAuth
 } from '../dist/index.js';
 
@@ -77,6 +81,112 @@ test('createRequestActorAuthenticator lets hosts plug in any bearer-token valida
     subject: 'customer-acme-demo'
   });
   assert.equal(await auth.authenticateHeaders(buildBearerHeaders('different-token')), null);
+});
+
+test('createStaticServiceAccountAuthenticator resolves hashed service-account bearer tokens into scoped actors', async () => {
+  const serviceToken = 'creator-assistant-prod-token';
+  const auth = createStaticServiceAccountAuthenticator([
+    {
+      allowedServiceNamespaces: ['yucp-backstage'],
+      allowedTenantIds: ['tenant-prod'],
+      roles: ['public-user'],
+      subject: 'creator-assistant-api',
+      tokenSha256: hashBearerTokenForServiceAccount(serviceToken)
+    }
+  ]);
+
+  const actor = await auth.authenticateHeaders(buildBearerHeaders(serviceToken));
+
+  assert.deepEqual(actor, {
+    allowedServiceNamespaces: ['yucp-backstage'],
+    allowedTenantIds: ['tenant-prod'],
+    roles: ['public-user'],
+    subject: 'creator-assistant-api'
+  });
+  assert.equal(await auth.authenticateHeaders(buildBearerHeaders('wrong-token')), null);
+  assert.equal(await auth.authenticateHeaders(new Headers()), null);
+});
+
+test('createStaticServiceAccountAuthenticator rejects malformed service-account configuration', () => {
+  assert.throws(
+    () =>
+      createStaticServiceAccountAuthenticator([
+        {
+          roles: ['public-user'],
+          subject: 'creator-assistant-api',
+          tokenSha256: 'not-a-sha256'
+        }
+      ]),
+    /tokenSha256/
+  );
+});
+
+test('createStaticServiceAccountAuthenticator rejects duplicate service-account token hashes', () => {
+  const tokenSha256 = hashBearerTokenForServiceAccount('shared-service-token');
+
+  assert.throws(
+    () =>
+      createStaticServiceAccountAuthenticator([
+        {
+          subject: 'creator-assistant-api',
+          tokenSha256
+        },
+        {
+          subject: 'another-caller',
+          tokenSha256
+        }
+      ]),
+    /duplicate tokenSha256/
+  );
+});
+
+test('createStaticServiceAccountAuthenticatorFromEnvironment parses service-account scope configuration', async () => {
+  const serviceToken = 'environment-service-token';
+  const auth = createStaticServiceAccountAuthenticatorFromEnvironment({
+    CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON: JSON.stringify([
+      {
+        allowedServiceNamespaces: ['media-platform'],
+        roles: ['public-user'],
+        subject: 'creator-assistant-api',
+        tokenSha256: hashBearerTokenForServiceAccount(serviceToken)
+      }
+    ])
+  });
+
+  assert.deepEqual(await auth.authenticateHeaders(buildBearerHeaders(serviceToken)), {
+    allowedServiceNamespaces: ['media-platform'],
+    allowedTenantIds: [],
+    roles: ['public-user'],
+    subject: 'creator-assistant-api'
+  });
+});
+
+test('createStaticServiceAccountAuthenticatorFromEnvironment accepts single service-account env keys for CLI wiring', async () => {
+  const serviceToken = 'cli-friendly-service-token';
+  const auth = createStaticServiceAccountAuthenticatorFromEnvironment({
+    CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES: 'yucp-backstage',
+    CDNGINE_SERVICE_ACCOUNT_ROLES: 'public-user',
+    CDNGINE_SERVICE_ACCOUNT_SUBJECT: 'creator-assistant-api',
+    CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256: hashBearerTokenForServiceAccount(serviceToken)
+  });
+
+  assert.deepEqual(await auth.authenticateHeaders(buildBearerHeaders(serviceToken)), {
+    allowedServiceNamespaces: ['yucp-backstage'],
+    allowedTenantIds: [],
+    roles: ['public-user'],
+    subject: 'creator-assistant-api'
+  });
+});
+
+test('loadStaticServiceAccountRuntimeConfigFromEnvironment rejects malformed single service-account token digests', () => {
+  assert.throws(
+    () =>
+      loadStaticServiceAccountRuntimeConfigFromEnvironment({
+        CDNGINE_SERVICE_ACCOUNT_SUBJECT: 'creator-assistant-api',
+        CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256: 'not-a-sha256'
+      }),
+    /tokenSha256/
+  );
 });
 
 test('extractBearerToken ignores missing or non-bearer authorization values', () => {

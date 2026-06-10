@@ -138,6 +138,9 @@ The intended environment variables are:
 - `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
 - `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
 - `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
+- `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` for digest-backed service-account auth
+- the single service-account env form: `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS`
+- `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE` for portable public runtime auth mode selection
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` or the split-bucket variables `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET`
 - `CDNGINE_INGEST_PREFIX`, `CDNGINE_SOURCE_PREFIX`, `CDNGINE_DERIVED_PREFIX`, `CDNGINE_EXPORTS_PREFIX`
@@ -149,6 +152,21 @@ The intended environment variables are:
 - `CDNGINE_KOPIA_EXECUTABLE`, `CDNGINE_KOPIA_WORKING_DIRECTORY`, `CDNGINE_KOPIA_TIMEOUT_MS`
 - `CDNGINE_DEPLOYMENT_PROFILE`
 - `CDNGINE_READINESS_REQUIRED`
+
+The portable public runtime uses `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=service-accounts` in production. Configure `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` with SHA-256 token digests and server-side scopes. Store the raw bearer token only in the caller's secret manager, not in the CDNgine service.
+
+When this portable packaging is deployed without the richer API dependency stack, keep readiness honest by listing only the dependencies the runtime actually owns:
+
+```bash
+CDNGINE_DEPLOYMENT_PROFILE=production-default
+CDNGINE_READINESS_REQUIRED=auth,source-repository,derived-store,exports-store
+```
+
+Zeabur CLI-managed variables may use `|` as the readiness delimiter instead:
+
+```bash
+CDNGINE_READINESS_REQUIRED=auth|source-repository|derived-store|exports-store
+```
 
 The runtime health surface for the API tier should expose:
 

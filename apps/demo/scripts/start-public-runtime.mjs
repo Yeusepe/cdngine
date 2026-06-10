@@ -14,17 +14,31 @@
  */
 
 import {
+	createPublicRuntimeReadinessMonitor,
 	createPublicRuntimeServer,
+	resolvePublicRuntimeAuthFromEnvironment,
+	resolvePublicRuntimeAuthModeFromEnvironment,
 	resolvePublicRuntimeObjectStoreFromEnvironment,
+	resolvePublicRuntimePortFromEnvironment,
 } from './public-runtime-app.mjs';
 
-const PORT = 4000;
+const PORT = resolvePublicRuntimePortFromEnvironment(process.env);
 const stateDir = process.env.CDNGINE_PUBLIC_RUNTIME_STATE_DIR ?? '.cdngine-public-runtime';
 const objectStore = resolvePublicRuntimeObjectStoreFromEnvironment(process.env);
+const authMode = resolvePublicRuntimeAuthModeFromEnvironment(process.env);
+const auth = resolvePublicRuntimeAuthFromEnvironment(process.env);
+const readiness = createPublicRuntimeReadinessMonitor({
+	authMode,
+	environment: process.env,
+	objectStore,
+	storageMode: objectStore ? 'object-store' : 'local-files'
+});
 const { server } = createPublicRuntimeServer({
+	auth,
 	objectStore,
 	port: PORT,
 	publicBaseUrl: `http://localhost:${PORT}`,
+	readiness,
 	stateDir
 });
 

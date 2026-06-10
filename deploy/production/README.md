@@ -27,6 +27,9 @@ The auth and storage packages now resolve these environment variables into the c
 - `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
 - `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
 - `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
+- `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` for static service-account bearer tokens stored as SHA-256 digests
+- `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS` for the CLI-friendly single service-account form
+- `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE` for the portable public runtime, set to `service-accounts` outside local demos
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` for one-bucket deployments
 - `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET` for multi-bucket deployments
@@ -42,6 +45,20 @@ The observability package now resolves these readiness-profile variables:
 
 - `CDNGINE_DEPLOYMENT_PROFILE`
 - `CDNGINE_READINESS_REQUIRED`
+
+For the portable public runtime, production-like deployments fail startup unless service-account auth is configured. The runtime accepts:
+
+- `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=service-accounts`
+- `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` with one or more service-account objects containing `subject`, `tokenSha256`, `roles`, `allowedServiceNamespaces`, and `allowedTenantIds`
+- or the single-account variables `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS`
+
+Generate the raw caller token and CDNgine-side digest with Node.js:
+
+```bash
+node -e "const { createHash, randomBytes } = require('node:crypto'); const token = randomBytes(32).toString('base64url'); console.log('raw token for caller:', token); console.log('CDNgine tokenSha256:', createHash('sha256').update(token, 'utf8').digest('hex'));"
+```
+
+Store the raw token only in the caller's secret manager, such as the Creator Assistant API secret source. Store only `tokenSha256` and server-side scopes in CDNgine. If Infisical syncs Zeabur variables for the deployment, keep the same split there: caller raw token in the caller project/environment, CDNgine digest JSON in the CDNgine project/environment.
 
 ## Current source-plane posture
 
@@ -92,6 +109,20 @@ The readiness loader has two built-in profiles:
 - the temporary Kopia lane is still restorable anywhere legacy rows or emergency rollback still depend on it
 
 Treat `source-repository` readiness as a runtime-factory contract, not as a promise that the repo already ships a dedicated Xet service.
+
+The portable Zeabur-style public runtime does not run PostgreSQL, Redis, Temporal, or tusd as separate processes. For that packaging shape, set `CDNGINE_DEPLOYMENT_PROFILE=production-default` and explicitly scope readiness to the dependencies the portable runtime really owns:
+
+```bash
+CDNGINE_READINESS_REQUIRED=auth,source-repository,derived-store,exports-store
+```
+
+When setting the same value through Zeabur CLI, use pipes to avoid comma parsing in `-k` values:
+
+```bash
+CDNGINE_READINESS_REQUIRED=auth|source-repository|derived-store|exports-store
+```
+
+Do not list dependencies that are not actually running just to make `/readyz` look complete.
 
 ## Runtime verification endpoints
 

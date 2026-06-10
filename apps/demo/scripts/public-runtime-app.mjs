@@ -36,6 +36,12 @@ import {
 	PutObjectCommand,
 	S3Client,
 } from "@aws-sdk/client-s3";
+import { createStaticServiceAccountAuthenticatorFromEnvironment } from "@cdngine/auth";
+import {
+	RuntimeReadinessMonitor,
+	loadReadinessProfileFromEnvironment,
+} from "@cdngine/observability";
+import { runGenericAssetPublicationWorkflow } from "@cdngine/workflows";
 
 import {
 	createApiApp,
@@ -49,6 +55,8 @@ import {
 } from "../../api/dist/index.js";
 
 const RUNTIME_STATE_SCHEMA_VERSION = 1;
+const LOCAL_RUNTIME_DEFAULT_DELIVERY_SCOPE_ID = "paid-downloads";
+const LOCAL_RUNTIME_GENERIC_MANIFEST_TYPE = "generic-asset-default";
 
 function getOptionalEnvironmentValue(environment, key) {
 	const value = environment[key]?.trim();
@@ -102,6 +110,38 @@ function responseBodyFromObjectBody(body) {
 	}
 	if (typeof body.pipe === "function") {
 		return Readable.toWeb(body);
+	}
+	return Buffer.from(body);
+}
+
+async function bytesFromBody(body) {
+	if (!body) {
+		return Buffer.alloc(0);
+	}
+	if (Buffer.isBuffer(body)) {
+		return body;
+	}
+	if (body instanceof Uint8Array) {
+		return Buffer.from(body);
+	}
+	if (typeof body === "string") {
+		return Buffer.from(body);
+	}
+	if (body instanceof ReadableStream) {
+		return Buffer.from(await new Response(body).arrayBuffer());
+	}
+	if (typeof body.transformToByteArray === "function") {
+		return Buffer.from(await body.transformToByteArray());
+	}
+	if (typeof body.transformToWebStream === "function") {
+		return Buffer.from(await new Response(body.transformToWebStream()).arrayBuffer());
+	}
+	if (typeof body[Symbol.asyncIterator] === "function") {
+		const chunks = [];
+		for await (const chunk of body) {
+			chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+		}
+		return Buffer.concat(chunks);
 	}
 	return Buffer.from(body);
 }
@@ -185,7 +225,253 @@ function writeJsonFile(filePath, value) {
 	rmSync(`${filePath}.tmp`, { force: true });
 }
 
-class FileBackedUploadSessionIssuanceStore extends InMemoryUploadSessionIssuanceStore {
+class LocalRuntimeUploadSessionStore extends InMemoryUploadSessionIssuanceStore {
+	constructor(options = {}) {
+		super(options);
+		this.afterCompleteUploadSession = undefined;
+		this.publishedDerivativesByKey = new Map();
+		this.publishedManifestsByKey = new Map();
+	}
+
+	setAfterCompleteUploadSession(callback) {
+		this.afterCompleteUploadSession = callback;
+	}
+
+	async completeUploadSession(input, canonicalize) {
+		try {
+			const result = await super.completeUploadSession(input, canonicalize);
+			await this.afterCompleteUploadSession?.(result);
+			this.save();
+			return result;
+		} catch (error) {
+			this.save();
+			throw error;
+		}
+	}
+
+	async beginGenericAssetPublication(input) {
+		const version = this.getMutablePublicationVersion(input.versionId);
+
+		if (
+			version.lifecycleState !== "canonical" &&
+			version.lifecycleState !== "processing" &&
+			version.lifecycleState !== "published"
+		) {
+			throw new Error(
+				`Generic asset version "${input.versionId}" cannot begin processing from lifecycle state "${version.lifecycleState}".`,
+			);
+		}
+
+		version.lifecycleState = "processing";
+		this.save();
+
+		return this.toGenericAssetVersionRecord(version);
+	}
+
+	async getVersion(versionId) {
+		const version = this.versionsById.get(versionId);
+
+		return version?.canonicalSourceEvidence
+			? this.toGenericAssetVersionRecord(version)
+			: null;
+	}
+
+	async listPublishedDerivatives(versionId) {
+		return [...this.publishedDerivativesByKey.values()]
+			.filter((derivative) => derivative.assetVersionId === versionId)
+			.sort((left, right) =>
+				left.deterministicKey.localeCompare(right.deterministicKey),
+			)
+			.map((derivative) => ({
+				...derivative,
+				publishedAt: new Date(derivative.publishedAt),
+			}));
+	}
+
+	async publishGenericAssetVersion(input) {
+		const version = this.getMutablePublicationVersion(input.versionId);
+
+		if (
+			version.lifecycleState !== "processing" &&
+			version.lifecycleState !== "published"
+		) {
+			throw new Error(
+				`Generic asset version "${input.versionId}" cannot publish derivatives from lifecycle state "${version.lifecycleState}".`,
+			);
+		}
+
+		for (const derivative of input.derivatives) {
+			this.publishedDerivativesByKey.set(
+				this.buildDerivativeKey(derivative),
+				{
+					...derivative,
+					publishedAt: new Date(derivative.publishedAt),
+				},
+			);
+		}
+
+		this.publishedManifestsByKey.set(
+			this.buildManifestKey({
+				deliveryScopeId: input.deliveryScopeId,
+				manifestType: input.manifest.manifestType,
+				versionId: input.versionId,
+			}),
+			{
+				...input.manifest,
+				publishedAt: new Date(input.manifest.publishedAt),
+			},
+		);
+		version.lifecycleState = "published";
+		if (version.workflowDispatch) {
+			version.workflowDispatch = {
+				...version.workflowDispatch,
+				state: "completed",
+			};
+		}
+		this.save();
+
+		return this.toGenericAssetVersionRecord(version);
+	}
+
+	async readManifest(versionId, manifestType, deliveryScopeId) {
+		const manifest = this.publishedManifestsByKey.get(
+			this.buildManifestKey({ deliveryScopeId, manifestType, versionId }),
+		);
+
+		return manifest
+			? {
+					...manifest,
+					publishedAt: new Date(manifest.publishedAt),
+				}
+			: null;
+	}
+
+	findPublishedDerivative(versionId, deliveryScopeId, variant) {
+		return [...this.publishedDerivativesByKey.values()].find(
+			(derivative) =>
+				derivative.assetVersionId === versionId &&
+				derivative.deliveryScopeId === deliveryScopeId &&
+				derivative.variantKey === variant,
+		);
+	}
+
+	findPublishedManifest(versionId, manifestType) {
+		return [...this.publishedManifestsByKey.values()].find(
+			(manifest) =>
+				manifest.assetVersionId === versionId &&
+				manifest.manifestType === manifestType,
+		);
+	}
+
+	getDefaultManifestType(versionId) {
+		return [...this.publishedManifestsByKey.values()].find(
+			(manifest) => manifest.assetVersionId === versionId,
+		)?.manifestType;
+	}
+
+	listPendingGenericAssetPublicationDispatches() {
+		return [...this.versionsById.values()]
+			.filter(
+				(version) =>
+					version.canonicalSourceEvidence &&
+					(version.lifecycleState === "canonical" ||
+						version.lifecycleState === "processing") &&
+					version.workflowDispatch?.workflowKey.endsWith(
+						":asset-derivation-v1",
+					),
+			)
+			.map((version) => ({
+				versionId: version.versionId,
+				workflowDispatch: { ...version.workflowDispatch },
+			}));
+	}
+
+	getMutablePublicationVersion(versionId) {
+		const version = this.versionsById.get(versionId);
+
+		if (!version?.canonicalSourceEvidence) {
+			throw new Error(`Generic asset version "${versionId}" does not exist.`);
+		}
+
+		return version;
+	}
+
+	toGenericAssetVersionRecord(version) {
+		if (!version.canonicalSourceEvidence) {
+			throw new Error(
+				`Generic asset version "${version.versionId}" is missing canonical source evidence.`,
+			);
+		}
+
+		return {
+			assetId: version.assetId,
+			canonicalSourceEvidence: {
+				...version.canonicalSourceEvidence,
+				canonicalDigestSet:
+					version.canonicalSourceEvidence.canonicalDigestSet.map((digest) => ({
+						...digest,
+					})),
+				...(version.canonicalSourceEvidence.dedupeMetrics
+					? {
+							dedupeMetrics: {
+								...version.canonicalSourceEvidence.dedupeMetrics,
+							},
+						}
+					: {}),
+				...(version.canonicalSourceEvidence.sourceReconstructionHandles
+					? {
+							sourceReconstructionHandles:
+								version.canonicalSourceEvidence.sourceReconstructionHandles.map(
+									(handle) => ({ ...handle }),
+								),
+						}
+					: {}),
+				...(version.canonicalSourceEvidence.sourceSubstrateHints
+					? {
+							sourceSubstrateHints: {
+								...version.canonicalSourceEvidence.sourceSubstrateHints,
+							},
+						}
+					: {}),
+			},
+			detectedContentType: version.contentType,
+			lifecycleState:
+				version.lifecycleState === "published"
+					? "published"
+					: version.lifecycleState === "processing"
+						? "processing"
+						: "canonical",
+			serviceNamespaceId: version.serviceNamespaceId,
+			sourceByteLength: BigInt(version.byteLength),
+			sourceChecksumValue: version.checksum.value,
+			sourceFilename: version.filename,
+			versionId: version.versionId,
+			versionNumber: version.versionNumber,
+		};
+	}
+
+	buildDerivativeKey(derivative) {
+		return [
+			derivative.assetVersionId,
+			derivative.deliveryScopeId,
+			derivative.recipeId,
+			derivative.schemaVersion,
+			derivative.variantKey,
+		].join(":");
+	}
+
+	buildManifestKey(input) {
+		return [
+			input.versionId,
+			input.deliveryScopeId,
+			input.manifestType,
+		].join(":");
+	}
+
+	save() {}
+}
+
+class FileBackedUploadSessionIssuanceStore extends LocalRuntimeUploadSessionStore {
 	constructor(options) {
 		super();
 		this.stateFilePath = path.join(options.stateDir, "upload-session-store.json");
@@ -224,6 +510,8 @@ class FileBackedUploadSessionIssuanceStore extends InMemoryUploadSessionIssuance
 		restoreMap(this.versionsByAssetId, persisted.versionsByAssetId);
 		restoreMap(this.uploadSessions, persisted.uploadSessions);
 		restoreMap(this.idempotencyRecords, persisted.idempotencyRecords);
+		restoreMap(this.publishedDerivativesByKey, persisted.publishedDerivatives);
+		restoreMap(this.publishedManifestsByKey, persisted.publishedManifests);
 	}
 
 	save() {
@@ -234,6 +522,8 @@ class FileBackedUploadSessionIssuanceStore extends InMemoryUploadSessionIssuance
 			versionsByAssetId: mapToPersistedEntries(this.versionsByAssetId),
 			uploadSessions: mapToPersistedEntries(this.uploadSessions),
 			idempotencyRecords: mapToPersistedEntries(this.idempotencyRecords),
+			publishedDerivatives: mapToPersistedEntries(this.publishedDerivativesByKey),
+			publishedManifests: mapToPersistedEntries(this.publishedManifestsByKey),
 		});
 	}
 }
@@ -511,6 +801,132 @@ class BucketBackedLocalRuntimeStagingBlobStore {
 	}
 }
 
+class LocalRuntimeDerivedObjectStore {
+	constructor(stagingBlobStore) {
+		this.stagingBlobStore = stagingBlobStore;
+	}
+
+	async publishObject(input) {
+		const bytes = await bytesFromBody(input.body);
+		await this.stagingBlobStore.writeObject(
+			input.objectKey,
+			bytes,
+			input.contentType,
+		);
+
+		return {
+			bucket: "cdngine-local-derived",
+			etag: input.checksum?.value,
+			key: input.objectKey,
+		};
+	}
+
+	async headObject(objectKey) {
+		const metadata = await this.stagingBlobStore.getObjectMetadata(objectKey);
+
+		return metadata
+			? {
+					bucket: metadata.bucket,
+					byteLength: BigInt(metadata.byteLength),
+					...(metadata.checksum ? { checksum: metadata.checksum } : {}),
+					key: objectKey,
+				}
+			: null;
+	}
+
+	async issueSignedReadUrl(objectKey, expiresAt) {
+		return {
+			expiresAt,
+			url: this.stagingBlobStore.buildObjectUrl(objectKey),
+		};
+	}
+}
+
+class LocalRuntimeGenericAssetProcessor {
+	constructor(uploadSessionStore, stagingBlobStore) {
+		this.uploadSessionStore = uploadSessionStore;
+		this.stagingBlobStore = stagingBlobStore;
+	}
+
+	async processAssetDerivative(input) {
+		const version = this.uploadSessionStore.getPersistedVersion(input.versionId);
+		if (!version?.canonicalSourceEvidence) {
+			throw new Error(
+				`Generic asset version "${input.versionId}" is missing canonical source evidence.`,
+			);
+		}
+
+		const sourceObject = await this.stagingBlobStore.getObject(version.objectKey);
+		if (!sourceObject) {
+			throw new Error(
+				`Generic asset version "${input.versionId}" cannot restore staged source object "${version.objectKey}".`,
+			);
+		}
+
+		const bytes = await bytesFromBody(sourceObject.bytes ?? sourceObject.body);
+		const checksum =
+			version.canonicalSourceEvidence.canonicalDigestSet.find(
+				(digest) => digest.algorithm === "sha256",
+			) ?? sourceObject.checksum;
+
+		return {
+			body: bytes,
+			byteLength: BigInt(sourceObject.byteLength ?? bytes.byteLength),
+			...(checksum ? { checksum } : {}),
+			contentType: version.contentType,
+		};
+	}
+}
+
+class LocalRuntimePublicationRuntime {
+	constructor(uploadSessionStore, stagingBlobStore) {
+		this.uploadSessionStore = uploadSessionStore;
+		this.derivedObjectStore = new LocalRuntimeDerivedObjectStore(stagingBlobStore);
+		this.processorActivity = new LocalRuntimeGenericAssetProcessor(
+			uploadSessionStore,
+			stagingBlobStore,
+		);
+	}
+
+	async publishCompletedUpload(completed) {
+		await this.publishWorkflowDispatch({
+			versionId: completed.versionId,
+			workflowDispatch: completed.workflowDispatch,
+		});
+	}
+
+	async publishPendingUploads() {
+		for (const pending of this.uploadSessionStore.listPendingGenericAssetPublicationDispatches()) {
+			await this.publishWorkflowDispatch(pending);
+		}
+	}
+
+	async publishWorkflowDispatch(input) {
+		if (input.workflowDispatch?.state === "completed") {
+			return;
+		}
+		if (
+			!input.workflowDispatch?.workflowKey.endsWith(":asset-derivation-v1")
+		) {
+			return;
+		}
+
+		await runGenericAssetPublicationWorkflow(
+			{
+				deliveryScopeId: LOCAL_RUNTIME_DEFAULT_DELIVERY_SCOPE_ID,
+				versionId: input.versionId,
+				workflowId: input.workflowDispatch.dispatchId,
+			},
+			{
+				derivedObjectStore: this.derivedObjectStore,
+				now: () => new Date(),
+				processorActivity: this.processorActivity,
+				publicationStore: this.uploadSessionStore,
+			},
+		);
+	}
+}
+
 class LocalRuntimeSourceRepository {
 	async snapshotFromPath(input) {
 		return {
@@ -541,9 +957,10 @@ class LocalRuntimeSourceRepository {
 }
 
 class UploadSessionPublicReadStore {
-	constructor(uploadSessionStore, stagingBlobStore) {
+	constructor(uploadSessionStore, stagingBlobStore, publicationReplay) {
 		this.uploadSessionStore = uploadSessionStore;
 		this.stagingBlobStore = stagingBlobStore;
+		this.publicationReplay = publicationReplay;
 	}
 
 	async authorizeDelivery(
@@ -553,6 +970,7 @@ class UploadSessionPublicReadStore {
 		variant,
 		request,
 	) {
+		await this.awaitPublicationReplay();
 		const version = this.getRequiredVersion(assetId, versionId);
 
 		if (version.lifecycleState !== "published") {
@@ -562,6 +980,14 @@ class UploadSessionPublicReadStore {
 				version.lifecycleState,
 			);
 		}
+		const derivative = this.uploadSessionStore.findPublishedDerivative(
+			versionId,
+			deliveryScopeId,
+			variant,
+		);
+		if (!derivative) {
+			throw new PublicAssetVersionNotFoundError(assetId, versionId);
+		}
 
 		return {
 			assetId,
@@ -569,14 +995,13 @@ class UploadSessionPublicReadStore {
 			deliveryScopeId,
 			expiresAt: new Date(request.now.getTime() + 15 * 60_000),
 			resolvedOrigin: "cdn-derived",
-			url: this.stagingBlobStore.buildObjectUrl(
-				this.getPersistedVersion(assetId, versionId).objectKey,
-			),
+			url: this.stagingBlobStore.buildObjectUrl(derivative.deterministicKey),
 			versionId,
 		};
 	}
 
 	async authorizeSource(assetId, versionId, _preferredDisposition, request) {
+		await this.awaitPublicationReplay();
 		const version = this.getRequiredVersion(assetId, versionId);
 		const persistedVersion = this.getPersistedVersion(assetId, versionId);
 
@@ -607,6 +1032,7 @@ class UploadSessionPublicReadStore {
 	}
 
 	async getManifest(assetId, versionId, manifestType) {
+		await this.awaitPublicationReplay();
 		const version = this.getRequiredVersion(assetId, versionId);
 
 		if (version.lifecycleState !== "published") {
@@ -617,22 +1043,25 @@ class UploadSessionPublicReadStore {
 			);
 		}
 
-		return {
-			assetId,
-			deliveryScopeId: "public-default",
-			manifestPayload: {
-				assetId,
-				derivatives: [],
-				manifestType,
-				versionId,
-			},
-			manifestType,
-			objectKey: `manifests/${assetId}/${versionId}/${manifestType}`,
+		const manifest = this.uploadSessionStore.findPublishedManifest(
 			versionId,
-		};
+			manifestType,
+		);
+
+		return manifest
+			? {
+					assetId,
+					deliveryScopeId: manifest.deliveryScopeId,
+					manifestPayload: manifest.manifestPayload,
+					manifestType: manifest.manifestType,
+					objectKey: manifest.objectKey,
+					versionId,
+				}
+			: null;
 	}
 
 	async getVersion(assetId, versionId) {
+		await this.awaitPublicationReplay();
 		const persistedVersion =
 			this.uploadSessionStore.getPersistedVersion(versionId);
 
@@ -655,16 +1084,23 @@ class UploadSessionPublicReadStore {
 				contentType: persistedVersion.contentType,
 				filename: persistedVersion.filename,
 			},
+			defaultManifestType:
+				this.uploadSessionStore.getDefaultManifestType(persistedVersion.versionId) ??
+				LOCAL_RUNTIME_GENERIC_MANIFEST_TYPE,
 			...(persistedVersion.tenantId
 				? { tenantId: persistedVersion.tenantId }
 				: {}),
 			versionId: persistedVersion.versionId,
 			versionNumber: persistedVersion.versionNumber,
-			workflowState: persistedVersion.workflowDispatch?.state ?? "pending",
+			workflowState:
+				persistedVersion.lifecycleState === "published"
+					? "completed"
+					: (persistedVersion.workflowDispatch?.state ?? "pending"),
 		};
 	}
 
 	async listDerivatives(assetId, versionId) {
+		await this.awaitPublicationReplay();
 		const version = this.getRequiredVersion(assetId, versionId);
 
 		if (version.lifecycleState !== "published") {
@@ -675,7 +1111,16 @@ class UploadSessionPublicReadStore {
 			);
 		}
 
-		return [];
+		return (await this.uploadSessionStore.listPublishedDerivatives(versionId)).map(
+			(derivative) => ({
+				byteLength: derivative.byteLength,
+				contentType: derivative.contentType,
+				derivativeId: derivative.deterministicKey,
+				deterministicKey: derivative.deterministicKey,
+				recipeId: derivative.recipeId,
+				variant: derivative.variantKey,
+			}),
+		);
 	}
 
 	getPersistedVersion(assetId, versionId) {
@@ -730,6 +1175,12 @@ class UploadSessionPublicReadStore {
 				return "processing";
 		}
 	}
+
+	async awaitPublicationReplay() {
+		if (this.publicationReplay) {
+			await this.publicationReplay;
+		}
+	}
 }
 
 const localRuntimeAuth = {
@@ -742,6 +1193,120 @@ const localRuntimeAuth = {
 		};
 	},
 };
+
+function hasServiceAccountTokenConfiguration(environment) {
+	return Boolean(
+		getOptionalEnvironmentValue(environment, "CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON"),
+	);
+}
+
+function isProductionLikePublicRuntimeEnvironment(environment) {
+	return (
+		getOptionalEnvironmentValue(environment, "NODE_ENV") === "production" ||
+		getOptionalEnvironmentValue(environment, "CDNGINE_DEPLOYMENT_PROFILE") ===
+			"production-default"
+	);
+}
+
+export function resolvePublicRuntimeAuthModeFromEnvironment(
+	environment = process.env,
+) {
+	const explicitMode =
+		getOptionalEnvironmentValue(environment, "CDNGINE_PUBLIC_RUNTIME_AUTH_MODE") ??
+		"auto";
+
+	if (!["auto", "local", "service-accounts"].includes(explicitMode)) {
+		throw new Error(
+			`CDNGINE_PUBLIC_RUNTIME_AUTH_MODE must be "auto", "local", or "service-accounts". Received "${explicitMode}".`,
+		);
+	}
+
+	if (
+		explicitMode === "local" &&
+		isProductionLikePublicRuntimeEnvironment(environment)
+	) {
+		throw new Error(
+			"CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=local is not allowed for production-like public runtime deployments.",
+		);
+	}
+
+	if (explicitMode === "service-accounts") {
+		return "service-accounts";
+	}
+
+	if (explicitMode === "local") {
+		return "local";
+	}
+
+	if (hasServiceAccountTokenConfiguration(environment)) {
+		return "service-accounts";
+	}
+
+	if (isProductionLikePublicRuntimeEnvironment(environment)) {
+		throw new Error(
+			"CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON is required for production-like public runtime deployments.",
+		);
+	}
+
+	return "local";
+}
+
+export function resolvePublicRuntimeAuthFromEnvironment(
+	environment = process.env,
+) {
+	const authMode = resolvePublicRuntimeAuthModeFromEnvironment(environment);
+
+	if (authMode === "service-accounts") {
+		return createStaticServiceAccountAuthenticatorFromEnvironment(environment);
+	}
+
+	return localRuntimeAuth;
+}
+
+export function createPublicRuntimeReadinessMonitor(options = {}) {
+	const environment = options.environment ?? process.env;
+	const readinessProfile = loadReadinessProfileFromEnvironment(environment);
+	const authMode = options.authMode ?? resolvePublicRuntimeAuthModeFromEnvironment(environment);
+	const storageMode =
+		options.storageMode ??
+		(options.objectStore
+			? "object-store"
+			: getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_STORAGE",
+				) ?? "local-files");
+	const storageDetail =
+		storageMode === "object-store"
+			? "object-store staging backend"
+			: "local file staging backend";
+
+	return new RuntimeReadinessMonitor({
+		checks: {
+			auth: () => ({
+				detail:
+					authMode === "service-accounts"
+						? "Service-account bearer authentication is configured."
+						: "Local public runtime authentication is active.",
+				status: "ok",
+			}),
+			"derived-store": () => ({
+				detail: `Derived artifact publication uses the ${storageDetail}.`,
+				status: "ok",
+			}),
+			"exports-store": () => ({
+				detail: `Source export reads use the ${storageDetail}.`,
+				status: "ok",
+			}),
+			"source-repository": () => ({
+				detail: "Local runtime source repository adapter is initialized.",
+				status: "ok",
+			}),
+		},
+		deploymentProfile: readinessProfile.deploymentProfile,
+		requiredDependencies: readinessProfile.requiredDependencies,
+		timeoutMs: options.timeoutMs,
+	});
+}
 
 function getUploadObjectKey(pathname) {
 	return decodeURIComponent(pathname.replace(/^\/uploads\//u, ""));
@@ -827,20 +1392,31 @@ export function createPublicRuntimeApp(options = {}) {
 	}
 	const uploadSessionStore = stateDir
 		? new FileBackedUploadSessionIssuanceStore({ stateDir })
-		: new InMemoryUploadSessionIssuanceStore();
+		: new LocalRuntimeUploadSessionStore();
 	const stagingBlobStore = options.objectStore
 		? new BucketBackedLocalRuntimeStagingBlobStore(options.objectStore)
 		: new LocalRuntimeStagingBlobStore("cdngine-ingest", {
 				stateDir,
 			});
+	const publicationRuntime = new LocalRuntimePublicationRuntime(
+		uploadSessionStore,
+		stagingBlobStore,
+	);
+	uploadSessionStore.setAfterCompleteUploadSession((completed) =>
+		publicationRuntime.publishCompletedUpload(completed),
+	);
+	const publicationReplay = publicationRuntime.publishPendingUploads();
 	const sourceRepository = new LocalRuntimeSourceRepository();
 	const publicReadStore = new UploadSessionPublicReadStore(
 		uploadSessionStore,
 		stagingBlobStore,
+		publicationReplay,
 	);
+	const auth = options.auth ?? localRuntimeAuth;
 
 	return createApiApp({
-		auth: localRuntimeAuth,
+		auth,
+		readiness: options.readiness,
 		requestTimeoutMs: 60_000,
 		registerCapabilityRoutes(app) {
 			app.options("/uploads/*", async (context) => {
@@ -1030,12 +1606,38 @@ export function resolvePublicRuntimeObjectStoreFromEnvironment(
 	};
 }
 
+export function resolvePublicRuntimePortFromEnvironment(
+	environment = process.env,
+	fallback = 4000,
+) {
+	for (const key of ["PORT", "WEB_PORT", "CDNGINE_PUBLIC_RUNTIME_PORT"]) {
+		const value = getOptionalEnvironmentValue(environment, key);
+		if (!value) {
+			continue;
+		}
+		if (value.startsWith("${") && value.endsWith("}")) {
+			continue;
+		}
+
+		const port = Number(value);
+		if (Number.isInteger(port) && port > 0) {
+			return port;
+		}
+
+		throw new Error(`${key} must be a positive integer. Received "${value}".`);
+	}
+
+	return fallback;
+}
+
 export function createPublicRuntimeServer(options = {}) {
 	const fallbackOrigin =
 		options.publicBaseUrl ??
 		`http://${options.host ?? "127.0.0.1"}:${options.port ?? 4000}`;
 	const app = createPublicRuntimeApp({
+		auth: options.auth,
 		objectStore: options.objectStore,
+		readiness: options.readiness,
 		stateDir: options.stateDir,
 	});
 

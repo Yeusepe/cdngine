@@ -143,3 +143,10 @@ test('remote latest compose builds from GitHub without local bind mounts', () =>
   assert.doesNotMatch(composeFile, /\.\./);
   assert.match(composeFile, /cdngine-runtime:/);
 });
+
+test('runtime Dockerfile installs OpenSSL for Prisma database clients', () => {
+  const dockerfile = readFileSync(join(repositoryRoot, 'Dockerfile'), 'utf8');
+
+  assert.match(dockerfile, /apt-get update/);
+  assert.match(dockerfile, /openssl/);
+});

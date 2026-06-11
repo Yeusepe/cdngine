@@ -78,6 +78,18 @@ test('loadStorageRuntimeConfigFromEnvironment resolves multi-bucket profiles wit
   assert.equal(config.sourceRepository.engine, 'kopia');
 });
 
+test('loadStorageRuntimeConfigFromEnvironment supports object-store source repositories for single-node durable deployments', () => {
+  const config = loadStorageRuntimeConfigFromEnvironment({
+    CDNGINE_SOURCE_ENGINE: 'object-store',
+    CDNGINE_STORAGE_BUCKET: 'cdngine-data',
+    CDNGINE_STORAGE_LAYOUT_MODE: 'one-bucket'
+  });
+
+  assert.equal(config.sourceRepository.engine, 'object-store');
+  assert.equal(config.normalized.ingest.targetKey, 'cdngine-data/ingest');
+  assert.equal(config.normalized.source.targetKey, 'cdngine-data/source');
+});
+
 test('loadStorageRuntimeConfigFromEnvironment rejects missing required bucket values', () => {
   assert.throws(
     () =>
@@ -92,8 +104,46 @@ test('loadStorageRuntimeConfigFromEnvironment rejects missing required bucket va
 test('storage package entrypoint exports source repository runtime loader and factory surfaces', () => {
   assert.equal(typeof storagePackage.createSourceRepositoryFromEnvironment, 'function');
   assert.equal(typeof storagePackage.createSourceRepository, 'function');
+  assert.equal(typeof storagePackage.S3CompatibleSourceRepository, 'function');
   assert.equal(typeof storagePackage.loadSourceRepositoryRuntimeConfigFromEnvironment, 'function');
   assert.equal(typeof storagePackage.resolveSourceRepositoryEngineFromEnvironment, 'function');
+});
+
+test('createSourceRepository wires object-store source repositories through the runtime factory', () => {
+  const repository = storagePackage.createSourceRepository({
+    objectStore: {
+      client: {
+        async send() {
+          return {};
+        }
+      },
+      ingestTarget: {
+        role: 'ingest',
+        bucket: 'cdngine-data',
+        prefix: 'ingest',
+        targetKey: 'cdngine-data/ingest'
+      },
+      sourceTarget: {
+        role: 'source',
+        bucket: 'cdngine-data',
+        prefix: 'source',
+        targetKey: 'cdngine-data/source'
+      }
+    },
+    runtimeConfig: {
+      engine: 'object-store',
+      kopia: {
+        executable: 'kopia',
+        timeoutMs: 30_000
+      },
+      objectStore: {},
+      xet: {
+        timeoutMs: 30_000
+      }
+    }
+  });
+
+  assert.ok(repository instanceof storagePackage.S3CompatibleSourceRepository);
 });
 
 test('resolveSourceRepositoryEngineFromEnvironment defaults to xet when the engine variable is absent', () => {
@@ -172,7 +222,7 @@ test('loadSourceRepositoryRuntimeConfigFromEnvironment rejects invalid source en
       }),
     (error) => {
       assert.ok(error instanceof StorageRuntimeConfigError);
-      assert.match(error.message, /CDNGINE_SOURCE_ENGINE must be one of xet, kopia/);
+      assert.match(error.message, /CDNGINE_SOURCE_ENGINE must be one of xet, kopia, object-store/);
       return true;
     }
   );

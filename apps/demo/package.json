@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && npm run build -w @cdngine/workflows && node ./scripts/dev.mjs",
-    "runtime:start": "npm run build -w @cdngine/auth && npm run build -w @cdngine/observability && npm run build -w @cdngine/capabilities && npm run build -w @cdngine/storage && npm run build -w @cdngine/workflows && npm run build -w @cdngine/api && node ./scripts/start-public-runtime.mjs",
+    "runtime:start": "npm run build -w @cdngine/auth && npm run build -w @cdngine/observability && npm run build -w @cdngine/capabilities && npm run build -w @cdngine/storage && npm run build -w @cdngine/registry && npm run build -w @cdngine/workflows && npm run build -w @cdngine/api && node ./scripts/start-public-runtime.mjs",
     "ui:start": "npm run build -w @cdngine/sdk && vite --host 0.0.0.0",
     "build": "npm run build -w @cdngine/auth && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && npm run build -w @cdngine/workflows && tsc -b && vite build",
     "lint": "npm run build -w @cdngine/sdk && tsc -b --pretty false",
     "preview": "vite preview",
-    "test": "npm run build -w @cdngine/auth && npm run build -w @cdngine/observability && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && node --experimental-strip-types --test test/*.test.ts test/*.test.mjs"
+    "test": "npm run build -w @cdngine/auth && npm run build -w @cdngine/observability && npm run build -w @cdngine/storage && npm run build -w @cdngine/registry && npm run build -w @cdngine/api && npm run build -w @cdngine/sdk && node --experimental-strip-types --test test/*.test.ts test/*.test.mjs"
   },
   "cdngine": {
     "governingDocs": [
@@ -37,7 +37,9 @@
     "@aws-sdk/client-s3": "^3.1030.0",
     "@cdngine/auth": "0.1.0",
     "@cdngine/observability": "0.1.0",
+    "@cdngine/registry": "0.1.0",
     "@cdngine/sdk": "0.1.0",
+    "@cdngine/storage": "0.1.0",
     "@cdngine/workflows": "0.1.0",
     "@fontsource-variable/geist": "^5.2.8",
     "react": "^19.2.4",

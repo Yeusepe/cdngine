@@ -63,7 +63,14 @@ export interface SnapshotFromPathInput {
   metadata?: Record<string, string>;
 }
 
-export type SourceRepositoryEngine = 'kopia' | 'xet' | 'restic' | 'borg' | 'casync' | 'custom';
+export type SourceRepositoryEngine =
+  | 'kopia'
+  | 'xet'
+  | 'object-store'
+  | 'restic'
+  | 'borg'
+  | 'casync'
+  | 'custom';
 
 export type SourceReconstructionHandleKind =
   | 'snapshot'

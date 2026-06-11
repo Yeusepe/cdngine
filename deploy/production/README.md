@@ -30,6 +30,10 @@ The auth and storage packages now resolve these environment variables into the c
 - `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` for static service-account bearer tokens stored as SHA-256 digests
 - `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS` for the CLI-friendly single service-account form
 - `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE` for the portable public runtime, set to `service-accounts` outside local demos
+- `CDNGINE_PUBLIC_RUNTIME_STATE_MODE`, set to `durable` outside local demos
+- `CDNGINE_DATABASE_URL` or `DATABASE_URL`
+- `TUSD_ENDPOINT`
+- `CDNGINE_S3_ENDPOINT` or `RUSTFS_ENDPOINT`, plus object-store credentials
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` for one-bucket deployments
 - `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET` for multi-bucket deployments
@@ -51,6 +55,8 @@ For the portable public runtime, production-like deployments fail startup unless
 - `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=service-accounts`
 - `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` with one or more service-account objects containing `subject`, `tokenSha256`, `roles`, `allowedServiceNamespaces`, and `allowedTenantIds`
 - or the single-account variables `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS`
+- `CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID`, normally matching the allowed service-account namespace
+- `CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME`, `CDNGINE_PUBLIC_RUNTIME_DELIVERY_PATH_PREFIX`, and `CDNGINE_PUBLIC_RUNTIME_DELIVERY_SCOPE_KEY` so startup can idempotently bootstrap registry delivery scope rows before accepting traffic
 
 Generate the raw caller token and CDNgine-side digest with Node.js:
 
@@ -60,11 +66,14 @@ node -e "const { createHash, randomBytes } = require('node:crypto'); const token
 
 Store the raw token only in the caller's secret manager, such as the Creator Assistant API secret source. Store only `tokenSha256` and server-side scopes in CDNgine. If Infisical syncs Zeabur variables for the deployment, keep the same split there: caller raw token in the caller project/environment, CDNgine digest JSON in the CDNgine project/environment.
 
+The durable public runtime startup runs registry migrations and then upserts the configured service namespace, optional tenant scopes, and delivery scopes. Treat missing bootstrap variables as a deployment error, not as a request-time fallback.
+
 ## Current source-plane posture
 
 These production examples now describe the rollout contract rather than a Kopia-only steady state:
 
 - the `source` role is the backing storage for the canonical source repository, with **Xet** as the target default engine for new canonicalizations
+- `CDNGINE_SOURCE_ENGINE=object-store` is a supported small-deployment durability lane when PostgreSQL, tusd, and S3-compatible storage are present but the Xet bridge is not yet operated; it promotes verified staged objects into the `source` role and records `s3://bucket/key` reconstruction evidence without dedupe metrics
 - the same storage-role examples also support the temporary **Kopia** dual-read migration lane for legacy versions
 - the engine-neutral source-evidence fields remain a registry and diagnostics contract, not a deployment-topology change
 - `CDNGINE_SOURCE_ENGINE` is an internal operator rollout control, not a product-facing API contract
@@ -77,6 +86,7 @@ Do not interpret these examples as permission for indefinite mixed-engine operat
 The checked-in production examples now show the **Xet-default** posture by omitting `CDNGINE_SOURCE_ENGINE`.
 
 - when `CDNGINE_SOURCE_ENGINE` is absent, the runtime loader defaults new canonicalizations to **Xet**
+- set `CDNGINE_SOURCE_ENGINE=object-store` only when the operator intentionally accepts durable, non-deduplicated canonical source storage for a small deployment
 - set `CDNGINE_SOURCE_ENGINE=kopia` only for the temporary migration lane or an emergency write-path rollback
 - the currently implemented Xet runtime path is **command-backed**; provide `CDNGINE_XET_COMMAND` and any optional `CDNGINE_XET_COMMAND_ARGS_JSON`, `CDNGINE_XET_WORKSPACE_PATH`, and `CDNGINE_XET_WORKING_DIRECTORY` values needed by that bridge
 - `CDNGINE_XET_SERVICE_ENDPOINT` and `CDNGINE_XET_AUTH_TOKEN` are valid inputs when the deployment chooses the service-backed Xet bridge instead of the checked-in command-backed example
@@ -103,23 +113,23 @@ The readiness loader has two built-in profiles:
 `CDNGINE_READINESS_REQUIRED` can override either profile, but the normal production examples should still prove:
 
 - the configured auth adapter can validate bearer-backed sessions with deployment-managed secrets and trusted origins
-- the Xet bridge command is runnable within the configured timeout
+- the selected source repository is configured: Xet bridge command or endpoint for dedupe deployments, or `object-store` source role promotion for small durable deployments
 - the source backing bucket or prefix is reachable for canonicalization and reconstruction
 - derived and exports origins are reachable in the `production-default` profile
 - the temporary Kopia lane is still restorable anywhere legacy rows or emergency rollback still depend on it
 
 Treat `source-repository` readiness as a runtime-factory contract, not as a promise that the repo already ships a dedicated Xet service.
 
-The portable Zeabur-style public runtime does not run PostgreSQL, Redis, Temporal, or tusd as separate processes. For that packaging shape, set `CDNGINE_DEPLOYMENT_PROFILE=production-default` and explicitly scope readiness to the dependencies the portable runtime really owns:
+The durable Zeabur-style public runtime does not have to run Redis or Temporal inside the public process, but it must still own PostgreSQL registry access, tusd upload targets, source promotion, and derived/export object storage. For that packaging shape, set `CDNGINE_DEPLOYMENT_PROFILE=production-default` and explicitly scope readiness to the dependencies the public runtime really owns:
 
 ```bash
-CDNGINE_READINESS_REQUIRED=auth,source-repository,derived-store,exports-store
+CDNGINE_READINESS_REQUIRED=auth,postgres,tusd,source-repository,derived-store,exports-store
 ```
 
 When setting the same value through Zeabur CLI, use pipes to avoid comma parsing in `-k` values:
 
 ```bash
-CDNGINE_READINESS_REQUIRED=auth|source-repository|derived-store|exports-store
+CDNGINE_READINESS_REQUIRED=auth|postgres|tusd|source-repository|derived-store|exports-store
 ```
 
 Do not list dependencies that are not actually running just to make `/readyz` look complete.

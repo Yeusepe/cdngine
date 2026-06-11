@@ -27,8 +27,11 @@ import {
 	createPublicRuntimeReadinessMonitor,
 	createPublicRuntimeApp,
 	createPublicRuntimeServer,
+	bootstrapDurablePublicRuntimeRegistry,
 	resolvePublicRuntimeAuthFromEnvironment,
+	resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment,
 	resolvePublicRuntimePortFromEnvironment,
+	resolvePublicRuntimeStateModeFromEnvironment,
 } from "../scripts/public-runtime-app.mjs";
 
 class FakeS3Client {
@@ -131,6 +134,266 @@ test("production public runtime auth requires configured service-account bearer 
 			}),
 		/CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=local/,
 	);
+});
+
+test("production public runtime defaults to durable state and rejects explicit local state", () => {
+	assert.equal(
+		resolvePublicRuntimeStateModeFromEnvironment({
+			NODE_ENV: "production",
+		}),
+		"durable",
+	);
+	assert.throws(
+		() =>
+			resolvePublicRuntimeStateModeFromEnvironment({
+				CDNGINE_DEPLOYMENT_PROFILE: "production-default",
+				CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "local",
+			}),
+		/CDNGINE_PUBLIC_RUNTIME_STATE_MODE=local/,
+	);
+});
+
+test("durable public runtime resolves registry bootstrap from explicit production scope", () => {
+	const config = resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment({
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME: "https://cdngine-yenot.zeabur.app",
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_PATH_PREFIX: "/delivery/",
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_SCOPE_KEY: "paid-downloads",
+		CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_DISPLAY_NAME:
+			"Creator Assistant Backstage",
+		CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID: "yucp-backstage",
+		CDNGINE_PUBLIC_RUNTIME_TENANT_IDS: "tenant-alpha, tenant-beta",
+		NODE_ENV: "production",
+	});
+
+	assert.deepEqual(config, {
+		deliveryScope: {
+			authorizationMode: "signed_url",
+			cacheProfile: "immutable-package",
+			deliveryMode: "shared-path",
+			hostname: "cdngine-yenot.zeabur.app",
+			pathPrefix: "delivery",
+			scopeKey: "paid-downloads",
+		},
+		namespace: {
+			displayName: "Creator Assistant Backstage",
+			serviceNamespaceId: "yucp-backstage",
+			tenantIsolationMode: "shared-tenant",
+		},
+		tenantIds: ["tenant-alpha", "tenant-beta"],
+	});
+});
+
+test("durable public runtime bootstraps namespace and delivery scopes idempotently", async () => {
+	const calls = [];
+	const prisma = {
+		deliveryScope: {
+			async create(args) {
+				calls.push(["deliveryScope.create", args]);
+				return { id: `scope-${calls.length}`, ...args.data };
+			},
+			async findFirst(args) {
+				calls.push(["deliveryScope.findFirst", args]);
+				return null;
+			},
+			async update(args) {
+				calls.push(["deliveryScope.update", args]);
+				return { id: args.where.id, ...args.data };
+			},
+		},
+		serviceNamespace: {
+			async upsert(args) {
+				calls.push(["serviceNamespace.upsert", args]);
+				return { id: "namespace-row-1", ...args.create };
+			},
+		},
+		tenantScope: {
+			async upsert(args) {
+				calls.push(["tenantScope.upsert", args]);
+				return { id: `tenant-${args.create.externalTenantId}`, ...args.create };
+			},
+		},
+	};
+
+	const result = await bootstrapDurablePublicRuntimeRegistry({
+		environment: {
+			CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME: "cdn.cdngine.local",
+			CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID: "yucp-backstage",
+			CDNGINE_PUBLIC_RUNTIME_TENANT_IDS: "tenant-alpha",
+		},
+		prisma,
+	});
+
+	assert.deepEqual(result, {
+		deliveryScopes: [
+			{ scopeKey: "paid-downloads" },
+			{ scopeKey: "paid-downloads", tenantId: "tenant-alpha" },
+		],
+		serviceNamespaceId: "yucp-backstage",
+		tenantIds: ["tenant-alpha"],
+	});
+	assert.equal(calls[0][0], "serviceNamespace.upsert");
+	assert.equal(calls[0][1].where.serviceNamespaceId, "yucp-backstage");
+	assert.equal(calls[1][0], "tenantScope.upsert");
+	assert.deepEqual(
+		calls
+			.filter(([name]) => name === "deliveryScope.create")
+			.map(([, args]) => args.data.tenantScopeId ?? null),
+		[null, "tenant-tenant-alpha"],
+	);
+});
+
+test("durable public runtime refuses to assemble without durable registry, tusd, and object-store source configuration", () => {
+	assert.throws(
+		() =>
+			createPublicRuntimeApp({
+				environment: {
+					CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "durable",
+					CDNGINE_SOURCE_ENGINE: "object-store",
+					CDNGINE_STORAGE_BUCKET: "cdngine-data",
+					CDNGINE_STORAGE_LAYOUT_MODE: "one-bucket",
+					NODE_ENV: "production",
+				},
+			}),
+		/CDNGINE_DATABASE_URL or DATABASE_URL/,
+	);
+	assert.throws(
+		() =>
+			createPublicRuntimeApp({
+				environment: {
+					CDNGINE_DATABASE_URL:
+						"postgresql://cdngine:cdngine@postgres:5432/cdngine",
+					CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "durable",
+					CDNGINE_SOURCE_ENGINE: "object-store",
+					CDNGINE_STORAGE_BUCKET: "cdngine-data",
+					CDNGINE_STORAGE_LAYOUT_MODE: "one-bucket",
+					NODE_ENV: "production",
+				},
+			}),
+		/TUSD_ENDPOINT/,
+	);
+});
+
+test("durable public runtime uses tusd upload targets without exposing the local PATCH upload route", async () => {
+	const app = createPublicRuntimeApp({
+		durableRuntime: {
+			publicReadStore: {
+				async authorizeDelivery() {
+					throw new Error("authorizeDelivery should not run in this test.");
+				},
+				async authorizeSource() {
+					throw new Error("authorizeSource should not run in this test.");
+				},
+				async consumeDownloadLink() {
+					throw new Error("consumeDownloadLink should not run in this test.");
+				},
+				async getManifest() {
+					return null;
+				},
+				async getVersion() {
+					return null;
+				},
+				async listDerivatives() {
+					return [];
+				},
+			},
+			sourceRepository: {
+				async listSnapshots() {
+					return [];
+				},
+				async restoreToPath(input) {
+					return { restoredPath: input.destinationPath };
+				},
+				async snapshotFromPath() {
+					throw new Error("snapshotFromPath should not run in this test.");
+				},
+			},
+			stagingBlobStore: {
+				async createUploadTarget(input) {
+					return {
+						expiresAt: input.expiresAt,
+						method: "PATCH",
+						protocol: "tus",
+						url: `https://uploads.cdngine.local/files/ingest/${input.objectKey}`,
+					};
+				},
+				async deleteObject() {},
+				async headObject() {
+					return null;
+				},
+			},
+			uploadSessionStore: {
+				async completeUploadSession() {
+					throw new Error("completeUploadSession should not run in this test.");
+				},
+				async getUploadSession() {
+					return null;
+				},
+				async issueUploadSession(input) {
+					return {
+						assetId: "ast_durable_001",
+						assetOwner: input.assetOwner,
+						byteLength: input.byteLength,
+						checksum: input.checksum,
+						contentType: input.contentType,
+						expiresAt: input.expiresAt,
+						filename: input.filename,
+						isDuplicate: false,
+						objectKey: input.objectKey,
+						serviceNamespaceId: input.serviceNamespaceId,
+						uploadSessionId: "upl_durable_001",
+						versionId: "ver_durable_001",
+						versionNumber: 1,
+					};
+				},
+			},
+		},
+		runtimeStateMode: "durable",
+	});
+
+	const issueResponse = await app.request("http://localhost/v1/upload-sessions", {
+		body: JSON.stringify({
+			assetOwner: "demo:user",
+			serviceNamespaceId: "media-platform",
+			source: {
+				contentType: "text/plain",
+				filename: "durable.txt",
+			},
+			upload: {
+				byteLength: 7,
+				checksum: {
+					algorithm: "sha256",
+					value: "durable-sha",
+				},
+				objectKey: "media-platform/durable.txt",
+			},
+		}),
+		headers: {
+			"content-type": "application/json",
+			"idempotency-key": "create-durable-upload",
+		},
+		method: "POST",
+	});
+
+	assert.equal(issueResponse.status, 201);
+	const issued = await issueResponse.json();
+	assert.equal(
+		issued.uploadTarget.url,
+		"https://uploads.cdngine.local/files/ingest/media-platform/durable.txt",
+	);
+
+	const patchResponse = await app.request(
+		"http://localhost/uploads/media-platform/durable.txt",
+		{
+			body: "durable",
+			headers: {
+				"tus-resumable": "1.0.0",
+				"upload-offset": "0",
+			},
+			method: "PATCH",
+		},
+	);
+
+	assert.equal(patchResponse.status, 404);
 });
 
 test("production public runtime enforces service-account bearer auth before public routes", async () => {

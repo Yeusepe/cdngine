@@ -106,6 +106,7 @@ Those fields intentionally stop at source-plane provenance and storage facts. Th
 The current rollout posture is:
 
 - **Xet is the default canonical source engine for new canonicalizations**
+- `object-store` is an accepted small-deployment engine when the operator needs durable source evidence but has not deployed the Xet bridge yet; it promotes verified ingest objects into the `source` storage role and records `s3://bucket/key` reconstruction evidence without dedupe metrics
 - `repositoryEngine` remains the durable selector for reads, replay, diagnostics, and migration
 - **legacy Kopia-backed versions stay readable** until migration, backfill, and explicit operator signoff retire them
 - CDNgine may backfill or re-canonicalize legacy versions into Xet, but it must preserve durable auditability of what engine originally produced each version record
@@ -122,6 +123,7 @@ Those commands deliberately avoid silently rewriting the original `AssetVersion`
 The checked-in local and production runtime examples now mirror that rollout posture:
 
 - they omit `CDNGINE_SOURCE_ENGINE` so the default engine switch remains visible instead of hidden behind redundant env values
+- they may set `CDNGINE_SOURCE_ENGINE=object-store` for single-node durable public runtime packaging where PostgreSQL, tusd, and S3-compatible storage are present but Xet is not yet operated
 - they require command-backed Xet bridge wiring for the implemented path today
 - they keep the temporary Kopia variables documented where operators still need rollback and legacy-read coverage
 - they keep the checked-in examples command-backed while the runtime factory still supports either command-backed or service-backed Xet wiring

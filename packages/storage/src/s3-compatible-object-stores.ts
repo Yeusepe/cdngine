@@ -6,19 +6,27 @@
  * - docs/original-source-delivery.md
  * - docs/upstream-integration-model.md
  * External references:
+ * - https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_s3_code_examples.html
  * - https://github.com/rustfs/rustfs
  * - https://github.com/seaweedfs/seaweedfs
  * - https://tus.io/protocols/resumable-upload
+ * - https://pkg.go.dev/github.com/tus/tusd/pkg/s3store
  * Tests:
  * - packages/storage/test/s3-compatible-object-stores.test.ts
+ * - packages/storage/test/s3-compatible-source-repository.test.ts
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
-  type S3Client
+  S3Client
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -29,7 +37,13 @@ import type {
   ExportsObjectStore,
   PublishObjectInput,
   PublishObjectResult,
+  RestoreSnapshotInput,
+  RestoreResult,
   SignedReadResult,
+  SnapshotFromPathInput,
+  SnapshotResult,
+  SnapshotSummary,
+  SourceRepository,
   StagedObjectDescriptor,
   StagingBlobStore
 } from './adapter-contracts.js';
@@ -50,6 +64,12 @@ export interface S3CompatibleStoreConfig {
   target: NormalizedStorageRoleTarget;
 }
 
+export interface S3CompatibleSourceRepositoryConfig {
+  client: S3CompatibleClient;
+  ingestTarget: NormalizedStorageRoleTarget;
+  sourceTarget: NormalizedStorageRoleTarget;
+}
+
 export interface S3CompatibleStagingBlobStoreConfig extends S3CompatibleStoreConfig {
   uploadBaseUrl: string;
 }
@@ -62,6 +82,40 @@ function normalizeRelativeObjectKey(objectKey: string): string {
   }
 
   return normalized;
+}
+
+function encodeCopySource(bucket: string, key: string): string {
+  return `${bucket}/${key}`;
+}
+
+function buildS3Uri(bucket: string, key: string): string {
+  return `s3://${bucket}/${key}`;
+}
+
+function parseS3Uri(uri: string): { bucket: string; key: string } {
+  const match = /^s3:\/\/([^/]+)\/(.+)$/u.exec(uri);
+
+  if (!match?.[1] || !match[2]) {
+    throw new Error(`S3 source repository evidence must use s3://bucket/key URIs. Received "${uri}".`);
+  }
+
+  return {
+    bucket: match[1],
+    key: normalizeRelativeObjectKey(match[2])
+  };
+}
+
+function parseStagingReference(reference: string): { bucket: string; key: string } {
+  const match = /^staging:\/\/([^/]+)\/(.+)$/u.exec(reference);
+
+  if (!match?.[1] || !match[2]) {
+    throw new Error('Object-store source repository snapshots require staging:// bucket references.');
+  }
+
+  return {
+    bucket: match[1],
+    key: normalizeRelativeObjectKey(match[2])
+  };
 }
 
 function buildQualifiedObjectKey(target: NormalizedStorageRoleTarget, objectKey: string): string {
@@ -94,6 +148,44 @@ function isMissingObjectError(error: unknown): boolean {
     message.includes('not found') ||
     message.includes('no such key')
   );
+}
+
+async function bytesFromObjectBody(body: unknown): Promise<Uint8Array> {
+  if (!body) {
+    return new Uint8Array();
+  }
+
+  if (body instanceof Uint8Array) {
+    return body;
+  }
+
+  if (typeof body === 'string') {
+    return Buffer.from(body);
+  }
+
+  if (body instanceof ReadableStream) {
+    return new Uint8Array(await new Response(body).arrayBuffer());
+  }
+
+  if (typeof body === 'object' && body !== null && 'transformToByteArray' in body) {
+    const transformToByteArray = body.transformToByteArray;
+
+    if (typeof transformToByteArray === 'function') {
+      return transformToByteArray.call(body);
+    }
+  }
+
+  if (typeof body === 'object' && body !== null && Symbol.asyncIterator in body) {
+    const chunks: Uint8Array[] = [];
+
+    for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+
+    return Buffer.concat(chunks);
+  }
+
+  return Buffer.from(String(body));
 }
 
 function toStagedObjectDescriptor(
@@ -259,6 +351,154 @@ export class S3CompatibleStagingBlobStore
 
   async deleteObject(objectKey: string): Promise<void> {
     await this.deleteResolvedObject(this.resolveQualifiedKey(objectKey));
+  }
+}
+
+export class S3CompatibleSourceRepository implements SourceRepository {
+  private readonly client: S3CompatibleClient;
+  private readonly ingestTarget: NormalizedStorageRoleTarget;
+  private readonly sourceTarget: NormalizedStorageRoleTarget;
+
+  constructor(config: S3CompatibleSourceRepositoryConfig) {
+    this.client = config.client;
+    this.ingestTarget = config.ingestTarget;
+    this.sourceTarget = config.sourceTarget;
+  }
+
+  async snapshotFromPath(input: SnapshotFromPathInput): Promise<SnapshotResult> {
+    const staged = parseStagingReference(input.localPath);
+
+    if (staged.bucket !== this.ingestTarget.bucket) {
+      throw new Error(
+        `Object-store source repository expected staged bucket "${this.ingestTarget.bucket}" but received "${staged.bucket}".`
+      );
+    }
+
+    if (!staged.key.startsWith(`${this.ingestTarget.prefix}/`)) {
+      throw new Error(
+        `Object-store source repository expected staged key under "${this.ingestTarget.prefix}/" but received "${staged.key}".`
+      );
+    }
+
+    const stagedHead = await this.headRequiredObject(staged.bucket, staged.key);
+    const sourceKey = buildQualifiedObjectKey(
+      this.sourceTarget,
+      `${input.assetVersionId}/${input.sourceFilename}`
+    );
+
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.sourceTarget.bucket,
+        CopySource: encodeCopySource(staged.bucket, staged.key),
+        Key: sourceKey
+      })
+    );
+
+    const sourceHead = await this.headRequiredObject(this.sourceTarget.bucket, sourceKey);
+    const canonicalUri = buildS3Uri(this.sourceTarget.bucket, sourceKey);
+    const metadataChecksum = sourceHead.Metadata?.['cdngine-checksum-sha256'] ?? stagedHead.Metadata?.['cdngine-checksum-sha256'];
+    const digests =
+      input.sourceDigests && input.sourceDigests.length > 0
+        ? input.sourceDigests
+        : metadataChecksum
+        ? [{ algorithm: 'sha256' as const, value: metadataChecksum }]
+        : [];
+
+    return {
+      canonicalSourceId: canonicalUri,
+      digests,
+      logicalPath: sourceKey,
+      repositoryEngine: 'object-store',
+      snapshotId: canonicalUri,
+      ...(input.logicalByteLength ? { logicalByteLength: input.logicalByteLength } : {}),
+      storedByteLength: BigInt(sourceHead.ContentLength ?? stagedHead.ContentLength ?? 0),
+      reconstructionHandles: [
+        {
+          kind: 'opaque',
+          value: canonicalUri
+        }
+      ],
+      substrateHints: {
+        ingestTarget: this.ingestTarget.targetKey,
+        repositoryTool: 's3-compatible-object-store',
+        sourceTarget: this.sourceTarget.targetKey
+      }
+    };
+  }
+
+  async listSnapshots(assetVersionId: string): Promise<SnapshotSummary[]> {
+    const prefix = buildQualifiedObjectKey(this.sourceTarget, `${assetVersionId}/`);
+    const snapshots: SnapshotSummary[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const result = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.sourceTarget.bucket,
+          Prefix: prefix,
+          ...(continuationToken ? { ContinuationToken: continuationToken } : {})
+        })
+      );
+
+      for (const object of result.Contents ?? []) {
+        if (!object.Key) {
+          continue;
+        }
+
+        const canonicalUri = buildS3Uri(this.sourceTarget.bucket, object.Key);
+        snapshots.push({
+          canonicalSourceId: canonicalUri,
+          createdAt: object.LastModified ?? new Date(0),
+          snapshotId: canonicalUri
+        });
+      }
+
+      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    return snapshots;
+  }
+
+  async restoreToPath(input: RestoreSnapshotInput): Promise<RestoreResult> {
+    const source = this.resolveSnapshotObject(input);
+    const result = await this.client.send(
+      new GetObjectCommand({
+        Bucket: source.bucket,
+        Key: source.key
+      })
+    );
+
+    await mkdir(dirname(input.destinationPath), { recursive: true });
+    await writeFile(input.destinationPath, await bytesFromObjectBody(result.Body));
+
+    return {
+      restoredPath: input.destinationPath
+    };
+  }
+
+  private async headRequiredObject(bucket: string, key: string) {
+    try {
+      return await this.client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: key
+        })
+      );
+    } catch (error) {
+      if (isMissingObjectError(error)) {
+        throw new Error(`Object-store source repository could not find required object "${bucket}/${key}".`);
+      }
+
+      throw error;
+    }
+  }
+
+  private resolveSnapshotObject(input: RestoreSnapshotInput) {
+    const handle = input.snapshot?.reconstructionHandles?.find(
+      (candidate) => candidate.kind === 'opaque' && candidate.value.startsWith('s3://')
+    );
+
+    return parseS3Uri(handle?.value ?? input.snapshot?.snapshotId ?? input.canonicalSourceId);
   }
 }
 

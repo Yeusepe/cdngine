@@ -41,6 +41,16 @@ import {
 	RuntimeReadinessMonitor,
 	loadReadinessProfileFromEnvironment,
 } from "@cdngine/observability";
+import {
+	PrismaPublicVersionReadStore,
+	PrismaUploadSessionStore,
+	createRegistryPrismaClient,
+} from "@cdngine/registry";
+import {
+	S3CompatibleStagingBlobStore,
+	createSourceRepository,
+	loadStorageRuntimeConfigFromEnvironment,
+} from "@cdngine/storage";
 import { runGenericAssetPublicationWorkflow } from "@cdngine/workflows";
 
 import {
@@ -57,10 +67,189 @@ import {
 const RUNTIME_STATE_SCHEMA_VERSION = 1;
 const LOCAL_RUNTIME_DEFAULT_DELIVERY_SCOPE_ID = "paid-downloads";
 const LOCAL_RUNTIME_GENERIC_MANIFEST_TYPE = "generic-asset-default";
+const DURABLE_RUNTIME_DEFAULT_DELIVERY_SCOPE_PATH_PREFIX = "delivery";
+const DURABLE_RUNTIME_DEFAULT_TENANT_ISOLATION_MODE = "shared-tenant";
+const DURABLE_RUNTIME_DEFAULT_DELIVERY_AUTHORIZATION_MODE = "signed_url";
+const DURABLE_RUNTIME_DEFAULT_DELIVERY_MODE = "shared-path";
+const DURABLE_RUNTIME_DEFAULT_CACHE_PROFILE = "immutable-package";
 
 function getOptionalEnvironmentValue(environment, key) {
 	const value = environment[key]?.trim();
 	return value ? value : undefined;
+}
+
+function getRequiredEnvironmentValue(environment, key, detail) {
+	const value = getOptionalEnvironmentValue(environment, key);
+	if (!value) {
+		throw new Error(detail ?? `${key} is required for this public runtime mode.`);
+	}
+	return value;
+}
+
+function parseDelimitedEnvironmentList(value) {
+	return value
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+function parseEnvironmentListValue(environment, key) {
+	const value = getOptionalEnvironmentValue(environment, key);
+	if (!value) {
+		return [];
+	}
+
+	if (value.startsWith("[")) {
+		let parsed;
+		try {
+			parsed = JSON.parse(value);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`${key} must be a JSON array or comma-separated list: ${message}`);
+		}
+		if (
+			!Array.isArray(parsed) ||
+			parsed.some((entry) => typeof entry !== "string" || !entry.trim())
+		) {
+			throw new Error(`${key} must contain non-empty string entries.`);
+		}
+		return parsed.map((entry) => entry.trim());
+	}
+
+	return parseDelimitedEnvironmentList(value);
+}
+
+function uniqueStrings(values) {
+	return [...new Set(values.filter(Boolean))];
+}
+
+function readServiceAccountBootstrapDescriptors(environment) {
+	const rawTokens = getOptionalEnvironmentValue(
+		environment,
+		"CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON",
+	);
+	if (rawTokens) {
+		let parsed;
+		try {
+			parsed = JSON.parse(rawTokens);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON must be valid JSON before registry bootstrap can infer scopes: ${message}`,
+			);
+		}
+		if (!Array.isArray(parsed)) {
+			throw new Error(
+				"CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON must be an array before registry bootstrap can infer scopes.",
+			);
+		}
+		return parsed;
+	}
+
+	const subject = getOptionalEnvironmentValue(
+		environment,
+		"CDNGINE_SERVICE_ACCOUNT_SUBJECT",
+	);
+	const tokenSha256 = getOptionalEnvironmentValue(
+		environment,
+		"CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256",
+	);
+	if (!subject && !tokenSha256) {
+		return [];
+	}
+
+	return [
+		{
+			allowedServiceNamespaces: parseEnvironmentListValue(
+				environment,
+				"CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES",
+			),
+			allowedTenantIds: parseEnvironmentListValue(
+				environment,
+				"CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS",
+			),
+			subject,
+		},
+	];
+}
+
+function collectServiceAccountListValues(descriptors, key) {
+	return uniqueStrings(
+		descriptors.flatMap((descriptor) => {
+			const value = descriptor?.[key];
+			return Array.isArray(value)
+				? value.filter((entry) => typeof entry === "string").map((entry) => entry.trim())
+				: [];
+		}),
+	);
+}
+
+function resolveDurableRuntimeServiceNamespaceId(environment) {
+	const explicitNamespace = getOptionalEnvironmentValue(
+		environment,
+		"CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID",
+	);
+	if (explicitNamespace) {
+		return explicitNamespace;
+	}
+
+	const accountNamespaces = collectServiceAccountListValues(
+		readServiceAccountBootstrapDescriptors(environment),
+		"allowedServiceNamespaces",
+	);
+	if (accountNamespaces.length === 1) {
+		return accountNamespaces[0];
+	}
+	if (accountNamespaces.length > 1) {
+		throw new Error(
+			"Durable registry bootstrap found multiple service-account namespaces. Set CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID to choose the namespace to bootstrap.",
+		);
+	}
+
+	throw new Error(
+		"Durable registry bootstrap requires CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID or exactly one allowed service-account namespace.",
+	);
+}
+
+function resolveHostnameFromEnvironment(environment, key) {
+	const rawHostname = getRequiredEnvironmentValue(
+		environment,
+		key,
+		`${key} is required for durable registry bootstrap.`,
+	);
+
+	if (/^https?:\/\//iu.test(rawHostname)) {
+		try {
+			return new URL(rawHostname).host;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`${key} must be a hostname or absolute URL: ${message}`);
+		}
+	}
+
+	return rawHostname.replace(/^\/+|\/+$/g, "");
+}
+
+function resolveDurableRuntimeTenantIds(environment) {
+	const explicitTenantIds = parseEnvironmentListValue(
+		environment,
+		"CDNGINE_PUBLIC_RUNTIME_TENANT_IDS",
+	);
+	if (explicitTenantIds.length > 0) {
+		return uniqueStrings(explicitTenantIds);
+	}
+
+	return collectServiceAccountListValues(
+		readServiceAccountBootstrapDescriptors(environment),
+		"allowedTenantIds",
+	);
+}
+
+function getDatabaseUrlForDurableRuntime(environment) {
+	return (
+		getOptionalEnvironmentValue(environment, "CDNGINE_DATABASE_URL") ??
+		getOptionalEnvironmentValue(environment, "DATABASE_URL")
+	);
 }
 
 function normalizePrefix(prefix) {
@@ -1196,7 +1385,15 @@ const localRuntimeAuth = {
 
 function hasServiceAccountTokenConfiguration(environment) {
 	return Boolean(
-		getOptionalEnvironmentValue(environment, "CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON"),
+		getOptionalEnvironmentValue(environment, "CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON") ??
+			(getOptionalEnvironmentValue(
+				environment,
+				"CDNGINE_SERVICE_ACCOUNT_SUBJECT",
+			) &&
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256",
+				)),
 	);
 }
 
@@ -1251,6 +1448,41 @@ export function resolvePublicRuntimeAuthModeFromEnvironment(
 	return "local";
 }
 
+export function resolvePublicRuntimeStateModeFromEnvironment(
+	environment = process.env,
+) {
+	const explicitMode =
+		getOptionalEnvironmentValue(environment, "CDNGINE_PUBLIC_RUNTIME_STATE_MODE") ??
+		"auto";
+
+	if (!["auto", "local", "durable"].includes(explicitMode)) {
+		throw new Error(
+			`CDNGINE_PUBLIC_RUNTIME_STATE_MODE must be "auto", "local", or "durable". Received "${explicitMode}".`,
+		);
+	}
+
+	if (
+		explicitMode === "local" &&
+		isProductionLikePublicRuntimeEnvironment(environment)
+	) {
+		throw new Error(
+			"CDNGINE_PUBLIC_RUNTIME_STATE_MODE=local is not allowed for production-like public runtime deployments.",
+		);
+	}
+
+	if (explicitMode === "durable") {
+		return "durable";
+	}
+
+	if (explicitMode === "local") {
+		return "local";
+	}
+
+	return isProductionLikePublicRuntimeEnvironment(environment)
+		? "durable"
+		: "local";
+}
+
 export function resolvePublicRuntimeAuthFromEnvironment(
 	environment = process.env,
 ) {
@@ -1263,13 +1495,278 @@ export function resolvePublicRuntimeAuthFromEnvironment(
 	return localRuntimeAuth;
 }
 
+export function resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment(
+	environment = process.env,
+) {
+	const serviceNamespaceId =
+		resolveDurableRuntimeServiceNamespaceId(environment);
+	const pathPrefixValue =
+		getOptionalEnvironmentValue(
+			environment,
+			"CDNGINE_PUBLIC_RUNTIME_DELIVERY_PATH_PREFIX",
+		) ?? DURABLE_RUNTIME_DEFAULT_DELIVERY_SCOPE_PATH_PREFIX;
+	const authorizationMode =
+		getOptionalEnvironmentValue(
+			environment,
+			"CDNGINE_PUBLIC_RUNTIME_DELIVERY_AUTHORIZATION_MODE",
+		) ?? DURABLE_RUNTIME_DEFAULT_DELIVERY_AUTHORIZATION_MODE;
+	const allowedAuthorizationModes = [
+		"public",
+		"signed_url",
+		"signed_cookie",
+		"proxy_url",
+		"internal_handle",
+	];
+	if (!allowedAuthorizationModes.includes(authorizationMode)) {
+		throw new Error(
+			`CDNGINE_PUBLIC_RUNTIME_DELIVERY_AUTHORIZATION_MODE must be one of ${allowedAuthorizationModes.join(", ")}.`,
+		);
+	}
+
+	return {
+		deliveryScope: {
+			authorizationMode,
+			cacheProfile:
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_DELIVERY_CACHE_PROFILE",
+				) ?? DURABLE_RUNTIME_DEFAULT_CACHE_PROFILE,
+			deliveryMode:
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_DELIVERY_MODE",
+				) ?? DURABLE_RUNTIME_DEFAULT_DELIVERY_MODE,
+			hostname: resolveHostnameFromEnvironment(
+				environment,
+				"CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME",
+			),
+			pathPrefix: normalizePrefix(pathPrefixValue) || undefined,
+			scopeKey:
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_DELIVERY_SCOPE_KEY",
+				) ?? LOCAL_RUNTIME_DEFAULT_DELIVERY_SCOPE_ID,
+		},
+		namespace: {
+			displayName:
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_DISPLAY_NAME",
+				) ?? serviceNamespaceId,
+			serviceNamespaceId,
+			tenantIsolationMode:
+				getOptionalEnvironmentValue(
+					environment,
+					"CDNGINE_PUBLIC_RUNTIME_TENANT_ISOLATION_MODE",
+				) ?? DURABLE_RUNTIME_DEFAULT_TENANT_ISOLATION_MODE,
+		},
+		tenantIds: resolveDurableRuntimeTenantIds(environment),
+	};
+}
+
+async function upsertDurablePublicRuntimeDeliveryScope(
+	prisma,
+	{ config, namespace, tenantScope },
+) {
+	const existing = await prisma.deliveryScope.findFirst({
+		where: {
+			scopeKey: config.deliveryScope.scopeKey,
+			serviceNamespaceId: namespace.id,
+			tenantScopeId: tenantScope?.id ?? null,
+		},
+	});
+	const data = {
+		authorizationMode: config.deliveryScope.authorizationMode,
+		cacheProfile: config.deliveryScope.cacheProfile,
+		deliveryMode: config.deliveryScope.deliveryMode,
+		hostname: config.deliveryScope.hostname,
+		pathPrefix: config.deliveryScope.pathPrefix,
+		scopeKey: config.deliveryScope.scopeKey,
+		serviceNamespaceId: namespace.id,
+		tenantScopeId: tenantScope?.id ?? null,
+	};
+
+	if (existing) {
+		return prisma.deliveryScope.update({
+			data,
+			where: { id: existing.id },
+		});
+	}
+
+	return prisma.deliveryScope.create({ data });
+}
+
+export async function bootstrapDurablePublicRuntimeRegistry(options = {}) {
+	const environment = options.environment ?? process.env;
+	const config =
+		options.config ??
+		resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment(environment);
+	const databaseUrl = getDatabaseUrlForDurableRuntime(environment);
+	const prisma =
+		options.prisma ??
+		options.durableRuntime?.prisma ??
+		createRegistryPrismaClient({
+			...(databaseUrl ? { databaseUrl } : {}),
+			environment,
+		});
+	const namespace = await prisma.serviceNamespace.upsert({
+		create: {
+			displayName: config.namespace.displayName,
+			serviceNamespaceId: config.namespace.serviceNamespaceId,
+			tenantIsolationMode: config.namespace.tenantIsolationMode,
+		},
+		update: {
+			displayName: config.namespace.displayName,
+			tenantIsolationMode: config.namespace.tenantIsolationMode,
+		},
+		where: {
+			serviceNamespaceId: config.namespace.serviceNamespaceId,
+		},
+	});
+	const tenantScopes = [];
+	for (const tenantId of config.tenantIds) {
+		tenantScopes.push(
+			await prisma.tenantScope.upsert({
+				create: {
+					externalTenantId: tenantId,
+					serviceNamespaceId: namespace.id,
+					state: "active",
+				},
+				update: {
+					state: "active",
+				},
+				where: {
+					serviceNamespaceId_externalTenantId: {
+						externalTenantId: tenantId,
+						serviceNamespaceId: namespace.id,
+					},
+				},
+			}),
+		);
+	}
+
+	await upsertDurablePublicRuntimeDeliveryScope(prisma, {
+		config,
+		namespace,
+	});
+	for (const tenantScope of tenantScopes) {
+		await upsertDurablePublicRuntimeDeliveryScope(prisma, {
+			config,
+			namespace,
+			tenantScope,
+		});
+	}
+
+	return {
+		deliveryScopes: [
+			{ scopeKey: config.deliveryScope.scopeKey },
+			...tenantScopes.map((tenantScope) => ({
+				scopeKey: config.deliveryScope.scopeKey,
+				tenantId: tenantScope.externalTenantId,
+			})),
+		],
+		serviceNamespaceId: config.namespace.serviceNamespaceId,
+		tenantIds: config.tenantIds,
+	};
+}
+
+function createPublicRuntimeS3ClientFromEnvironment(environment) {
+	const endpoint =
+		getOptionalEnvironmentValue(environment, "CDNGINE_S3_ENDPOINT") ??
+		getOptionalEnvironmentValue(environment, "RUSTFS_ENDPOINT");
+	if (!endpoint) {
+		throw new Error(
+			"Durable public runtime requires CDNGINE_S3_ENDPOINT or RUSTFS_ENDPOINT for object storage.",
+		);
+	}
+
+	const accessKeyId =
+		getOptionalEnvironmentValue(environment, "AWS_ACCESS_KEY_ID") ??
+		getOptionalEnvironmentValue(environment, "RUSTFS_ACCESS_KEY");
+	const secretAccessKey =
+		getOptionalEnvironmentValue(environment, "AWS_SECRET_ACCESS_KEY") ??
+		getOptionalEnvironmentValue(environment, "RUSTFS_SECRET_KEY");
+	const credentials =
+		accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+	const forcePathStyle =
+		(getOptionalEnvironmentValue(environment, "CDNGINE_S3_FORCE_PATH_STYLE") ??
+			"true") !== "false";
+
+	return new S3Client({
+		...(credentials ? { credentials } : {}),
+		endpoint,
+		forcePathStyle,
+		region: getOptionalEnvironmentValue(environment, "AWS_REGION") ?? "us-east-1",
+	});
+}
+
+export function createDurablePublicRuntimeDependencies(options = {}) {
+	const environment = options.environment ?? process.env;
+	const databaseUrl = getDatabaseUrlForDurableRuntime(environment);
+	if (!databaseUrl) {
+		throw new Error(
+			"Durable public runtime requires CDNGINE_DATABASE_URL or DATABASE_URL.",
+		);
+	}
+
+	const tusdEndpoint = getRequiredEnvironmentValue(
+		environment,
+		"TUSD_ENDPOINT",
+		"Durable public runtime requires TUSD_ENDPOINT.",
+	);
+	const storageConfig =
+		options.storageConfig ?? loadStorageRuntimeConfigFromEnvironment(environment);
+	const s3Client =
+		options.s3Client ?? createPublicRuntimeS3ClientFromEnvironment(environment);
+	const prisma =
+		options.prisma ??
+		createRegistryPrismaClient({
+			databaseUrl,
+			environment,
+		});
+	const uploadSessionStore =
+		options.uploadSessionStore ?? new PrismaUploadSessionStore({ prisma });
+	const publicReadStore =
+		options.publicReadStore ?? new PrismaPublicVersionReadStore({ prisma });
+	const stagingBlobStore =
+		options.stagingBlobStore ??
+		new S3CompatibleStagingBlobStore({
+			client: s3Client,
+			target: storageConfig.normalized.ingest,
+			uploadBaseUrl: tusdEndpoint,
+		});
+	const sourceRepository =
+		options.sourceRepository ??
+		createSourceRepository({
+			objectStore: {
+				client: s3Client,
+				ingestTarget: storageConfig.normalized.ingest,
+				sourceTarget: storageConfig.normalized.source,
+			},
+			runtimeConfig: storageConfig.sourceRepository,
+		});
+
+	return {
+		prisma,
+		publicReadStore,
+		sourceRepository,
+		stagingBlobStore,
+		storageConfig,
+		tusdEndpoint,
+		uploadSessionStore,
+	};
+}
+
 export function createPublicRuntimeReadinessMonitor(options = {}) {
 	const environment = options.environment ?? process.env;
 	const readinessProfile = loadReadinessProfileFromEnvironment(environment);
 	const authMode = options.authMode ?? resolvePublicRuntimeAuthModeFromEnvironment(environment);
+	const runtimeStateMode =
+		options.runtimeStateMode ??
+		resolvePublicRuntimeStateModeFromEnvironment(environment);
 	const storageMode =
 		options.storageMode ??
-		(options.objectStore
+		(runtimeStateMode === "durable" || options.objectStore
 			? "object-store"
 			: getOptionalEnvironmentValue(
 					environment,
@@ -1298,9 +1795,47 @@ export function createPublicRuntimeReadinessMonitor(options = {}) {
 				status: "ok",
 			}),
 			"source-repository": () => ({
-				detail: "Local runtime source repository adapter is initialized.",
+				detail:
+					runtimeStateMode === "durable"
+						? "Durable source repository adapter is initialized."
+						: "Local runtime source repository adapter is initialized.",
 				status: "ok",
 			}),
+			postgres: async () => {
+				if (!options.durableRuntime?.prisma) {
+					throw new Error(
+						"Durable readiness requires a Prisma client for the postgres check.",
+					);
+				}
+				await options.durableRuntime.prisma.$queryRaw`SELECT 1`;
+				return {
+					detail: "Durable registry database responded to SELECT 1.",
+					status: "ok",
+				};
+			},
+			tusd: async (context) => {
+				const endpoint =
+					options.durableRuntime?.tusdEndpoint ??
+					getOptionalEnvironmentValue(environment, "TUSD_ENDPOINT");
+				if (!endpoint) {
+					throw new Error("TUSD_ENDPOINT is required for the tusd readiness check.");
+				}
+
+				const response = await fetch(endpoint, {
+					method: "OPTIONS",
+					signal: context.signal,
+				});
+				if (response.status >= 500) {
+					return {
+						detail: `tusd responded with HTTP ${response.status}.`,
+						status: "failed",
+					};
+				}
+				return {
+					detail: `tusd endpoint responded with HTTP ${response.status}.`,
+					status: "ok",
+				};
+			},
 		},
 		deploymentProfile: readinessProfile.deploymentProfile,
 		requiredDependencies: readinessProfile.requiredDependencies,
@@ -1386,6 +1921,34 @@ function createUploadTargetCorsHeaders(origin = "*") {
 }
 
 export function createPublicRuntimeApp(options = {}) {
+	const environment = options.environment ?? process.env;
+	const runtimeStateMode =
+		options.runtimeStateMode ??
+		resolvePublicRuntimeStateModeFromEnvironment(environment);
+	if (runtimeStateMode === "durable") {
+		const durableRuntime =
+			options.durableRuntime ??
+			createDurablePublicRuntimeDependencies({ environment });
+		const auth = options.auth ?? resolvePublicRuntimeAuthFromEnvironment(environment);
+
+		return createApiApp({
+			auth,
+			readiness: options.readiness,
+			requestTimeoutMs: 60_000,
+			registerPublicRoutes(publicApp) {
+				registerUploadSessionRoutes(publicApp, {
+					sourceRepository: durableRuntime.sourceRepository,
+					stagingBlobStore: durableRuntime.stagingBlobStore,
+					store: durableRuntime.uploadSessionStore,
+				});
+				registerDeliveryRoutes(publicApp, { store: durableRuntime.publicReadStore });
+				registerDownloadLinkRoutes(publicApp, {
+					store: durableRuntime.publicReadStore,
+				});
+			},
+		});
+	}
+
 	const stateDir = options.stateDir;
 	if (stateDir) {
 		ensureDirectory(stateDir);
@@ -1636,8 +2199,11 @@ export function createPublicRuntimeServer(options = {}) {
 		`http://${options.host ?? "127.0.0.1"}:${options.port ?? 4000}`;
 	const app = createPublicRuntimeApp({
 		auth: options.auth,
+		durableRuntime: options.durableRuntime,
+		environment: options.environment,
 		objectStore: options.objectStore,
 		readiness: options.readiness,
+		runtimeStateMode: options.runtimeStateMode,
 		stateDir: options.stateDir,
 	});
 

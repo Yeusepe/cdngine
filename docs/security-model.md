@@ -71,6 +71,8 @@ For deployments using the default Better Auth adapter, the runtime config surfac
 - `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
 - `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
 
+For service-to-service deployments that do not need interactive sessions, CDNgine may use static service-account bearer tokens. The production-safe form stores only `tokenSha256` values in `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` or `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`; the raw token belongs in the caller's secret manager. The CDNgine config maps each digest to a server-side `subject`, `roles`, `allowedServiceNamespaces`, and `allowedTenantIds`. Do not accept caller-supplied scope headers as authorization truth.
+
 Authorization scope must come from the authenticated session and server-side policy mapping, not from ad hoc request headers supplied by the caller.
 
 Typical privileged operations that require tighter policy:

@@ -138,6 +138,17 @@ The intended environment variables are:
 - `CDNGINE_AUTH_SESSION_FRESH_AGE_SECONDS`
 - `CDNGINE_AUTH_DEFER_SESSION_REFRESH`
 - `CDNGINE_AUTH_DISABLE_SESSION_REFRESH`
+- `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` for digest-backed service-account auth
+- the single service-account env form: `CDNGINE_SERVICE_ACCOUNT_SUBJECT`, `CDNGINE_SERVICE_ACCOUNT_TOKEN_SHA256`, `CDNGINE_SERVICE_ACCOUNT_ROLES`, `CDNGINE_SERVICE_ACCOUNT_ALLOWED_SERVICE_NAMESPACES`, and `CDNGINE_SERVICE_ACCOUNT_ALLOWED_TENANT_IDS`
+- `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE` for portable public runtime auth mode selection
+- `CDNGINE_PUBLIC_RUNTIME_STATE_MODE`, where production-like `auto` resolves to `durable` and explicit `local` is rejected
+- `CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID` for the durable registry namespace bootstrapped at startup, or exactly one service namespace in the service-account scope
+- `CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_DISPLAY_NAME` for the durable namespace label
+- `CDNGINE_PUBLIC_RUNTIME_TENANT_IDS` for optional comma-separated tenant scopes bootstrapped with matching delivery scopes
+- `CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME`, `CDNGINE_PUBLIC_RUNTIME_DELIVERY_PATH_PREFIX`, and `CDNGINE_PUBLIC_RUNTIME_DELIVERY_SCOPE_KEY` for the public delivery scope rows
+- `CDNGINE_DATABASE_URL` or `DATABASE_URL` for the durable registry
+- `TUSD_ENDPOINT` for external tus upload targets in durable public runtime mode
+- `CDNGINE_S3_ENDPOINT` or `RUSTFS_ENDPOINT`, plus `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` or the RustFS equivalents
 - `CDNGINE_STORAGE_LAYOUT_MODE`
 - `CDNGINE_STORAGE_BUCKET` or the split-bucket variables `CDNGINE_INGEST_BUCKET`, `CDNGINE_SOURCE_BUCKET`, `CDNGINE_DERIVED_BUCKET`, `CDNGINE_EXPORTS_BUCKET`
 - `CDNGINE_INGEST_PREFIX`, `CDNGINE_SOURCE_PREFIX`, `CDNGINE_DERIVED_PREFIX`, `CDNGINE_EXPORTS_PREFIX`
@@ -149,6 +160,23 @@ The intended environment variables are:
 - `CDNGINE_KOPIA_EXECUTABLE`, `CDNGINE_KOPIA_WORKING_DIRECTORY`, `CDNGINE_KOPIA_TIMEOUT_MS`
 - `CDNGINE_DEPLOYMENT_PROFILE`
 - `CDNGINE_READINESS_REQUIRED`
+
+The portable public runtime uses `CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=service-accounts` in production. Configure `CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON` with SHA-256 token digests and server-side scopes. Store the raw bearer token only in the caller's secret manager, not in the CDNgine service.
+
+The durable public runtime uses `CDNGINE_PUBLIC_RUNTIME_STATE_MODE=durable`. In that mode upload-session state is backed by PostgreSQL through the registry stores, upload targets are issued against tusd, and verified `staging://bucket/key` objects are promoted into the configured `source` role by the selected source repository. Startup also runs an idempotent registry bootstrap for the service namespace and delivery scope selected by `CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID` and `CDNGINE_PUBLIC_RUNTIME_DELIVERY_*`. A small deployment that does not yet operate Xet may use `CDNGINE_SOURCE_ENGINE=object-store`; this records durable `s3://bucket/key` source evidence without claiming chunk-dedupe metrics. Xet remains the target default for deployments that need byte-level dedupe.
+
+For the durable public runtime, keep readiness scoped to the dependencies the public process actually owns:
+
+```bash
+CDNGINE_DEPLOYMENT_PROFILE=production-default
+CDNGINE_READINESS_REQUIRED=auth,postgres,tusd,source-repository,derived-store,exports-store
+```
+
+Zeabur CLI-managed variables may use `|` as the readiness delimiter instead:
+
+```bash
+CDNGINE_READINESS_REQUIRED=auth|postgres|tusd|source-repository|derived-store|exports-store
+```
 
 The runtime health surface for the API tier should expose:
 

@@ -7,6 +7,7 @@
  * - docs/upstream-integration-model.md
  * - docs/package-reference.md
  * External references:
+ * - https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_s3_code_examples.html
  * - https://huggingface.co/docs/xet/en/api
  * - https://kopia.io/docs/reference/command-line/common/snapshot-create/
  * Tests:
@@ -25,6 +26,10 @@ import {
 import {
   KopiaSourceRepository
 } from './kopia-source-repository.js';
+import {
+  S3CompatibleSourceRepository,
+  type S3CompatibleSourceRepositoryConfig
+} from './s3-compatible-object-stores.js';
 import {
   loadSourceRepositoryRuntimeConfigFromEnvironment,
   type SourceRepositoryRuntimeConfig
@@ -48,6 +53,7 @@ export interface XetSourceRepositoryFactoryDependencies {
 }
 
 export interface CreateSourceRepositoryOptions {
+  objectStore?: S3CompatibleSourceRepositoryConfig;
   runner?: CommandRunner;
   runtimeConfig: SourceRepositoryRuntimeConfig;
   xet?: XetSourceRepositoryFactoryDependencies;
@@ -55,6 +61,7 @@ export interface CreateSourceRepositoryOptions {
 
 export interface CreateSourceRepositoryFromEnvironmentOptions {
   environment: NodeJS.ProcessEnv;
+  objectStore?: S3CompatibleSourceRepositoryConfig;
   runner?: CommandRunner;
   xet?: XetSourceRepositoryFactoryDependencies;
 }
@@ -69,7 +76,7 @@ export class SourceRepositoryFactoryError extends Error {
 type SupportedRuntimeEngine = SourceRepositoryRuntimeConfig['engine'];
 
 function isSupportedRuntimeEngine(engine: SourceRepositoryEngine): engine is SupportedRuntimeEngine {
-  return engine === 'kopia' || engine === 'xet';
+  return engine === 'kopia' || engine === 'xet' || engine === 'object-store';
 }
 
 class RuntimeSelectedSourceRepository implements SourceRepository {
@@ -201,6 +208,14 @@ export function createSourceRepository(options: CreateSourceRepositoryOptions): 
       });
     case 'xet':
       return createXetSourceRepository(options.runtimeConfig, runner, options.xet);
+    case 'object-store':
+      if (!options.objectStore) {
+        throw new SourceRepositoryFactoryError(
+          'Object-store source repository factory requires an objectStore client plus ingest and source role targets.'
+        );
+      }
+
+      return new S3CompatibleSourceRepository(options.objectStore);
   }
 }
 
@@ -217,6 +232,7 @@ export function createSourceRepositoryFromEnvironment(
         engine
       },
       runner,
+      ...(options.objectStore ? { objectStore: options.objectStore } : {}),
       ...(options.xet ? { xet: options.xet } : {})
     })
   );

@@ -60,7 +60,7 @@ export function loadReadinessProfileFromEnvironment(
     );
   }
 
-  const explicitDependencies = environment.CDNGINE_READINESS_REQUIRED?.split(',')
+  const explicitDependencies = environment.CDNGINE_READINESS_REQUIRED?.split(/[|,]/u)
     .map((item) => item.trim())
     .filter(Boolean);
 

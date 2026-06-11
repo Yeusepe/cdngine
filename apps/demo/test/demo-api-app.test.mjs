@@ -20,8 +20,18 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+	buildBearerHeaders,
+	hashBearerTokenForServiceAccount,
+} from "../../../packages/auth/dist/index.js";
+import {
+	createPublicRuntimeReadinessMonitor,
 	createPublicRuntimeApp,
 	createPublicRuntimeServer,
+	bootstrapDurablePublicRuntimeRegistry,
+	resolvePublicRuntimeAuthFromEnvironment,
+	resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment,
+	resolvePublicRuntimePortFromEnvironment,
+	resolvePublicRuntimeStateModeFromEnvironment,
 } from "../scripts/public-runtime-app.mjs";
 
 class FakeS3Client {
@@ -89,6 +99,381 @@ class FakeS3Client {
 		}
 	}
 }
+
+test("runtime port resolution honors Zeabur WEB_PORT when PORT is unresolved", () => {
+	assert.equal(
+		resolvePublicRuntimePortFromEnvironment({
+			PORT: "${WEB_PORT}",
+			WEB_PORT: "8080",
+		}),
+		8080,
+	);
+	assert.equal(resolvePublicRuntimePortFromEnvironment({ PORT: "5000" }), 5000);
+});
+
+test("runtime port resolution rejects invalid explicit port values", () => {
+	assert.throws(
+		() => resolvePublicRuntimePortFromEnvironment({ PORT: "not-a-port" }),
+		/PORT must be a positive integer/,
+	);
+});
+
+test("production public runtime auth requires configured service-account bearer tokens", () => {
+	assert.throws(
+		() =>
+			resolvePublicRuntimeAuthFromEnvironment({
+				NODE_ENV: "production",
+			}),
+		/CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON/,
+	);
+	assert.throws(
+		() =>
+			resolvePublicRuntimeAuthFromEnvironment({
+				CDNGINE_DEPLOYMENT_PROFILE: "production-default",
+				CDNGINE_PUBLIC_RUNTIME_AUTH_MODE: "local",
+			}),
+		/CDNGINE_PUBLIC_RUNTIME_AUTH_MODE=local/,
+	);
+});
+
+test("production public runtime defaults to durable state and rejects explicit local state", () => {
+	assert.equal(
+		resolvePublicRuntimeStateModeFromEnvironment({
+			NODE_ENV: "production",
+		}),
+		"durable",
+	);
+	assert.throws(
+		() =>
+			resolvePublicRuntimeStateModeFromEnvironment({
+				CDNGINE_DEPLOYMENT_PROFILE: "production-default",
+				CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "local",
+			}),
+		/CDNGINE_PUBLIC_RUNTIME_STATE_MODE=local/,
+	);
+});
+
+test("durable public runtime resolves registry bootstrap from explicit production scope", () => {
+	const config = resolvePublicRuntimeRegistryBootstrapConfigFromEnvironment({
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME: "https://cdngine-yenot.zeabur.app",
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_PATH_PREFIX: "/delivery/",
+		CDNGINE_PUBLIC_RUNTIME_DELIVERY_SCOPE_KEY: "paid-downloads",
+		CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_DISPLAY_NAME:
+			"Creator Assistant Backstage",
+		CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID: "yucp-backstage",
+		CDNGINE_PUBLIC_RUNTIME_TENANT_IDS: "tenant-alpha, tenant-beta",
+		NODE_ENV: "production",
+	});
+
+	assert.deepEqual(config, {
+		deliveryScope: {
+			authorizationMode: "signed_url",
+			cacheProfile: "immutable-package",
+			deliveryMode: "shared-path",
+			hostname: "cdngine-yenot.zeabur.app",
+			pathPrefix: "delivery",
+			scopeKey: "paid-downloads",
+		},
+		namespace: {
+			displayName: "Creator Assistant Backstage",
+			serviceNamespaceId: "yucp-backstage",
+			tenantIsolationMode: "shared-tenant",
+		},
+		tenantIds: ["tenant-alpha", "tenant-beta"],
+	});
+});
+
+test("durable public runtime bootstraps namespace and delivery scopes idempotently", async () => {
+	const calls = [];
+	const prisma = {
+		deliveryScope: {
+			async create(args) {
+				calls.push(["deliveryScope.create", args]);
+				return { id: `scope-${calls.length}`, ...args.data };
+			},
+			async findFirst(args) {
+				calls.push(["deliveryScope.findFirst", args]);
+				return null;
+			},
+			async update(args) {
+				calls.push(["deliveryScope.update", args]);
+				return { id: args.where.id, ...args.data };
+			},
+		},
+		serviceNamespace: {
+			async upsert(args) {
+				calls.push(["serviceNamespace.upsert", args]);
+				return { id: "namespace-row-1", ...args.create };
+			},
+		},
+		tenantScope: {
+			async upsert(args) {
+				calls.push(["tenantScope.upsert", args]);
+				return { id: `tenant-${args.create.externalTenantId}`, ...args.create };
+			},
+		},
+	};
+
+	const result = await bootstrapDurablePublicRuntimeRegistry({
+		environment: {
+			CDNGINE_PUBLIC_RUNTIME_DELIVERY_HOSTNAME: "cdn.cdngine.local",
+			CDNGINE_PUBLIC_RUNTIME_SERVICE_NAMESPACE_ID: "yucp-backstage",
+			CDNGINE_PUBLIC_RUNTIME_TENANT_IDS: "tenant-alpha",
+		},
+		prisma,
+	});
+
+	assert.deepEqual(result, {
+		deliveryScopes: [
+			{ scopeKey: "paid-downloads" },
+			{ scopeKey: "paid-downloads", tenantId: "tenant-alpha" },
+		],
+		serviceNamespaceId: "yucp-backstage",
+		tenantIds: ["tenant-alpha"],
+	});
+	assert.equal(calls[0][0], "serviceNamespace.upsert");
+	assert.equal(calls[0][1].where.serviceNamespaceId, "yucp-backstage");
+	assert.equal(calls[1][0], "tenantScope.upsert");
+	assert.deepEqual(
+		calls
+			.filter(([name]) => name === "deliveryScope.create")
+			.map(([, args]) => args.data.tenantScopeId ?? null),
+		[null, "tenant-tenant-alpha"],
+	);
+});
+
+test("durable public runtime refuses to assemble without durable registry, tusd, and object-store source configuration", () => {
+	assert.throws(
+		() =>
+			createPublicRuntimeApp({
+				environment: {
+					CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "durable",
+					CDNGINE_SOURCE_ENGINE: "object-store",
+					CDNGINE_STORAGE_BUCKET: "cdngine-data",
+					CDNGINE_STORAGE_LAYOUT_MODE: "one-bucket",
+					NODE_ENV: "production",
+				},
+			}),
+		/CDNGINE_DATABASE_URL or DATABASE_URL/,
+	);
+	assert.throws(
+		() =>
+			createPublicRuntimeApp({
+				environment: {
+					CDNGINE_DATABASE_URL:
+						"postgresql://cdngine:cdngine@postgres:5432/cdngine",
+					CDNGINE_PUBLIC_RUNTIME_STATE_MODE: "durable",
+					CDNGINE_SOURCE_ENGINE: "object-store",
+					CDNGINE_STORAGE_BUCKET: "cdngine-data",
+					CDNGINE_STORAGE_LAYOUT_MODE: "one-bucket",
+					NODE_ENV: "production",
+				},
+			}),
+		/TUSD_ENDPOINT/,
+	);
+});
+
+test("durable public runtime uses tusd upload targets without exposing the local PATCH upload route", async () => {
+	const app = createPublicRuntimeApp({
+		durableRuntime: {
+			publicReadStore: {
+				async authorizeDelivery() {
+					throw new Error("authorizeDelivery should not run in this test.");
+				},
+				async authorizeSource() {
+					throw new Error("authorizeSource should not run in this test.");
+				},
+				async consumeDownloadLink() {
+					throw new Error("consumeDownloadLink should not run in this test.");
+				},
+				async getManifest() {
+					return null;
+				},
+				async getVersion() {
+					return null;
+				},
+				async listDerivatives() {
+					return [];
+				},
+			},
+			sourceRepository: {
+				async listSnapshots() {
+					return [];
+				},
+				async restoreToPath(input) {
+					return { restoredPath: input.destinationPath };
+				},
+				async snapshotFromPath() {
+					throw new Error("snapshotFromPath should not run in this test.");
+				},
+			},
+			stagingBlobStore: {
+				async createUploadTarget(input) {
+					return {
+						expiresAt: input.expiresAt,
+						method: "PATCH",
+						protocol: "tus",
+						url: `https://uploads.cdngine.local/files/ingest/${input.objectKey}`,
+					};
+				},
+				async deleteObject() {},
+				async headObject() {
+					return null;
+				},
+			},
+			uploadSessionStore: {
+				async completeUploadSession() {
+					throw new Error("completeUploadSession should not run in this test.");
+				},
+				async getUploadSession() {
+					return null;
+				},
+				async issueUploadSession(input) {
+					return {
+						assetId: "ast_durable_001",
+						assetOwner: input.assetOwner,
+						byteLength: input.byteLength,
+						checksum: input.checksum,
+						contentType: input.contentType,
+						expiresAt: input.expiresAt,
+						filename: input.filename,
+						isDuplicate: false,
+						objectKey: input.objectKey,
+						serviceNamespaceId: input.serviceNamespaceId,
+						uploadSessionId: "upl_durable_001",
+						versionId: "ver_durable_001",
+						versionNumber: 1,
+					};
+				},
+			},
+		},
+		runtimeStateMode: "durable",
+	});
+
+	const issueResponse = await app.request("http://localhost/v1/upload-sessions", {
+		body: JSON.stringify({
+			assetOwner: "demo:user",
+			serviceNamespaceId: "media-platform",
+			source: {
+				contentType: "text/plain",
+				filename: "durable.txt",
+			},
+			upload: {
+				byteLength: 7,
+				checksum: {
+					algorithm: "sha256",
+					value: "durable-sha",
+				},
+				objectKey: "media-platform/durable.txt",
+			},
+		}),
+		headers: {
+			"content-type": "application/json",
+			"idempotency-key": "create-durable-upload",
+		},
+		method: "POST",
+	});
+
+	assert.equal(issueResponse.status, 201);
+	const issued = await issueResponse.json();
+	assert.equal(
+		issued.uploadTarget.url,
+		"https://uploads.cdngine.local/files/ingest/media-platform/durable.txt",
+	);
+
+	const patchResponse = await app.request(
+		"http://localhost/uploads/media-platform/durable.txt",
+		{
+			body: "durable",
+			headers: {
+				"tus-resumable": "1.0.0",
+				"upload-offset": "0",
+			},
+			method: "PATCH",
+		},
+	);
+
+	assert.equal(patchResponse.status, 404);
+});
+
+test("production public runtime enforces service-account bearer auth before public routes", async () => {
+	const serviceToken = "creator-assistant-runtime-token";
+	const auth = resolvePublicRuntimeAuthFromEnvironment({
+		CDNGINE_PUBLIC_RUNTIME_AUTH_MODE: "service-accounts",
+		CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON: JSON.stringify([
+			{
+				allowedServiceNamespaces: ["yucp-backstage"],
+				roles: ["public-user"],
+				subject: "creator-assistant-api",
+				tokenSha256: hashBearerTokenForServiceAccount(serviceToken),
+			},
+		]),
+		NODE_ENV: "production",
+	});
+	const app = createPublicRuntimeApp({ auth });
+
+	const unauthenticatedResponse = await app.request(
+		"http://localhost/v1/upload-sessions",
+		{
+			body: "{}",
+			headers: {
+				"content-type": "application/json",
+			},
+			method: "POST",
+		},
+	);
+	const authenticatedResponse = await app.request(
+		"http://localhost/v1/upload-sessions",
+		{
+			body: "{}",
+			headers: {
+				...buildBearerHeaders(serviceToken),
+				"content-type": "application/json",
+			},
+			method: "POST",
+		},
+	);
+
+	assert.equal(unauthenticatedResponse.status, 401);
+	assert.equal(authenticatedResponse.status, 400);
+});
+
+test("production public runtime readiness reports configured portable dependencies", async () => {
+	const environment = {
+		CDNGINE_DEPLOYMENT_PROFILE: "production-default",
+		CDNGINE_READINESS_REQUIRED:
+			"auth,source-repository,derived-store,exports-store",
+		CDNGINE_SERVICE_ACCOUNT_TOKENS_JSON: JSON.stringify([
+			{
+				roles: ["public-user"],
+				subject: "creator-assistant-api",
+				tokenSha256: hashBearerTokenForServiceAccount(
+					"creator-assistant-runtime-token",
+				),
+			},
+		]),
+		NODE_ENV: "production",
+	};
+	const app = createPublicRuntimeApp({
+		auth: resolvePublicRuntimeAuthFromEnvironment(environment),
+		readiness: createPublicRuntimeReadinessMonitor({
+			authMode: "service-accounts",
+			environment,
+			storageMode: "local-files",
+		}),
+	});
+
+	const response = await app.request("http://localhost/readyz");
+	const payload = await response.json();
+
+	assert.equal(response.status, 200);
+	assert.equal(payload.deploymentProfile, "production-default");
+	assert.equal(payload.status, "ready");
+	assert.deepEqual(
+		payload.dependencies.map((dependency) => dependency.boundary),
+		["auth", "source-repository", "derived-store", "exports-store"],
+	);
+});
 
 test("local public runtime app exposes the production upload-session flow and shared staged-object reads", async () => {
 	const app = createPublicRuntimeApp();
@@ -193,8 +578,8 @@ test("local public runtime app exposes the production upload-session flow and sh
 
 	assert.equal(versionResponse.status, 200);
 	const version = await versionResponse.json();
-	assert.equal(version.lifecycleState, "canonical");
-	assert.equal(version.workflowState, "pending");
+	assert.equal(version.lifecycleState, "published");
+	assert.equal(version.workflowState, "completed");
 	assert.equal(version.source.filename, "demo.txt");
 
 	const sourceAuthorizeResponse = await app.request(
@@ -391,15 +776,6 @@ test("local public runtime maps persisted published versions to delivery-ready r
 	);
 	const completion = await completeResponse.json();
 
-	const stateFile = path.join(stateDir, "upload-session-store.json");
-	const state = JSON.parse(await readFile(stateFile, "utf8"));
-	for (const entry of state.versionsById) {
-		if (entry[0] === completion.versionId) {
-			entry[1].lifecycleState = "published";
-		}
-	}
-	await writeFile(stateFile, JSON.stringify(state, null, 2), "utf8");
-
 	const restartedApp = createPublicRuntimeApp({ stateDir });
 	const deliveryAuthorizeResponse = await restartedApp.request(
 		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}/deliveries/paid-downloads/authorize`,
@@ -411,14 +787,258 @@ test("local public runtime maps persisted published versions to delivery-ready r
 			},
 			body: JSON.stringify({
 				responseFormat: "url",
-				variant: "vpm-package",
+				variant: "preserve-original",
 			}),
 		},
 	);
 
 	assert.equal(deliveryAuthorizeResponse.status, 200);
 	const deliveryAuthorization = await deliveryAuthorizeResponse.json();
-	assert.equal(deliveryAuthorization.url, "/uploads/media-platform/published.zip");
+	assert.equal(
+		deliveryAuthorization.url,
+		`/uploads/deriv/media-platform/${completion.assetId}/${completion.versionId}/preserve-original/preserve-original`,
+	);
+});
+
+test("local public runtime replays persisted pending generic dispatches after restart", async (context) => {
+	const stateDir = await mkdtemp(path.join(tmpdir(), "cdngine-runtime-pending-state-"));
+	context.after(() => rm(stateDir, { force: true, recursive: true }));
+
+	const firstApp = createPublicRuntimeApp({ stateDir });
+	const issueResponse = await firstApp.request(
+		"http://localhost/v1/upload-sessions",
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "create-pending-upload",
+			},
+			body: JSON.stringify({
+				assetOwner: "demo:user",
+				serviceNamespaceId: "media-platform",
+				source: {
+					contentType: "application/zip",
+					filename: "pending.zip",
+				},
+				upload: {
+					byteLength: 12,
+					checksum: {
+						algorithm: "sha256",
+						value:
+							"7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9",
+					},
+					objectKey: "media-platform/pending.zip",
+				},
+			}),
+		},
+	);
+
+	assert.equal(issueResponse.status, 201);
+	const issued = await issueResponse.json();
+	await firstApp.request(new URL(issued.uploadTarget.url, "http://localhost").toString(), {
+		method: "PATCH",
+		headers: {
+			"content-type": "application/offset+octet-stream",
+			"tus-resumable": "1.0.0",
+			"upload-offset": "0",
+		},
+		body: "hello world!",
+	});
+	const completeResponse = await firstApp.request(
+		`http://localhost/v1/upload-sessions/${issued.uploadSessionId}/complete`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "complete-pending-upload",
+			},
+			body: JSON.stringify({
+				stagedObject: {
+					byteLength: 12,
+					checksum: {
+						algorithm: "sha256",
+						value:
+							"7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9",
+					},
+					objectKey: "media-platform/pending.zip",
+				},
+			}),
+		},
+	);
+	const completion = await completeResponse.json();
+
+	const stateFile = path.join(stateDir, "upload-session-store.json");
+	const state = JSON.parse(await readFile(stateFile, "utf8"));
+	for (const entry of state.versionsById) {
+		if (entry[0] === completion.versionId) {
+			entry[1].lifecycleState = "canonical";
+			entry[1].workflowDispatch.state = "pending";
+		}
+	}
+	state.publishedDerivatives = [];
+	state.publishedManifests = [];
+	await writeFile(stateFile, JSON.stringify(state, null, 2), "utf8");
+
+	const restartedApp = createPublicRuntimeApp({ stateDir });
+	const versionResponse = await restartedApp.request(
+		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}`,
+	);
+
+	assert.equal(versionResponse.status, 200);
+	const version = await versionResponse.json();
+	assert.equal(version.lifecycleState, "published");
+	assert.equal(version.workflowState, "completed");
+
+	const deliveryAuthorizeResponse = await restartedApp.request(
+		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}/deliveries/paid-downloads/authorize`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "authorize-replayed-delivery",
+			},
+			body: JSON.stringify({
+				responseFormat: "url",
+				variant: "preserve-original",
+			}),
+		},
+	);
+
+	assert.equal(deliveryAuthorizeResponse.status, 200);
+	const deliveryAuthorization = await deliveryAuthorizeResponse.json();
+	assert.equal(
+		deliveryAuthorization.url,
+		`/uploads/deriv/media-platform/${completion.assetId}/${completion.versionId}/preserve-original/preserve-original`,
+	);
+});
+
+test("local public runtime publishes completed generic uploads into delivery reads", async (context) => {
+	const stateDir = await mkdtemp(path.join(tmpdir(), "cdngine-runtime-delivery-state-"));
+	context.after(() => rm(stateDir, { force: true, recursive: true }));
+
+	const app = createPublicRuntimeApp({ stateDir });
+	const issueResponse = await app.request(
+		"http://localhost/v1/upload-sessions",
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "create-delivery-upload",
+			},
+			body: JSON.stringify({
+				assetOwner: "creator:auth-user-1",
+				serviceNamespaceId: "yucp-backstage",
+				tenantId: "auth-user-1",
+				source: {
+					contentType: "application/zip",
+					filename: "vrc-get-com.yucp.club-1.0.12.zip",
+				},
+				upload: {
+					byteLength: 12,
+					checksum: {
+						algorithm: "sha256",
+						value:
+							"7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9",
+					},
+					objectKey:
+						"staging/yucp-backstage/auth-user-1/backstage/com.yucp.club/1.0.12/vrc-get-com.yucp.club-1.0.12.zip",
+				},
+			}),
+		},
+	);
+
+	assert.equal(issueResponse.status, 201);
+	const issued = await issueResponse.json();
+	const uploadTargetUrl = new URL(
+		issued.uploadTarget.url,
+		"http://localhost",
+	).toString();
+	const patchResponse = await app.request(uploadTargetUrl, {
+		method: "PATCH",
+		headers: {
+			"content-type": "application/offset+octet-stream",
+			"tus-resumable": "1.0.0",
+			"upload-offset": "0",
+		},
+		body: "hello world!",
+	});
+
+	assert.equal(patchResponse.status, 204);
+
+	const completeResponse = await app.request(
+		`http://localhost/v1/upload-sessions/${issued.uploadSessionId}/complete`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "complete-delivery-upload",
+			},
+			body: JSON.stringify({
+				stagedObject: {
+					byteLength: 12,
+					checksum: {
+						algorithm: "sha256",
+						value:
+							"7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9",
+					},
+					objectKey:
+						"staging/yucp-backstage/auth-user-1/backstage/com.yucp.club/1.0.12/vrc-get-com.yucp.club-1.0.12.zip",
+				},
+			}),
+		},
+	);
+
+	assert.equal(completeResponse.status, 202);
+	const completion = await completeResponse.json();
+
+	const versionResponse = await app.request(
+		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}`,
+	);
+
+	assert.equal(versionResponse.status, 200);
+	const version = await versionResponse.json();
+	assert.equal(version.lifecycleState, "published");
+	assert.equal(version.workflowState, "completed");
+
+	const derivativesResponse = await app.request(
+		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}/derivatives`,
+	);
+
+	assert.equal(derivativesResponse.status, 200);
+	const derivatives = await derivativesResponse.json();
+	assert.deepEqual(
+		derivatives.derivatives.map((derivative) => derivative.variant),
+		["preserve-original"],
+	);
+
+	const deliveryAuthorizeResponse = await app.request(
+		`http://localhost/v1/assets/${completion.assetId}/versions/${completion.versionId}/deliveries/paid-downloads/authorize`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": "authorize-delivery-upload",
+			},
+			body: JSON.stringify({
+				responseFormat: "url",
+				variant: "preserve-original",
+			}),
+		},
+	);
+
+	assert.equal(deliveryAuthorizeResponse.status, 200);
+	const deliveryAuthorization = await deliveryAuthorizeResponse.json();
+	assert.equal(
+		deliveryAuthorization.url,
+		`/uploads/deriv/yucp-backstage/${completion.assetId}/${completion.versionId}/preserve-original/preserve-original`,
+	);
+
+	const deliveryDownloadResponse = await app.request(
+		new URL(deliveryAuthorization.url, "http://localhost").toString(),
+	);
+
+	assert.equal(deliveryDownloadResponse.status, 200);
+	assert.equal(await deliveryDownloadResponse.text(), "hello world!");
 });
 
 test("local public runtime can back uploaded bytes with the ingest object-store bucket", async () => {
@@ -532,6 +1152,9 @@ test("local public runtime can back uploaded bytes with the ingest object-store 
 		[
 			"PutObjectCommand",
 			"HeadObjectCommand",
+			"GetObjectCommand",
+			"PutObjectCommand",
+			"PutObjectCommand",
 			"GetObjectCommand",
 			"HeadObjectCommand",
 		],

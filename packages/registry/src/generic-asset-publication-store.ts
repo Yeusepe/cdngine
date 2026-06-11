@@ -15,7 +15,7 @@
 export type GenericAssetVersionLifecycleState = 'canonical' | 'processing' | 'published';
 
 export interface GenericCanonicalSourceEvidenceRecord {
-  repositoryEngine: 'kopia' | 'xet' | 'restic' | 'borg' | 'casync' | 'custom';
+  repositoryEngine: 'kopia' | 'xet' | 'object-store' | 'restic' | 'borg' | 'casync' | 'custom';
   canonicalSourceId: string;
   canonicalSnapshotId: string;
   canonicalLogicalPath: string;

@@ -9,6 +9,7 @@
  * - docs/original-source-delivery.md
  * External references:
  * - https://docs.docker.com/compose/environment-variables/
+ * - https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/javascript_s3_code_examples.html
  * - https://huggingface.co/docs/xet/en/api
  * - https://kopia.io/docs/reference/command-line/common/snapshot-create/
  * - https://github.com/rustfs/rustfs
@@ -26,7 +27,7 @@ import {
 export type SourceDeliveryMode = 'proxy' | 'materialized-export' | 'lazy-read';
 export type TieringSubstrate = 'rustfs' | 'seaweedfs';
 export type WorkerHotReadLayer = 'none' | 'nydus' | 'alluxio';
-export type SourceRepositoryRuntimeEngine = 'xet' | 'kopia';
+export type SourceRepositoryRuntimeEngine = 'xet' | 'kopia' | 'object-store';
 
 export interface XetCommandRuntimeConfig {
   args: string[];
@@ -52,9 +53,12 @@ export interface KopiaSourceRepositoryRuntimeConfig {
   timeoutMs: number;
 }
 
+export interface ObjectStoreSourceRepositoryRuntimeConfig {}
+
 export interface SourceRepositoryRuntimeConfig {
   engine: SourceRepositoryRuntimeEngine;
   kopia: KopiaSourceRepositoryRuntimeConfig;
+  objectStore: ObjectStoreSourceRepositoryRuntimeConfig;
   xet: XetSourceRepositoryRuntimeConfig;
 }
 
@@ -172,7 +176,7 @@ export function resolveSourceRepositoryEngineFromEnvironment(
   return readEnumValue(
     'CDNGINE_SOURCE_ENGINE',
     environment.CDNGINE_SOURCE_ENGINE,
-    ['xet', 'kopia'] as const,
+    ['xet', 'kopia', 'object-store'] as const,
     'xet'
   );
 }
@@ -224,6 +228,7 @@ export function loadSourceRepositoryRuntimeConfigFromEnvironment(
   return {
     engine,
     kopia,
+    objectStore: {},
     xet
   };
 }

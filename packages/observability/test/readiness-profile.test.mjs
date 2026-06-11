@@ -51,6 +51,19 @@ test('loadReadinessProfileFromEnvironment accepts explicit dependency overrides'
   );
 });
 
+test('loadReadinessProfileFromEnvironment accepts pipe-delimited overrides for CLI-managed variables', () => {
+  assert.deepEqual(
+    loadReadinessProfileFromEnvironment({
+      CDNGINE_DEPLOYMENT_PROFILE: 'production-default',
+      CDNGINE_READINESS_REQUIRED: 'auth|source-repository|derived-store|exports-store'
+    }),
+    {
+      deploymentProfile: 'production-default',
+      requiredDependencies: ['auth', 'source-repository', 'derived-store', 'exports-store']
+    }
+  );
+});
+
 test('loadReadinessProfileFromEnvironment rejects unknown readiness dependencies', () => {
   assert.throws(
     () =>

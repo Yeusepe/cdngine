@@ -8,6 +8,7 @@
 # External references:
 # - https://docs.docker.com/reference/dockerfile/
 # - https://hub.docker.com/_/node
+# - https://manpages.debian.org/bookworm/apt/apt.conf.5.en.html
 # - https://vite.dev/guide/cli.html
 # Tests:
 # - scripts/docker-instance.test.mjs
@@ -16,8 +17,8 @@ FROM node:24-bookworm-slim
 
 WORKDIR /workspace
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates openssl \
+RUN apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update \
+  && apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=development

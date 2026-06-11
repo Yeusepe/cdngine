@@ -147,6 +147,7 @@ test('remote latest compose builds from GitHub without local bind mounts', () =>
 test('runtime Dockerfile installs OpenSSL for Prisma database clients', () => {
   const dockerfile = readFileSync(join(repositoryRoot, 'Dockerfile'), 'utf8');
 
-  assert.match(dockerfile, /apt-get update/);
+  assert.match(dockerfile, /apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update/);
+  assert.match(dockerfile, /apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install/);
   assert.match(dockerfile, /openssl/);
 });
